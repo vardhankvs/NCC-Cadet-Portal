@@ -1,0 +1,297 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --ncc-navy: #0a1628;
+        --ncc-navy-light: #112240;
+        --ncc-navy-mid: #1b3a6b;
+        --ncc-red: #b01020;
+        --ncc-red-light: #d8172b;
+        --ncc-red-dark: #7a0c18;
+        --ncc-gold: #b8830e;
+        --ncc-gold-light: #d4a83a;
+        --ncc-gold-dark: #8a6008;
+        --ncc-cream: #f5f0e8;
+        --ncc-cream-dark: #e8e0cc;
+        --card-bg: #ffffff;
+        --border: #ddd8cc;
+        --text-muted: #6b7280;
+        --sidebar-w: 240px;
+    }
+
+    body {
+        font-family: 'Inter', 'Source Sans 3', sans-serif;
+        background-color: var(--ncc-cream);
+        margin: 0;
+        color: #1a1a2e;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    * {
+        box-sizing: border-box;
+    }
+}
+
+@layer components {
+    /* ── Cards ── */
+    .ncc-card {
+        @apply bg-white rounded-xl border border-[#ddd8cc] shadow-sm;
+    }
+
+    .ncc-card-navy {
+        background: linear-gradient(135deg, #0a1628, #1b3a6b);
+        @apply rounded-xl shadow-lg text-white;
+    }
+
+    /* ── Table ── */
+    .ncc-table-head {
+        background: #0a1628;
+        color: #b8830e;
+        @apply text-xs font-bold uppercase tracking-widest;
+    }
+
+    .ncc-th {
+        @apply px-4 py-3 text-left whitespace-nowrap;
+        background: #0a1628;
+        color: #b8830e;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+    }
+
+    .ncc-td {
+        @apply px-4 py-3 text-sm text-gray-700;
+    }
+
+    .ncc-tr {
+        @apply border-b border-[#ede8df] hover:bg-[#f7f4ef] transition-colors duration-100;
+    }
+
+    .ncc-tr-selected {
+        @apply bg-[#f0ece3];
+    }
+
+    /* ── Buttons ── */
+    .ncc-btn {
+        @apply inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-150;
+    }
+
+    .ncc-btn-primary {
+        @apply ncc-btn text-white;
+        background: #0a1628;
+    }
+    .ncc-btn-primary:hover {
+        background: #1b3a6b;
+    }
+
+    .ncc-btn-gold {
+        @apply ncc-btn text-white;
+        background: linear-gradient(135deg, #b8830e, #d4a83a);
+    }
+    .ncc-btn-gold:hover {
+        background: linear-gradient(135deg, #8a6008, #b8830e);
+    }
+
+    .ncc-btn-danger {
+        @apply ncc-btn text-white;
+        background: #b01020;
+    }
+    .ncc-btn-danger:hover {
+        background: #7a0c18;
+    }
+
+    .ncc-btn-ghost {
+        @apply ncc-btn text-gray-700 bg-white border border-[#ddd8cc];
+    }
+    .ncc-btn-ghost:hover {
+        @apply bg-[#f5f0e8] text-[#0a1628];
+    }
+
+    .ncc-btn-success {
+        @apply ncc-btn text-white bg-emerald-700;
+    }
+    .ncc-btn-success:hover {
+        @apply bg-emerald-800;
+    }
+
+    .ncc-btn-sm {
+        @apply px-3 py-1.5 text-xs;
+    }
+
+    /* ── Status Pills ── */
+    .pill-present {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+        background: #dcfce7;
+        color: #15803d;
+    }
+
+    .pill-absent {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+        background: #fee2e2;
+        color: #b91c1c;
+    }
+
+    .pill-paid {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+        background: #dcfce7;
+        color: #15803d;
+    }
+
+    .pill-pending {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+        background: #fef3c7;
+        color: #b45309;
+    }
+
+    .pill-exempted {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+        background: #dbeafe;
+        color: #1d4ed8;
+    }
+
+    /* ── CERT Badges ── */
+    .cert-b1 {
+        @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-bold;
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .cert-b2 {
+        @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-bold;
+        background: #ede9fe;
+        color: #5b21b6;
+    }
+
+    .cert-c {
+        @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-bold;
+        background: #fef3c7;
+        color: #92400e;
+    }
+
+    /* ── Section Header ── */
+    .ncc-section-title {
+        @apply flex items-center gap-2 text-lg font-bold font-display;
+        color: #0a1628;
+    }
+
+    /* ── Inputs ── */
+    .ncc-input {
+        @apply w-full px-3 py-2 text-sm bg-white border border-[#ddd8cc] rounded-lg text-gray-800;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .ncc-input:focus {
+        @apply outline-none border-[#b8830e] ring-2;
+        --tw-ring-color: rgba(184,131,14,0.2);
+    }
+
+    .ncc-label {
+        @apply block text-xs font-bold uppercase tracking-wide mb-1;
+        color: #0a1628;
+    }
+
+    /* ── Filter Toggle Group ── */
+    .ncc-filter-group {
+        @apply flex p-0.5 rounded-lg border border-[#ddd8cc] bg-[#f5f0e8];
+    }
+
+    .ncc-filter-btn {
+        @apply px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 whitespace-nowrap;
+        color: #6b7280;
+    }
+
+    .ncc-filter-btn.active {
+        @apply text-white shadow-sm;
+        background: #0a1628;
+    }
+
+    /* ── Page Wrapper ── */
+    .ncc-page {
+        @apply p-4 sm:p-6 space-y-5;
+    }
+}
+
+@layer utilities {
+    /* NCC diagonal stripe texture */
+    .ncc-stripe {
+        background: repeating-linear-gradient(
+            -45deg,
+            transparent,
+            transparent 4px,
+            rgba(184, 131, 14, 0.06) 4px,
+            rgba(184, 131, 14, 0.06) 8px
+        );
+    }
+
+    /* Hide scrollbar */
+    .scroll-hide {
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    .scroll-hide::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Thin custom scrollbar */
+    .ncc-scrollbar::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+    }
+    .ncc-scrollbar::-webkit-scrollbar-track {
+        background: #f5f0e8;
+    }
+    .ncc-scrollbar::-webkit-scrollbar-thumb {
+        background: #ddd8cc;
+        border-radius: 2px;
+    }
+
+    /* Gold shimmer text */
+    .gold-shimmer {
+        background: linear-gradient(
+            90deg,
+            #b8830e 0%,
+            #d4a83a 40%,
+            #b8830e 60%,
+            #8a6008 100%
+        );
+        background-size: 200% auto;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: shimmer 3s linear infinite;
+    }
+}
+
+/* ── Keyframes ── */
+@keyframes shimmer {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+}
+
+@keyframes slideIn {
+    from { transform: translateX(-100%); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { transform: translateY(100%); opacity: 0; }
+    to   { transform: translateY(0);   opacity: 1; }
+}
+
+@keyframes modalIn {
+    from { transform: scale(0.95) translateY(10px); opacity: 0; }
+    to   { transform: scale(1)    translateY(0);    opacity: 1; }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.slide-in  { animation: slideIn  0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+.slide-up  { animation: slideUp  0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+.modal-in  { animation: modalIn  0.22s cubic-bezier(0.22, 1, 0.36, 1); }
+.fade-in   { animation: fadeIn   0.2s  ease; }

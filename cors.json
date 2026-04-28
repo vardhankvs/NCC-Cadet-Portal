@@ -1,0 +1,18 @@
+[
+  {
+    "origin": [
+      "http://localhost:5179",
+      "http://localhost:5173",
+      "http://localhost:3000",
+      "https_codelab_e804f329_..._ide_web_ide_online.proxy.googleusercontent.com"
+    ],
+    "method": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
+    "responseHeader": [
+      "Content-Type",
+      "Authorization",
+      "X-Goog-Resumable",
+      "X-Goog-Meta-*"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]
