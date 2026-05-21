@@ -6,24 +6,34 @@ const VAPID_KEY = "BDC9rR9_H3fV5S7p3uN9r1_z2L4x6M7N8O9P0Q1R2S3T4U5V6W7X8Y9Z"; //
 
 export const requestNotificationPermission = async (userId, collectionName = 'cadets') => {
     try {
-        if (!messaging) return null;
+        if (!messaging) {
+            alert("Firebase Messaging is not supported or initialized on this device.");
+            return null;
+        }
 
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
-            const token = await getToken(messaging, {
-                vapidKey: 'BNpINcBKAiIus3dNAcNhCjGHnRIub-fIkDIk0A3bzOGvPcfGdD2ZU-VyTHq9hUBvvrlJVkXx4NLq4oX7_Gu1e2U'
-            });
-            
-            if (token && userId) {
-                // Save token to appropriate profile
-                const userRef = doc(db, collectionName, userId);
-                await updateDoc(userRef, {
-                    fcmTokens: arrayUnion(token)
+            try {
+                const token = await getToken(messaging, {
+                    vapidKey: 'BNpINcBKAiIus3dNAcNhCjGHnRIub-fIkDIk0A3bzOGvPcfGdD2ZU-VyTHq9hUBvvrlJVkXx4NLq4oX7_Gu1e2U'
                 });
-                return token;
+                
+                if (token && userId) {
+                    const userRef = doc(db, collectionName, userId);
+                    await updateDoc(userRef, { fcmTokens: arrayUnion(token) });
+                    return token;
+                } else {
+                    alert("Token generated but User ID is missing.");
+                }
+            } catch (tokenError) {
+                alert("Failed to generate push token: " + tokenError.message);
+                console.error("Token Error:", tokenError);
             }
+        } else {
+            alert("Notification permission was not granted. Status: " + permission + ". Please go to your browser settings (Site Settings) and allow notifications for this site.");
         }
     } catch (error) {
+        alert("Unexpected error: " + error.message);
         console.error('Error getting notification permission:', error);
     }
     return null;
