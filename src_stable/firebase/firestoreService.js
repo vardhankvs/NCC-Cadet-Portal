@@ -27,6 +27,8 @@ import {
     getDownloadURL,
 } from 'firebase/storage';
 
+import { sendPushToUser } from './pushNotifications.js';
+
 // --- MULTI-TENANCY HELPER ---
 export const getCurrentUserInstitution = async () => {
     // Note: needs `auth` from config.js, exporting it below if not imported
@@ -1159,6 +1161,12 @@ export const logCampAchievement = async (campId, cadetId, achievementText) => {
             campHistory[histIndex].achievements.push(achievementText);
             transaction.update(cadetRef, { campHistory });
         }
+        // Return data for notifications
+        return { campName: campData.name, enrollmentId: cadetData.enrollmentId };
+    }).then(({ campName, enrollmentId }) => {
+        if (enrollmentId) {
+            sendPushToUser(enrollmentId, '🏆 Camp Achievement', `Congratulations! You received an award: "${achievementText}" at ${campName}.`);
+        }
     });
 };
 
@@ -1202,6 +1210,16 @@ export const addCampAchievementsBulk = async (campId, cadetIds, achievementText)
                     transaction.update(cadetDocSnap.ref, { campHistory });
                 }
             }
+        });
+
+        // Return data for notifications
+        return { 
+            campName: campData.name, 
+            enrollmentIds: cadetDocs.filter(d => d.exists()).map(d => d.data().enrollmentId).filter(Boolean) 
+        };
+    }).then(({ campName, enrollmentIds }) => {
+        enrollmentIds.forEach(enrollmentId => {
+            sendPushToUser(enrollmentId, '🏆 Camp Achievement', `Congratulations! You received an award: "${achievementText}" at ${campName}.`);
         });
     });
 };
