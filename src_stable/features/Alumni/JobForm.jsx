@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { addJobOpportunity } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
 import { Plus } from '../../components/Icons.jsx';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const JobForm = ({ onClose }) => {
     const [formData, setFormData] = useState({
@@ -20,6 +21,7 @@ export const JobForm = ({ onClose }) => {
         try {
             await addJobOpportunity(formData);
             toast.success('Opportunity posted to the Career Bridge.');
+            sendPushToAll('💼 New Job Opportunity', `${formData.title} (${formData.type}) has been posted on the Job Board`);
             onClose();
         } catch (error) {
             console.error('Error posting job:', error);

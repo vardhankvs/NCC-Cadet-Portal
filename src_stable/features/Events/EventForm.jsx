@@ -4,6 +4,7 @@ import { ErrorDisplay } from '../../components/ui/ErrorDisplay.jsx';
 import { X, Loader, Calendar, MapPin, AlignLeft, Flag, Shield } from '../../components/Icons.jsx';
 import { saveEvent } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const EventForm = ({ currentEvent, onSaveSuccess, onCancel }) => {
     const [formData, setFormData] = useState({
@@ -34,6 +35,7 @@ export const EventForm = ({ currentEvent, onSaveSuccess, onCancel }) => {
         try {
             await saveEvent(formData, currentEvent?.id);
             toast.success(isEditMode ? 'Event updated successfully.' : 'New event added to unit calendar.');
+            sendPushToAll('📅 New Event', `${formData.name} has been added to the unit calendar`);
             onSaveSuccess();
         } catch (e) {
             setFormError(e.message);

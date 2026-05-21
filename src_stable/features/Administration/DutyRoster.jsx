@@ -4,6 +4,7 @@ import { getCollectionRef } from '../../firebase/firestoreService.js';
 import { doc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { toast } from 'react-toastify';
 import { Shield, Search, Save, User, Check } from '../../components/Icons.jsx';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 const DELEGABLE_MODULES = [
     { id: 'hall_of_fame', name: 'Unit Excellence', category: 'Headquarters' },
@@ -123,6 +124,7 @@ export const DutyRoster = () => {
             }
 
             toast.success("Delegations saved successfully!");
+            sendPushToAll('📋 Duty Roster Updated', 'The chain of command and duty delegations have been updated');
             selectedCadet.delegatedModules = activeDelegations;
         } catch (error) {
             console.error("Failed to save delegations", error);

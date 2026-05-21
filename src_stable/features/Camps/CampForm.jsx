@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X } from '../../components/Icons.jsx';
 import { saveCamp } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 const CAMP_TYPES = ['ATC', 'CATC', 'EBSB', 'RDC', 'TSC', 'NSC', 'VSC', 'SNIC', 'ALC', 'BLC', 'Trekking', 'Other'];
 
@@ -21,6 +22,7 @@ export const CampForm = ({ onClose }) => {
         try {
             await saveCamp(formData);
             toast.success('Camp created successfully!');
+            sendPushToAll('🏕️ New Camp', `${formData.name} (${formData.type}) has been added. Check the Camps tab for details.`);
             onClose();
         } catch (err) {
             toast.error(err.message);

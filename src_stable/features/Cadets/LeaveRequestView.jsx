@@ -5,6 +5,7 @@ import { getCollectionRef, recordAttendance } from '../../firebase/firestoreServ
 import { onSnapshot, addDoc, updateDoc, doc, query, orderBy, where } from 'firebase/firestore';
 import { Calendar, FileText, CheckCircle, XCircle, Clock, Send, Plus, User, MessageSquare, Search } from '../../components/Icons.jsx';
 import { toast } from 'react-toastify';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 const compressImageToBase64 = (file, maxWidth = 800, quality = 0.6) => {
     return new Promise((resolve, reject) => {
@@ -196,6 +197,7 @@ export const LeaveRequestView = () => {
             }
 
             toast.success(`Request ${status}`);
+            sendPushToAll('📝 Leave Request Update', `Your leave request has been ${status}`);
         } catch (err) {
             console.error(err);
             toast.error("Action failed.");

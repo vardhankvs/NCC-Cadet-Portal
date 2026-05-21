@@ -6,6 +6,7 @@ import { ErrorDisplay } from '../../components/ui/ErrorDisplay.jsx';
 import { X, Loader, Shield, Users, Calendar } from '../../components/Icons.jsx';
 import { saveAnnouncement } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const AnnouncementForm = ({ onClose, initialData = null }) => {
     const [title, setTitle] = useState(initialData?.title || '');
@@ -28,6 +29,7 @@ export const AnnouncementForm = ({ onClose, initialData = null }) => {
         try {
             await saveAnnouncement(title, content, targetCertificate, targetDivision, noticeDate, initialData?.id);
             toast.success(initialData ? "Formal notice updated." : "Formal notice posted to the unit board.");
+            if (!initialData) sendPushToAll('📢 New Announcement', title);
             onClose();
         } catch (e) {
             setFormError(`Failed to save announcement: ${e.message}`);

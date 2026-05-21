@@ -7,6 +7,7 @@ import {
     saveReferenceLink,
     updateReferenceLink,
 } from '../../firebase/firestoreService.js';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const ReferenceForm = ({
     currentReference,
@@ -45,6 +46,7 @@ export const ReferenceForm = ({
                 );
             } else {
                 await saveReferenceLink(title, downloadURL);
+                sendPushToAll('📚 New Library Resource', `"${title}" has been added to the library`);
             }
             onSaveSuccess();
         } catch (e) {

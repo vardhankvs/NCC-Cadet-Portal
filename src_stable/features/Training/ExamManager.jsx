@@ -30,6 +30,7 @@ import {
     deleteExamAttempt 
 } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const ExamManager = ({ initialView = 'dashboard' }) => {
     const [view, setView] = useState(initialView); // dashboard, questions, attempts, settings
@@ -106,6 +107,7 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
             } else {
                 await addExamQuestion(newQ);
                 toast.success("Question encrypted and added.");
+                sendPushToAll('📝 New Exam Question', `A new question has been added to the ${config.examTitle || 'NCC'} exam bank`);
             }
             setNewQ({
                 question: '',

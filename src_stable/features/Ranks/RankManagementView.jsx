@@ -5,6 +5,7 @@ import { Search, Award, TrendingUp, Filter, UserCheck, Shield, Clock } from '../
 import { updateCadetRank } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
 import { formatDate } from '../../utils/dateUtils.js';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const RankManagementView = () => {
     const { cadets, loading } = useDataContext();
@@ -31,6 +32,7 @@ export const RankManagementView = () => {
         try {
             await updateCadetRank(selectedCadet.id, newRank, reason);
             toast.success(`${selectedCadet.name} promoted to ${newRank}`);
+            sendPushToAll('⭐ Rank Update', `${selectedCadet.name} has been promoted to ${newRank}`);
             setSelectedCadet(null);
             setNewRank('');
             setReason('Merit-based promotion');
