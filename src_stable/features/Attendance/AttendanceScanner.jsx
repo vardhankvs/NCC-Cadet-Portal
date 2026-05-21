@@ -124,7 +124,9 @@ export const AttendanceScanner = () => {
             });
 
             toast.success(`Attendance marked for ${cadet.name}`);
-            sendPushToAll('✅ Attendance Marked', `${cadet.name}'s attendance has been recorded via QR scan`);
+            import('../../firebase/pushNotifications.js').then(({ sendPushToCadets }) => {
+                sendPushToCadets([cadet.id], '✅ Attendance Marked', `Your attendance was marked for today's class.`);
+            }).catch(console.error);
             
             // Add to local recent logs
             setRecentLogs(prev => [{

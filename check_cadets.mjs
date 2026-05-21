@@ -1,0 +1,50 @@
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, getDocs } from 'firebase/firestore';
+import fs from 'fs';
+
+const envFile = fs.readFileSync('.env', 'utf-8');
+const env = {};
+envFile.split('\n').forEach(line => {
+    const match = line.match(/^([^=]+)=(.*)$/);
+    if (match) {
+        env[match[1].trim()] = match[2].trim().replace(/^"|"$/g, '');
+    }
+});
+
+const firebaseConfig = {
+    apiKey: env.VITE_FIREBASE_API_KEY,
+    authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: env.VITE_FIREBASE_APP_ID,
+    measurementId: env.VITE_FIREBASE_MEASUREMENT_ID
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const appId = env.VITE_FIREBASE_APP_ID;
+
+async function checkCadets() {
+    console.log('Checking for duplicate cadets...');
+    const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'cadets'));
+    
+    const cadetNames = {};
+    snapshot.forEach(doc => {
+        const data = doc.data();
+        const name = data.name || data.fullName || 'Unknown';
+        if (!cadetNames[name]) {
+            cadetNames[name] = 0;
+        }
+        cadetNames[name]++;
+    });
+    
+    for (const [name, count] of Object.entries(cadetNames)) {
+        if (count > 1) {
+            console.log(`Duplicate found: ${name} appears ${count} times!`);
+        }
+    }
+    console.log(`Checked ${snapshot.size} total cadet documents.`);
+}
+
+checkCadets().catch(console.error);

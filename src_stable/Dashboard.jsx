@@ -567,10 +567,18 @@ export function Dashboard() {
     // ── Foreground Push: show toast when app is open and a push arrives ───────
     useEffect(() => {
         const unsubscribe = onForegroundMessage((payload) => {
-            console.log("Foreground push received, but native push will handle it.");
+            console.log("Foreground push received:", payload);
+            if (payload?.notification) {
+                toast.info(
+                    <div>
+                        <strong>{payload.notification.title}</strong>
+                        <p className="text-xs mt-1">{payload.notification.body}</p>
+                    </div>, 
+                    { autoClose: 5000, position: "top-right", icon: false }
+                );
+            }
         });
         return () => unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // ── Broadcast Sentinel (Automatic Safety Net) ──

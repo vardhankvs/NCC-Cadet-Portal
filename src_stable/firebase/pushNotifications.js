@@ -120,3 +120,34 @@ export const sendPushToUser = async (enrollmentId, title, body) => {
         console.warn('sendPushToUser failed (non-critical):', e.message);
     }
 };
+
+/**
+ * Sends a push notification to multiple cadets identified by their document IDs.
+ * Use for bulk targeted notifications: attendance marking, etc.
+ *
+ * @param {Array<string>} cadetIds  - Array of cadet document IDs
+ * @param {string} title            - Notification title
+ * @param {string} body             - Notification body
+ */
+export const sendPushToCadets = async (cadetIds, title, body) => {
+    if (!cadetIds || !Array.isArray(cadetIds) || cadetIds.length === 0) return;
+    try {
+        const tokens = [];
+
+        // Look up in cadets collection by document ID
+        try {
+            const snap = await getDocs(getCollectionRef('cadets'));
+            snap.forEach((d) => {
+                if (cadetIds.includes(d.id)) {
+                    const t = d.data().fcmTokens;
+                    if (Array.isArray(t)) tokens.push(...t);
+                    else if (typeof t === 'string' && t) tokens.push(t);
+                }
+            });
+        } catch (e) { console.warn('FCM: cadet lookup skipped', e.message); }
+
+        await _dispatch(tokens, title, body);
+    } catch (e) {
+        console.warn('sendPushToCadets failed (non-critical):', e.message);
+    }
+};
