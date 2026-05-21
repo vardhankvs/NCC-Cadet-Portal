@@ -516,19 +516,6 @@ export function Dashboard() {
                         autoClose: 5000,
                         onClick: () => handleTabClick('notifications')
                     });
-
-                    // Trigger Native System Notification if permission granted
-                    if (Notification.permission === 'granted') {
-                        try {
-                            new Notification(latest.subject || 'Unit Broadcast', {
-                                body: latest.message,
-                                icon: '/pwa-192x192.png',
-                                badge: '/pwa-192x192.png'
-                            });
-                        } catch (e) {
-                            console.warn('Native notification failed:', e);
-                        }
-                    }
                 }
             }
 
