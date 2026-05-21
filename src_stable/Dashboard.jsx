@@ -494,33 +494,11 @@ export function Dashboard() {
     // ─── Real-time Mobile Push Notifications ──────────────────────────────
     // ─── Real-time Mobile App Toasts & Native Notifications ──────────────────────────────
     useEffect(() => {
-        // Listen for new notifications to trigger unit-wide toasts
+        // Disabled onSnapshot toast to prevent duplicate notifications since FCM Native Push handles this.
         const q = query(getCollectionRef('notifications'), orderBy('timestamp', 'desc'), limit(1));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            if (!snapshot.empty) {
-                const latest = snapshot.docs[0].data();
-                const now = new Date().getTime();
-                const msgTime = new Date(latest.timestamp).getTime();
-                
-                // 1. Check if the message is fresh (last 10 seconds)
-                if (now - msgTime < 10000) {
-                    // 2. Filter for Cadets: Only show if relevant
-                    if (userRole !== 'admin') {
-                        // Check if it's for their group/cert/div
-                        // (Optional detailed filtering can be added here)
-                    }
-
-                    // Show Toast
-                    toast.info(`📢 ${latest.subject}: ${latest.message.substring(0, 50)}...`, {
-                        position: "top-center",
-                        autoClose: 5000,
-                        onClick: () => handleTabClick('notifications')
-                    });
-                }
-            }
-
+            // Simply listen to keep state updated, no toast needed.
         });
-
         return () => unsubscribe();
     }, [userRole]);
 
@@ -589,13 +567,7 @@ export function Dashboard() {
     // ── Foreground Push: show toast when app is open and a push arrives ───────
     useEffect(() => {
         const unsubscribe = onForegroundMessage((payload) => {
-            const title = payload.notification?.title || payload.data?.title || 'NCC Update';
-            const body  = payload.notification?.body  || payload.data?.body  || '';
-            toast.info(`${title}${body ? ': ' + body.substring(0, 80) : ''}`, {
-                position: 'top-center',
-                autoClose: 6000,
-                onClick: () => handleTabClick('notifications'),
-            });
+            console.log("Foreground push received, but native push will handle it.");
         });
         return () => unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
