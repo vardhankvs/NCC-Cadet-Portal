@@ -1,8 +1,10 @@
 // src/features/Engagement/CadetNotifications.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import { useDataContext } from '../../context/DataContext.jsx';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { Bell, Calendar, User, Info, AlertTriangle, Shield } from '../../components/Icons.jsx';
+import { requestNotificationPermission } from '../../firebase/messagingService';
+import { toast } from 'react-toastify';
 
 export const UnitAlerts = () => {
     const { announcements, notifications, loading } = useDataContext();
@@ -25,6 +27,8 @@ export const UnitAlerts = () => {
     });
 
 
+    const [permissionStatus, setPermissionStatus] = useState('Notification' in window ? Notification.permission : 'denied');
+
     return (
         <div className="space-y-6 max-w-3xl mx-auto py-4">
             <header className="mb-8">
@@ -33,8 +37,35 @@ export const UnitAlerts = () => {
                     Unit Communications
                 </h2>
                 <p className="text-text-dim mt-1">Official instructions, announcements, and emergency alerts</p>
-
             </header>
+
+            {permissionStatus !== 'granted' && 'Notification' in window && (
+                <div className="bg-ncc-navy text-white p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 shadow-sm gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+                            <Bell className="w-5 h-5 text-ncc-gold" />
+                        </div>
+                        <div>
+                            <h3 className="font-bold">Enable Push Notifications</h3>
+                            <p className="text-xs text-white/70">Get instant updates for parades, camps, and emergencies directly on your phone.</p>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={async () => {
+                            const token = await requestNotificationPermission(user?.uid, 'cadets');
+                            if (token) {
+                                setPermissionStatus('granted');
+                                toast.success("Notifications enabled! You will now receive unit broadcasts.");
+                            } else {
+                                toast.error("Please allow notifications in your browser popup.");
+                            }
+                        }}
+                        className="bg-ncc-gold text-ncc-navy font-bold text-xs px-4 py-2.5 rounded-xl hover:bg-yellow-500 transition-colors whitespace-nowrap shrink-0 w-full sm:w-auto"
+                    >
+                        Enable Notifications
+                    </button>
+                </div>
+            )}
 
             {allNotes.length === 0 ? (
                 <div className="ncc-card p-12 text-center">
