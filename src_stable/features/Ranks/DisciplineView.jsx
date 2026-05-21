@@ -9,7 +9,7 @@ import { updateCadetPoints } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
 import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
-import { sendPushToAll } from '../../firebase/pushNotifications.js';
+import { sendPushToUser } from '../../firebase/pushNotifications.js';
 
 export const DisciplineView = () => {
     const { cadets, loading } = useDataContext();
@@ -51,9 +51,10 @@ export const DisciplineView = () => {
         try {
             await updateCadetPoints(selectedCadet.id, pointType, newAmount, remark);
             toast.success(`${pointType === 'merit' ? 'Merit' : 'Discipline'} updated!`);
-            sendPushToAll(
+            sendPushToUser(
+                selectedCadet.enrollmentId,
                 pointType === 'merit' ? '⭐ Merit Points Updated' : '⚠️ Discipline Record Updated',
-                `${selectedCadet.name}'s ${pointType} record has been updated`
+                `Your ${pointType} record has been updated to ${newAmount} points. Remark: ${remark || 'No remark'}`
             );
             setIsEditModalOpen(false);
         } catch (err) {

@@ -5,7 +5,7 @@ import { getCollectionRef, recordAttendance } from '../../firebase/firestoreServ
 import { onSnapshot, addDoc, updateDoc, doc, query, orderBy, where } from 'firebase/firestore';
 import { Calendar, FileText, CheckCircle, XCircle, Clock, Send, Plus, User, MessageSquare, Search } from '../../components/Icons.jsx';
 import { toast } from 'react-toastify';
-import { sendPushToAll } from '../../firebase/pushNotifications.js';
+import { sendPushToUser } from '../../firebase/pushNotifications.js';
 
 const compressImageToBase64 = (file, maxWidth = 800, quality = 0.6) => {
     return new Promise((resolve, reject) => {
@@ -197,7 +197,13 @@ export const LeaveRequestView = () => {
             }
 
             toast.success(`Request ${status}`);
-            sendPushToAll('📝 Leave Request Update', `Your leave request has been ${status}`);
+            // Notify only the cadet whose leave was actioned
+            const cadetEnrollment = req.cadetId || req.enrollmentId;
+            sendPushToUser(
+                cadetEnrollment,
+                status === 'approved' ? '✅ Leave Approved' : '❌ Leave Rejected',
+                `Your leave request (${req.type || 'Leave'}: ${req.startDate} to ${req.endDate}) has been ${status}${req.adminRemarks ? '. Remarks: ' + req.adminRemarks : ''}.`
+            );
         } catch (err) {
             console.error(err);
             toast.error("Action failed.");

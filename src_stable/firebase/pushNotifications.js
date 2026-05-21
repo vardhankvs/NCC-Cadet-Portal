@@ -1,88 +1,122 @@
 // src_stable/firebase/pushNotifications.js
-// Shared utility: call sendPushToAll(title, body) from any feature after a successful save.
-// Reads FCM tokens from ALL docs in cadets, staff AND users, then fires a push via /api/sendBroadcast.
-// Silent fail — never blocks the main save flow.
+// Shared utility for push notifications.
+// sendPushToAll(title, body)   — broadcasts to ALL registered devices
+// sendPushToUser(enrollmentId, title, body) — sends to ONE specific cadet/user only
 
 import { getDocs, query, where } from 'firebase/firestore';
-import { db, appId } from './config.js';
-import { collection } from 'firebase/firestore';
+import { getCollectionRef } from './firestoreService.js';
 
 const VERCEL_ORIGIN = 'https://ncc-portal-redesign.vercel.app';
 
-// Internal: build a collection ref directly (same as getCollectionRef in firestoreService.js)
-// Duplicated here to avoid a circular import with firestoreService.js
-const colRef = (name) => {
-    if (!db || !appId) return null;
-    return collection(db, 'artifacts', appId, 'public', 'data', name);
-};
-
-/**
- * Collects all unique FCM tokens from the cadets, staff, and users collections.
- * Filters out blank / null tokens.
- */
-const collectAllTokens = async () => {
-    const tokens = [];
-
-    const SOURCES = ['cadets', 'staff', 'users'];
-    for (const src of SOURCES) {
-        try {
-            const ref = colRef(src);
-            if (!ref) continue;
-            const snap = await getDocs(ref);
-            snap.forEach((d) => {
-                const t = d.data().fcmTokens;
-                if (Array.isArray(t)) {
-                    t.forEach(tok => { if (tok) tokens.push(tok); });
-                } else if (typeof t === 'string' && t) {
-                    tokens.push(t);
-                }
-            });
-            console.log(`FCM: [${src}] → ${snap.size} docs scanned`);
-        } catch (e) {
-            console.warn(`FCM: ${src} fetch skipped —`, e.message);
-        }
+/** Internal: calls the Vercel FCM API with the given tokens */
+const _dispatch = async (tokens, title, body) => {
+    const uniqueTokens = [...new Set(tokens.filter(Boolean))];
+    if (uniqueTokens.length === 0) {
+        console.warn('FCM: No tokens found — device may not have notifications enabled');
+        return;
     }
-
-    const unique = [...new Set(tokens)];
-    console.log(`FCM: Total unique tokens collected: ${unique.length}`);
-    return unique;
-};
-
-/**
- * Sends a push notification to ALL registered devices.
- *
- * @param {string} title  - Notification title shown on lock screen
- * @param {string} body   - Notification body text
- */
-export const sendPushToAll = async (title, body) => {
+    console.log(`FCM: Sending push to ${uniqueTokens.length} device(s): "${title}"`);
     try {
-        const uniqueTokens = await collectAllTokens();
-
-        if (uniqueTokens.length === 0) {
-            console.warn(
-                'FCM: No tokens found — users may not have granted notification permission yet.\n' +
-                `Collection path: artifacts/${appId}/public/data/{cadets|staff|users}`
-            );
-            return;
-        }
-
-        console.log(`FCM: Sending "${title}" to ${uniqueTokens.length} device(s)`);
-
         const resp = await fetch(`${VERCEL_ORIGIN}/api/sendBroadcast`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subject: title, message: body, tokens: uniqueTokens }),
         });
-
         if (!resp.ok) {
             const err = await resp.text();
             console.warn('FCM API error:', resp.status, err);
         } else {
             const result = await resp.json();
-            console.log(`FCM: ✅ ${result.successCount} delivered, ❌ ${result.failureCount} failed of ${uniqueTokens.length} total`);
+            console.log(`FCM: ${result.successCount} delivered, ${result.failureCount} failed`);
         }
     } catch (e) {
-        // Silent fail — push notification errors must never interrupt the main save
-        console.warn('Push notification failed (non-critical):', e.message);
+        console.warn('FCM dispatch failed:', e.message);
+    }
+};
+
+/**
+ * Sends a push notification to ALL registered devices.
+ * Use for general broadcasts (new camp, new exam, social update, etc.)
+ */
+export const sendPushToAll = async (title, body) => {
+    try {
+        const tokens = [];
+
+        // Check cadets collection
+        try {
+            const snap = await getDocs(getCollectionRef('cadets'));
+            snap.forEach((d) => {
+                const t = d.data().fcmTokens;
+                if (Array.isArray(t)) tokens.push(...t);
+                else if (typeof t === 'string' && t) tokens.push(t);
+            });
+        } catch (e) { console.warn('FCM: cadets fetch skipped', e.message); }
+
+        // Check staff collection
+        try {
+            const snap = await getDocs(getCollectionRef('staff'));
+            snap.forEach((d) => {
+                const t = d.data().fcmTokens;
+                if (Array.isArray(t)) tokens.push(...t);
+                else if (typeof t === 'string' && t) tokens.push(t);
+            });
+        } catch (e) { console.warn('FCM: staff fetch skipped', e.message); }
+
+        // Check users collection (primary store used by messagingService.js)
+        try {
+            const snap = await getDocs(getCollectionRef('users'));
+            snap.forEach((d) => {
+                const t = d.data().fcmTokens;
+                if (Array.isArray(t)) tokens.push(...t);
+                else if (typeof t === 'string' && t) tokens.push(t);
+            });
+        } catch (e) { console.warn('FCM: users fetch skipped', e.message); }
+
+        await _dispatch(tokens, title, body);
+    } catch (e) {
+        console.warn('sendPushToAll failed (non-critical):', e.message);
+    }
+};
+
+/**
+ * Sends a push notification to ONE specific cadet identified by their enrollmentId.
+ * Use for personal notifications: fee approval, leave status, rank update, etc.
+ *
+ * @param {string} enrollmentId  - The cadet's enrollment ID (e.g. "14BNSD001")
+ * @param {string} title         - Notification title
+ * @param {string} body          - Notification body
+ */
+export const sendPushToUser = async (enrollmentId, title, body) => {
+    if (!enrollmentId) return;
+    try {
+        const tokens = [];
+
+        // Look up in cadets collection by enrollmentId
+        try {
+            const snap = await getDocs(getCollectionRef('cadets'));
+            snap.forEach((d) => {
+                if (d.data().enrollmentId === enrollmentId) {
+                    const t = d.data().fcmTokens;
+                    if (Array.isArray(t)) tokens.push(...t);
+                    else if (typeof t === 'string' && t) tokens.push(t);
+                }
+            });
+        } catch (e) { console.warn('FCM: cadet lookup skipped', e.message); }
+
+        // Also look up in users collection (tokens saved here when they log in)
+        try {
+            const snap = await getDocs(getCollectionRef('users'));
+            snap.forEach((d) => {
+                if (d.data().enrollmentId === enrollmentId) {
+                    const t = d.data().fcmTokens;
+                    if (Array.isArray(t)) tokens.push(...t);
+                    else if (typeof t === 'string' && t) tokens.push(t);
+                }
+            });
+        } catch (e) { console.warn('FCM: user lookup skipped', e.message); }
+
+        await _dispatch(tokens, title, body);
+    } catch (e) {
+        console.warn('sendPushToUser failed (non-critical):', e.message);
     }
 };

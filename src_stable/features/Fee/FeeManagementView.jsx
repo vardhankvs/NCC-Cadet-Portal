@@ -9,7 +9,7 @@ import { PaymentSettingsModal } from './PaymentSettingsModal.jsx';
 import { requestPaymentVerification, approveTransaction, rejectTransaction, deleteTransaction, addNotification } from '../../firebase/firestoreService.js';
 import { formatCurrency, calculateDue } from '../../utils/feeUtils.js';
 import { toast } from 'react-toastify';
-import { sendPushToAll } from '../../firebase/pushNotifications.js';
+import { sendPushToUser } from '../../firebase/pushNotifications.js';
 import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -143,7 +143,11 @@ export const FeeManagementView = () => {
             );
 
             toast.success('Payment approved and credited!');
-            sendPushToAll('💳 Fee Record Updated', 'A fee payment has been verified and approved');
+            sendPushToUser(
+                tx.enrollmentId,
+                '💳 Payment Approved!',
+                `Your payment of ${formatCurrency(tx.amount)} has been verified and credited to your account.`
+            );
         } catch (err) {
             console.error('Approval error:', err);
             toast.error(`Approval failed: ${err.message || 'Unknown error'}`);
@@ -169,6 +173,11 @@ export const FeeManagementView = () => {
             );
 
             toast.success('Payment rejected.');
+            sendPushToUser(
+                tx.enrollmentId,
+                '❌ Payment Rejected',
+                `Your payment of ${formatCurrency(tx.amount)} was rejected. Reason: ${reason}`
+            );
         } catch (err) {
             toast.error('Failed to reject payment.');
         } finally {
