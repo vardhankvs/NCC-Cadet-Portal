@@ -7,6 +7,7 @@ import {
 } from '../../components/Icons.jsx';
 import { saveCadet } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 /**
  * Compresses an image File to a Base64 JPEG string using canvas.
@@ -214,6 +215,7 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
             await saveCadet({ ...formData, photoUrl }, currentCadet?.id);
             setSaved(true);
             toast.success(isEditMode ? 'Cadet updated!' : 'Cadet added!');
+            if (!isEditMode) sendPushToAll('👤 Roster Updated', 'A new cadet has been added to the unit roster');
             setTimeout(() => onSaveSuccess(), 600);
         } catch (err) {
             toast.dismiss('photo-upload');

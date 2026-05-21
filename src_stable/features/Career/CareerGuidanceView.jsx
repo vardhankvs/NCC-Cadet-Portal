@@ -7,6 +7,7 @@ import axios from 'axios';
 import { Megaphone, ExternalLink, Trash2, Plus, Briefcase, Award, BookOpen, Clock } from '../../components/Icons.jsx';
 import { toast } from 'react-toastify';
 import { formatDate } from '../../utils/dateUtils.js';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const CareerGuidanceView = () => {
     const { userRole } = useAuthContext();
@@ -33,6 +34,7 @@ export const CareerGuidanceView = () => {
         try {
             await saveCareerNotice(formData);
             toast.success("Notice posted successfully.");
+            sendPushToAll('💼 New Career Opportunity', `${formData.title} has been posted. Check the Careers tab.`);
             setFormData({ title: '', description: '', link: '', category: 'Armed Forces' });
             setShowForm(false);
         } catch (err) {

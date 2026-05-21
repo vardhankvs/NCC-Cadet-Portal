@@ -20,6 +20,7 @@ import { addDoc, doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, serverTimes
 import { getCollectionRef } from '../../firebase/firestoreService.js';
 import { db } from '../../firebase/config.js';
 import { toast } from 'react-toastify';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 import { LoadingIndicator } from '../../components/ui/LoadingIndicator.jsx';
 import jsPDF from 'jspdf';
 import nccLogo from '../../assets/ncc_logo.jpg.jpg';
@@ -119,6 +120,7 @@ export const SocialServiceView = () => {
                 createdAt: serverTimestamp()
             });
             toast.success("Social activity logged successfully!");
+            sendPushToAll('🤝 New Social Activity', 'A new social service activity has been posted');
             setShowAddForm(false);
             setNewActivity({
                 title: '',

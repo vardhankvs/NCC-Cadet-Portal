@@ -6,6 +6,7 @@ import { recordAttendance } from '../../firebase/firestoreService.js';
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay.jsx';
 import { Calendar } from '../../components/Icons.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 
 const getTodayDateString = () => new Date().toISOString().split('T')[0];
@@ -53,7 +54,10 @@ export const AttendanceTracker = ({ cadets }) => {
         if (!cadet) return;
         const newStatus = getStatus(cadet) === 'Present' ? 'Absent' : 'Present';
         setError(null);
-        try { await recordAttendance(cadetId, selectedDate, newStatus); }
+        try { 
+            await recordAttendance(cadetId, selectedDate, newStatus);
+            sendPushToAll('✅ Attendance Updated', `Attendance for ${selectedDate} has been marked`);
+        }
         catch (e) { setError(`Attendance update failed: ${e.message}`); }
     };
 

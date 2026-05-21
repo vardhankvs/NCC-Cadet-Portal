@@ -8,6 +8,7 @@ import { DirectChat } from '../Engagement/DirectChat.jsx';
 import { db } from '../../firebase/config';
 import { getCollectionRef } from '../../firebase/firestoreService.js';
 import { addDoc, serverTimestamp, query, orderBy, onSnapshot, updateDoc, doc, arrayUnion, deleteDoc } from 'firebase/firestore';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 
 const BloodGroupTag = ({ group, isActive, onClick }) => (
@@ -288,6 +289,7 @@ export const BloodRegistry = ({ onChat }) => {
                 });
 
                 toast.success("Emergency Alert Broadcasted successfully!");
+                sendPushToAll('🩸 Blood Bank Alert', `URGENT: ${formData.bloodGroup} blood needed for ${formData.patientName} at ${formData.hospital}`);
             }
             
             setShowRequestModal(false);

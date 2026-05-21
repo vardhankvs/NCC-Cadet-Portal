@@ -7,6 +7,7 @@ import { useAuthContext } from '../../context/AuthContext.jsx';
 import { useDataContext } from '../../context/DataContext.jsx';
 import { ShieldCheck, UserCheck, Clock, X, Camera, History } from '../../components/Icons.jsx';
 import { toast } from 'react-toastify';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const AttendanceScanner = () => {
     const { userProfile } = useAuthContext();
@@ -123,6 +124,7 @@ export const AttendanceScanner = () => {
             });
 
             toast.success(`Attendance marked for ${cadet.name}`);
+            sendPushToAll('✅ Attendance Marked', `${cadet.name}'s attendance has been recorded via QR scan`);
             
             // Add to local recent logs
             setRecentLogs(prev => [{

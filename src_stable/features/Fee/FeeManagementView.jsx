@@ -9,6 +9,7 @@ import { PaymentSettingsModal } from './PaymentSettingsModal.jsx';
 import { requestPaymentVerification, approveTransaction, rejectTransaction, deleteTransaction, addNotification } from '../../firebase/firestoreService.js';
 import { formatCurrency, calculateDue } from '../../utils/feeUtils.js';
 import { toast } from 'react-toastify';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -142,6 +143,7 @@ export const FeeManagementView = () => {
             );
 
             toast.success('Payment approved and credited!');
+            sendPushToAll('💳 Fee Record Updated', 'A fee payment has been verified and approved');
         } catch (err) {
             console.error('Approval error:', err);
             toast.error(`Approval failed: ${err.message || 'Unknown error'}`);
