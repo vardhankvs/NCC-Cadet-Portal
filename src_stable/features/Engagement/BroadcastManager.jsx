@@ -228,9 +228,13 @@ export const BroadcastManager = () => {
                                             })
                                         });
                                         const data = await res.json();
-                                        if(data.successCount > 0) toast.success("Test push sent! Check your notification bar.");
-                                        else toast.error("Push sent, but failed to deliver. Check Vercel logs.");
-                                    } catch(e) { toast.error("Vercel backend failed to respond!"); }
+                                        if(data.successCount > 0) {
+                                            toast.success("Test push sent! Check your notification bar.");
+                                        } else {
+                                            toast.error("Vercel Error: " + (data.error || data.details || "Token failed delivery. Is VAPID key correct?"));
+                                            console.error("Vercel Response:", data);
+                                        }
+                                    } catch(e) { toast.error("Network Error: " + e.message); }
                                 } else {
                                     toast.error("Please allow notifications in your browser popup first.");
                                 }
