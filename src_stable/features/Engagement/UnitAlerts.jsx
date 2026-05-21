@@ -12,13 +12,25 @@ export const UnitAlerts = () => {
 
     if (loading) return <div className="p-8 text-center text-text-dim italic">Scanning unit logs...</div>;
 
-    // Filter notifications for the cadet's unit/group
-    const unitBroadcasts = (notifications || []).map(n => ({
-        ...n,
-        displayType: n.type === 'blood_emergency' ? 'emergency' : 'broadcast',
-        title: n.subject || (n.type === 'blood_emergency' ? 'Blood Emergency' : 'Unit Broadcast'),
-        content: n.message || n.content
-    }));
+    // Filter notifications:
+    // - If a notification has a `userId` or `enrollmentId` field, it is PERSONAL —
+    //   only show it to that specific cadet.
+    // - Broadcast notifications (subject/target field, no userId) show to everyone.
+    const unitBroadcasts = (notifications || [])
+        .filter(n => {
+            const isPersonal = !!(n.userId || n.enrollmentId);
+            if (!isPersonal) return true; // broadcast — show to all
+            // Personal: only show to this cadet
+            return n.enrollmentId === userEnrollmentId || n.userId === userEnrollmentId;
+        })
+        .map(n => ({
+            ...n,
+            displayType: n.type === 'blood_emergency' ? 'emergency'
+                       : (n.userId || n.enrollmentId) ? 'personal'
+                       : 'broadcast',
+            title: n.title || n.subject || (n.type === 'blood_emergency' ? 'Blood Emergency' : 'Unit Broadcast'),
+            content: n.message || n.content
+        }));
     
     const allNotes = [...unitBroadcasts].sort((a, b) => {
         const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;

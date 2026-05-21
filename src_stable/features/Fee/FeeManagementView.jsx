@@ -139,7 +139,8 @@ export const FeeManagementView = () => {
                 'Payment Approved',
                 `Congratulations! Your payment of ${formatCurrency(tx.amount)} has been verified and credited.`,
                 'success',
-                tx.institutionId
+                tx.institutionId,
+                tx.enrollmentId  // for UnitAlerts personal filtering
             );
 
             toast.success('Payment approved and credited!');
@@ -169,7 +170,8 @@ export const FeeManagementView = () => {
                 'Payment Rejected',
                 `Your payment of ${formatCurrency(tx.amount)} was rejected. Reason: ${reason}`,
                 'error',
-                tx.institutionId
+                tx.institutionId,
+                tx.enrollmentId  // for UnitAlerts personal filtering
             );
 
             toast.success('Payment rejected.');

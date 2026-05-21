@@ -772,11 +772,12 @@ export const requestPaymentVerification = async (
     // Notify Admins (Optional, can be added later)
 };
 
-export const addNotification = async (userId, title, message, type = 'info', institutionId) => {
+export const addNotification = async (userId, title, message, type = 'info', institutionId, enrollmentId = null) => {
     const ref = getCollectionRef('notifications');
     if (!ref) return;
     await addDoc(ref, {
-        userId,
+        userId,           // Firestore document ID of the cadet
+        enrollmentId,     // enrollmentId for client-side filtering in UnitAlerts
         title,
         message,
         type,
