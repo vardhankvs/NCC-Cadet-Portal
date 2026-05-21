@@ -1011,11 +1011,28 @@ export const saveCamp = async (data, id = null) => {
     };
 
     if (id) {
+        const docSnap = await getDoc(doc(ref, id));
+        let roster = [];
+        if (docSnap.exists()) {
+            roster = docSnap.data().roster || [];
+        }
         await updateDoc(doc(ref, id), payload);
+        
+        // Notify only the cadets who are assigned to this camp
+        roster.forEach(r => {
+            if (r.enrollmentId && r.enrollmentId !== 'Unknown') {
+                sendPushToUser(r.enrollmentId, '⛺ Camp Updated', `Details for camp "${payload.name}" have been updated by admin.`);
+            }
+        });
     } else {
         payload.createdAt = serverTimestamp();
         payload.roster = []; // Initialize empty roster
         await addDoc(ref, payload);
+        
+        // Notify ALL users that a new camp is available
+        import('./pushNotifications.js').then(({ sendPushToAll }) => {
+            sendPushToAll('⛺ New Camp Announced', `A new camp "${payload.name}" has been scheduled.`);
+        }).catch(err => console.error("Failed to import push module", err));
     }
 };
 
