@@ -577,26 +577,27 @@ export function Dashboard() {
     // ── Push Notifications: Permission Request & Token Registration ──────────
     // Always attempt to register on login so stale/rotated tokens are refreshed.
     useEffect(() => {
-        if (loading || !userEnrollmentId) return;
+        if (loading || !authContext.user) return;
 
-        // Wait for the user's profile to load before registering
+        // Determine if we can find their specific profile document in cadets or staff
         let userProfile = null;
-        if (userRole === 'cadet' && cadets.length > 0) {
+        if (userRole === 'cadet' && cadets.length > 0 && userEnrollmentId) {
             userProfile = cadets.find(c => c.enrollmentId === userEnrollmentId);
-        } else if ((userRole === 'admin' || userRole === 'officer') && staff.length > 0) {
+        } else if ((userRole === 'admin' || userRole === 'officer') && staff.length > 0 && userEnrollmentId) {
             userProfile = staff.find(s => s.staffId === userEnrollmentId);
         }
 
-        if (!userProfile) return;
+        // If we found them in cadets/staff, use that doc ID. Otherwise, fallback to their auth UID.
+        const collectionName = userRole === 'cadet' ? 'cadets' : (userRole === 'admin' || userRole === 'officer' ? 'staff' : 'users');
+        const docId = userProfile?.id || authContext.user.uid;
 
         // Delay slightly to avoid race with service worker registration
-        const collectionName = userRole === 'cadet' ? 'cadets' : 'staff';
-        const docId = userProfile.id || userProfile.enrollmentId || userProfile.staffId;
         const timer = setTimeout(() => {
             requestNotificationPermission(docId, collectionName);
         }, 3000);
+        
         return () => clearTimeout(timer);
-    }, [loading, userRole, userEnrollmentId, cadets, staff]);
+    }, [loading, userRole, authContext.user, userEnrollmentId, cadets, staff]);
 
     // ── Foreground Push: show toast when app is open and a push arrives ───────
     useEffect(() => {
