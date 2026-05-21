@@ -54,8 +54,9 @@ export const CampForm = ({ onClose, initialData = null }) => {
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
                     <div>
-                        <label className="ncc-label">Camp Name</label>
+                        <label className="ncc-label" htmlFor="campName">Camp Name</label>
                         <input
+                            id="campName"
                             type="text" required className="ncc-input"
                             value={formData.name}
                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -64,14 +65,15 @@ export const CampForm = ({ onClose, initialData = null }) => {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="ncc-label">Type</label>
-                            <select className="ncc-input" value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value })}>
+                            <label className="ncc-label" htmlFor="campType">Type</label>
+                            <select id="campType" className="ncc-input" value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value })}>
                                 {CAMP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className="ncc-label">Location</label>
+                            <label className="ncc-label" htmlFor="campLocation">Location</label>
                             <input
+                                id="campLocation"
                                 type="text" required className="ncc-input"
                                 value={formData.location}
                                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
@@ -81,16 +83,18 @@ export const CampForm = ({ onClose, initialData = null }) => {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="ncc-label">Start Date</label>
+                            <label className="ncc-label" htmlFor="campStartDate">Start Date</label>
                             <input
+                                id="campStartDate"
                                 type="date" required className="ncc-input"
                                 value={formData.startDate}
                                 onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
                             />
                         </div>
                         <div>
-                            <label className="ncc-label">End Date</label>
+                            <label className="ncc-label" htmlFor="campEndDate">End Date</label>
                             <input
+                                id="campEndDate"
                                 type="date" required className="ncc-input"
                                 value={formData.endDate}
                                 onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}

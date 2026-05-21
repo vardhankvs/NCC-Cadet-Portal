@@ -398,7 +398,7 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
                                                     
                                                     {userRole === 'admin' && achievementTarget === r.cadetId && (
                                                         <div className="mt-2 flex items-center gap-2">
-                                                            <input type="text" placeholder="e.g. Best Drill" className="ncc-input text-xs py-1 px-2 h-7" autoFocus value={achievementText} onChange={(e) => setAchievementText(e.target.value)} />
+                                                            <input type="text" placeholder="e.g. Best Drill" className="ncc-input text-xs py-1 px-2 h-7" value={achievementText} onChange={(e) => setAchievementText(e.target.value)} />
                                                             <button onClick={handleAddAchievement} className="ncc-btn ncc-btn-primary ncc-btn-sm h-7 text-xs px-2">Save</button>
                                                             <button onClick={() => setAchievementTarget(null)} className="text-gray-400 dark:text-white/80 hover:text-red-500 hover:bg-gray-100 dark:bg-[#0d2137] p-1 rounded"><X className="w-4 h-4"/></button>
                                                         </div>

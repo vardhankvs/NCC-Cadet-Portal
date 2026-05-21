@@ -130,7 +130,15 @@ export const CampsView = () => {
                                     <div 
                                         key={camp.id} 
                                         onClick={() => setSelectedCamp(camp)}
-                                        className="group bg-white dark:bg-[#050b14] rounded-xl shadow-sm border border-[#ddd8cc] overflow-hidden hover:shadow-md transition cursor-pointer flex flex-col relative"
+                                        role="button"
+                                        tabIndex={0}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                setSelectedCamp(camp);
+                                            }
+                                        }}
+                                        className="group bg-white dark:bg-[#050b14] rounded-xl shadow-sm border border-[#ddd8cc] overflow-hidden hover:shadow-md transition cursor-pointer flex flex-col relative focus:outline-none focus:ring-2 focus:ring-ncc-navy"
                                     >
                                         <div className="p-5 flex-1">
                                             <div className="flex justify-between items-start mb-3">
