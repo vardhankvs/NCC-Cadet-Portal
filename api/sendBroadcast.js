@@ -4,7 +4,6 @@ import admin from 'firebase-admin';
 function getFirebaseAdmin() {
     if (!admin.apps.length) {
         try {
-            // Read Service Account from Vercel Environment Variable
             const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
             admin.initializeApp({
                 credential: admin.credential.cert(serviceAccount)
@@ -18,7 +17,6 @@ function getFirebaseAdmin() {
 }
 
 export default async function handler(req, res) {
-    // Enable CORS for testing (Vercel naturally allows it, but good to be explicit)
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -27,7 +25,6 @@ export default async function handler(req, res) {
         'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
     );
 
-    // Handle OPTIONS request for CORS preflight
     if (req.method === 'OPTIONS') {
         res.status(200).end();
         return;
@@ -44,27 +41,97 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: 'No FCM tokens provided.' });
         }
 
+        // Deduplicate tokens just in case
+        const uniqueTokens = [...new Set(tokens.filter(Boolean))];
+
         const firebaseAdmin = getFirebaseAdmin();
 
-        const payload = {
+        // ── Build the multicast message ──────────────────────────────────────
+        // IMPORTANT: Both `notification` (for OS-level display) AND `android`/`apns`
+        // configs are needed for notifications to appear on lock screen & notification bar.
+        const multicastMessage = {
+            tokens: uniqueTokens,
+
+            // OS-level notification — shown on lock screen, notification bar, home screen
             notification: {
-                title: subject || 'Unit Broadcast',
+                title: subject || 'NCC Portal Update',
                 body: message || 'You have a new update in the NCC Portal',
-            }
+            },
+
+            // Android-specific config — required for foreground/background display on Android
+            android: {
+                priority: 'high',                  // Wake up the device
+                notification: {
+                    title: subject || 'NCC Portal Update',
+                    body: message || 'You have a new update in the NCC Portal',
+                    icon: 'ic_notification',        // Must match a drawable in Android app (for web PWA this is ignored, notification.icon in SW is used)
+                    color: '#1a2a4a',               // NCC Navy
+                    sound: 'default',
+                    channel_id: 'ncc_portal',       // Required for Android 8+
+                    click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                    notification_priority: 'PRIORITY_HIGH',
+                    visibility: 'PUBLIC',           // Show on lock screen
+                }
+            },
+
+            // Web push config — for Chrome on desktop/mobile PWA
+            webpush: {
+                headers: {
+                    Urgency: 'high',
+                },
+                notification: {
+                    title: subject || 'NCC Portal Update',
+                    body: message || 'You have a new update in the NCC Portal',
+                    icon: 'https://ncc-portal-redesign.vercel.app/pwa-192x192.png',
+                    badge: 'https://ncc-portal-redesign.vercel.app/pwa-192x192.png',
+                    vibrate: [200, 100, 200],
+                    requireInteraction: false,
+                },
+                fcmOptions: {
+                    link: 'https://ncc-portal-redesign.vercel.app',
+                }
+            },
+
+            // APNs config for iOS
+            apns: {
+                headers: {
+                    'apns-priority': '10',
+                },
+                payload: {
+                    aps: {
+                        alert: {
+                            title: subject || 'NCC Portal Update',
+                            body: message || 'You have a new update in the NCC Portal',
+                        },
+                        sound: 'default',
+                        badge: 1,
+                        'content-available': 1,
+                    },
+                },
+            },
         };
 
-        // Send multicast push (sendEachForMulticast is required for firebase-admin v12+)
-        const response = await firebaseAdmin.messaging().sendEachForMulticast({
-            tokens: tokens,
-            notification: payload.notification
-        });
+        // sendEachForMulticast is required for firebase-admin v12+
+        const response = await firebaseAdmin.messaging().sendEachForMulticast(multicastMessage);
 
-        console.log(`Successfully sent ${response.successCount} messages; Failed ${response.failureCount}.`);
+        // Log failed tokens for debugging
+        if (response.failureCount > 0) {
+            const failedTokens = [];
+            response.responses.forEach((resp, idx) => {
+                if (!resp.success) {
+                    failedTokens.push({ token: uniqueTokens[idx], error: resp.error?.message });
+                }
+            });
+            console.warn('Failed tokens:', JSON.stringify(failedTokens));
+        }
+
+        console.log(`FCM Broadcast: ${response.successCount} delivered, ${response.failureCount} failed out of ${uniqueTokens.length} tokens`);
 
         return res.status(200).json({ 
             success: true, 
             successCount: response.successCount, 
-            failureCount: response.failureCount 
+            failureCount: response.failureCount,
+            total: uniqueTokens.length
         });
 
     } catch (error) {
