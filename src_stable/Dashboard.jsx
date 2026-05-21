@@ -16,7 +16,7 @@ import { FeedbackView } from './features/Engagement/FeedbackView.jsx';
 import { TrainingHub } from './features/Training/TrainingHub.jsx';
 import { UnitGallery } from './features/Gallery/UnitGallery.jsx';
 import { UnitAlerts } from './features/Engagement/UnitAlerts.jsx';
-import { requestNotificationPermission } from './firebase/messagingService';
+import { requestNotificationPermission, onForegroundMessage } from './firebase/messagingService';
 
 import {
     LogOut,
@@ -574,27 +574,44 @@ export function Dashboard() {
         }
     }, [loading, userRole, userEnrollmentId, cadets, birthdayChecked]);
 
-    // Push Notifications Permission Request
+    // ── Push Notifications: Permission Request & Token Registration ──────────
+    // Always attempt to register on login so stale/rotated tokens are refreshed.
     useEffect(() => {
-        if (!loading && userEnrollmentId) {
-            // Find user profile based on role
-            let userProfile = null;
-            if (userRole === 'cadet' && cadets.length > 0) {
-                userProfile = cadets.find(c => c.enrollmentId === userEnrollmentId);
-            } else if ((userRole === 'admin' || userRole === 'officer') && staff.length > 0) {
-                userProfile = staff.find(s => s.staffId === userEnrollmentId);
-            }
-            
-            if (userProfile && (!userProfile.fcmTokens || userProfile.fcmTokens.length === 0)) {
-                // Delay request for better UX
-                const collectionName = userRole === 'cadet' ? 'cadets' : 'staff';
-                const timer = setTimeout(() => {
-                    requestNotificationPermission(userProfile.id || userProfile.enrollmentId || userProfile.staffId, collectionName);
-                }, 3000); // Reduced to 3 seconds for faster testing
-                return () => clearTimeout(timer);
-            }
+        if (loading || !userEnrollmentId) return;
+
+        // Wait for the user's profile to load before registering
+        let userProfile = null;
+        if (userRole === 'cadet' && cadets.length > 0) {
+            userProfile = cadets.find(c => c.enrollmentId === userEnrollmentId);
+        } else if ((userRole === 'admin' || userRole === 'officer') && staff.length > 0) {
+            userProfile = staff.find(s => s.staffId === userEnrollmentId);
         }
+
+        if (!userProfile) return;
+
+        // Delay slightly to avoid race with service worker registration
+        const collectionName = userRole === 'cadet' ? 'cadets' : 'staff';
+        const docId = userProfile.id || userProfile.enrollmentId || userProfile.staffId;
+        const timer = setTimeout(() => {
+            requestNotificationPermission(docId, collectionName);
+        }, 3000);
+        return () => clearTimeout(timer);
     }, [loading, userRole, userEnrollmentId, cadets, staff]);
+
+    // ── Foreground Push: show toast when app is open and a push arrives ───────
+    useEffect(() => {
+        const unsubscribe = onForegroundMessage((payload) => {
+            const title = payload.notification?.title || payload.data?.title || 'NCC Update';
+            const body  = payload.notification?.body  || payload.data?.body  || '';
+            toast.info(`${title}${body ? ': ' + body.substring(0, 80) : ''}`, {
+                position: 'top-center',
+                autoClose: 6000,
+                onClick: () => handleTabClick('notifications'),
+            });
+        });
+        return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // ── Broadcast Sentinel (Automatic Safety Net) ──
     useEffect(() => {

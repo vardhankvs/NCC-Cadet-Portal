@@ -156,40 +156,104 @@ exports.onNotificationCreated = functions.firestore
         try {
             const db = admin.firestore();
             const cadetsSnap = await db.collection('artifacts/default-app-id/public/data/cadets').get();
-            const staffSnap = await db.collection('artifacts/default-app-id/public/data/staff').get();
+            const staffSnap  = await db.collection('artifacts/default-app-id/public/data/staff').get();
+            const usersSnap  = await db.collection('artifacts/default-app-id/public/data/users').get();
 
-            let tokens = [];
+            let rawTokens = [];
 
             cadetsSnap.forEach(doc => {
-                const data = doc.data();
-                if (data.fcmTokens && Array.isArray(data.fcmTokens)) {
-                    tokens.push(...data.fcmTokens);
-                }
+                const t = doc.data().fcmTokens;
+                if (Array.isArray(t)) rawTokens.push(...t);
+                else if (typeof t === 'string' && t) rawTokens.push(t);
+            });
+            staffSnap.forEach(doc => {
+                const t = doc.data().fcmTokens;
+                if (Array.isArray(t)) rawTokens.push(...t);
+                else if (typeof t === 'string' && t) rawTokens.push(t);
+            });
+            usersSnap.forEach(doc => {
+                const t = doc.data().fcmTokens;
+                if (Array.isArray(t)) rawTokens.push(...t);
+                else if (typeof t === 'string' && t) rawTokens.push(t);
             });
 
-            staffSnap.forEach(doc => {
-                const data = doc.data();
-                if (data.fcmTokens && Array.isArray(data.fcmTokens)) {
-                    tokens.push(...data.fcmTokens);
-                }
-            });
+            const tokens = [...new Set(rawTokens.filter(Boolean))];
 
             if (tokens.length === 0) {
-                functions.logger.info('No FCM tokens found.');
+                functions.logger.info('onNotificationCreated: No FCM tokens found.');
                 return null;
             }
 
-            const payload = {
-                notification: {
-                    title: subject || 'Unit Broadcast',
-                    body: message || 'You have a new update in the NCC Portal',
-                }
-            };
+            // FCM multicast supports max 500 tokens per call — chunk if needed
+            const BATCH_SIZE = 500;
+            let totalSuccess = 0;
+            let totalFailure = 0;
 
-            const response = await admin.messaging().sendToDevice(tokens, payload);
-            
-            functions.logger.info('Successfully sent messages:', response.successCount);
-            return response;
+            for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
+                const batch = tokens.slice(i, i + BATCH_SIZE);
+                const multicastMsg = {
+                    tokens: batch,
+                    notification: {
+                        title: subject || 'Unit Broadcast',
+                        body:  message || 'You have a new update in the NCC Portal',
+                    },
+                    android: {
+                        priority: 'high',
+                        notification: {
+                            title: subject || 'Unit Broadcast',
+                            body:  message || 'You have a new update in the NCC Portal',
+                            sound: 'default',
+                            channel_id: 'ncc_portal',
+                            notification_priority: 'PRIORITY_HIGH',
+                            visibility: 'PUBLIC',
+                        },
+                    },
+                    webpush: {
+                        headers: { Urgency: 'high' },
+                        notification: {
+                            title: subject || 'Unit Broadcast',
+                            body:  message || 'You have a new update in the NCC Portal',
+                            icon:  'https://ncc-portal-redesign.vercel.app/pwa-192x192.png',
+                            badge: 'https://ncc-portal-redesign.vercel.app/pwa-192x192.png',
+                            vibrate: [200, 100, 200],
+                            requireInteraction: false,
+                        },
+                        fcmOptions: { link: 'https://ncc-portal-redesign.vercel.app' },
+                    },
+                    apns: {
+                        headers: { 'apns-priority': '10' },
+                        payload: {
+                            aps: {
+                                alert: {
+                                    title: subject || 'Unit Broadcast',
+                                    body:  message || 'You have a new update in the NCC Portal',
+                                },
+                                sound: 'default',
+                                badge: 1,
+                                'content-available': 1,
+                            },
+                        },
+                    },
+                };
+
+                // sendEachForMulticast — required for firebase-admin v12+
+                const response = await admin.messaging().sendEachForMulticast(multicastMsg);
+                totalSuccess += response.successCount;
+                totalFailure += response.failureCount;
+
+                if (response.failureCount > 0) {
+                    response.responses.forEach((r, idx) => {
+                        if (!r.success) {
+                            functions.logger.warn('FCM token failed:', batch[idx], r.error?.message);
+                        }
+                    });
+                }
+            }
+
+            functions.logger.info(
+                `onNotificationCreated: ${totalSuccess} delivered, ${totalFailure} failed out of ${tokens.length} tokens.`
+            );
+            return { totalSuccess, totalFailure };
         } catch (error) {
             functions.logger.error('Error sending push notification:', error);
             return null;

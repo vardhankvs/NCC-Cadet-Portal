@@ -15,38 +15,70 @@ firebase.initializeApp({
   storageBucket: "gmrit-ncc-fb1df.firebasestorage.app",
   messagingSenderId: "218480065073",
   appId: "1:218480065073:web:52a908b9996d0773ba7310",
+  measurementId: "G-8LBCG7FRM0",
 });
 
 const messaging = firebase.messaging();
 
-// ── Background message handler ───────────────────────────────────────────────
-// Fired when app is in background or phone is locked.
-// This is what shows the notification on the lock screen / notification bar.
-messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Background message received:', payload);
-
-  const notificationTitle = payload.notification?.title || 'NCC Portal Update';
-  const notificationBody  = payload.notification?.body  || 'You have a new update.';
-
-  // Use a unique tag so each notification is shown separately (not replaced)
+// ── Helper: show notification from any payload shape ────────────────────────
+function showNCCNotification(title, body, data) {
   const uniqueTag = `ncc-${Date.now()}`;
-
-  const notificationOptions = {
-    body: notificationBody,
+  return self.registration.showNotification(title || 'NCC Portal Update', {
+    body: body || 'You have a new update.',
     icon: '/pwa-192x192.png',
     badge: '/pwa-192x192.png',
-    tag: uniqueTag,          // unique tag = no grouping/replacing
-    renotify: false,         // false because tag is already unique
+    tag: uniqueTag,
+    renotify: false,
     vibrate: [200, 100, 200],
     requireInteraction: false,
-    data: {
-      url: 'https://ncc-portal-redesign.vercel.app'
-    }
-  };
+    data: { url: 'https://ncc-portal-redesign.vercel.app', ...(data || {}) },
+  });
+}
 
-  // showNotification is the ONLY way to show a notification from a SW
-  // DO NOT use window.location here — service workers have no window object
-  return self.registration.showNotification(notificationTitle, notificationOptions);
+// ── onBackgroundMessage: Fired by Firebase SDK for DATA-ONLY messages ────────
+// NOTE: When the FCM message includes a `notification` key, the browser/OS
+// displays it automatically and this handler is NOT called.
+// For messages WITH a `notification` payload (which our sendBroadcast sends),
+// the native `push` handler below is the reliable intercept point.
+messaging.onBackgroundMessage((payload) => {
+  console.log('[firebase-messaging-sw.js] onBackgroundMessage:', payload);
+
+  const title = payload.notification?.title || payload.data?.title || 'NCC Portal Update';
+  const body  = payload.notification?.body  || payload.data?.body  || 'You have a new update.';
+
+  return showNCCNotification(title, body, payload.data);
+});
+
+// ── Native push fallback ─────────────────────────────────────────────────────
+// This is the most reliable hook for Web Push. It fires for EVERY push event,
+// regardless of whether the FCM SDK handles it. We suppress duplicate display
+// by using a flag that the SDK sets on the event when it already showed a notification.
+self.addEventListener('push', (event) => {
+  // If the Firebase SDK already handled this push (data-only path), skip
+  if (event.handled) return;
+
+  let title = 'NCC Portal Update';
+  let body  = 'You have a new update.';
+  let data  = {};
+
+  try {
+    if (event.data) {
+      // Try to parse as JSON (FCM format)
+      const raw = event.data.json();
+      // FCM sends notification in `notification` or nested under `data`
+      title = raw?.notification?.title || raw?.data?.title || title;
+      body  = raw?.notification?.body  || raw?.data?.body  || body;
+      data  = raw?.data || {};
+    }
+  } catch (e) {
+    // If JSON parse fails, try plain text
+    try {
+      body = event.data?.text() || body;
+    } catch (_) { /* ignore */ }
+  }
+
+  console.log('[firebase-messaging-sw.js] push event — showing notification:', title);
+  event.waitUntil(showNCCNotification(title, body, data));
 });
 
 // ── Notification click handler ───────────────────────────────────────────────

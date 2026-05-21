@@ -7,11 +7,21 @@ export default defineConfig({
     plugins: [
         react(),
         VitePWA({
+            // 'injectManifest' mode lets us provide our OWN service worker file.
+            // We need this so firebase-messaging-sw.js is used instead of the
+            // default Workbox-generated sw.js — FCM requires a file specifically
+            // named 'firebase-messaging-sw.js' served from the root.
+            strategies: 'injectManifest',
+            srcDir: 'public',
+            filename: 'firebase-messaging-sw.js',
             registerType: 'autoUpdate',
-            includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
-            workbox: {
-                maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
+            injectManifest: {
+                // Don't inject a Workbox precache manifest into the Firebase SW —
+                // it would break the importScripts() calls at the top of the file.
+                injectionPoint: undefined,
+                maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
             },
+            includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
             manifest: {
                 name: 'NCC Portal',
                 short_name: 'NCC',
@@ -49,4 +59,3 @@ export default defineConfig({
         sourcemap: true
     }
 });
-
