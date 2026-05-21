@@ -387,7 +387,7 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
                                                 <td className="px-4 py-3">
                                                     {r.achievements && r.achievements.length > 0 ? (
                                                         <ul className="space-y-1">
-                                                            {r.achievements.map((ach, idx) => (
+                                                            {[...new Set(r.achievements)].map((ach, idx) => (
                                                                 <li key={idx} className="flex items-start gap-1.5 text-xs text-emerald-800 font-medium bg-emerald-50 px-2 py-1 rounded inline-flex mr-2 mt-1">
                                                                     <Award className="w-3.5 h-3.5 shrink-0" />
                                                                     <span>{ach}</span>
