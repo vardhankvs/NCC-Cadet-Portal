@@ -41,10 +41,23 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: 'No FCM tokens provided.' });
         }
 
+        // Intercept old cached PWA clients sending the hardcoded fee message to EVERYONE
+        // We drop it completely because we can't determine the target cadet from the old payload
+        if (message === 'A fee payment has been verified and approved') {
+            console.log('Blocked legacy fee broadcast from cached client');
+            return res.status(200).json({ success: true, blocked: true, message: 'Legacy broadcast blocked' });
+        }
+
         // Deduplicate tokens just in case
         const uniqueTokens = [...new Set(tokens.filter(Boolean))];
 
         const firebaseAdmin = getFirebaseAdmin();
+        
+        // Generate a unique tag for this specific broadcast based on content
+        // This ensures identical broadcasts to the same device (via duplicate tokens) collapse into one
+        const rawContent = (subject || '') + (message || '');
+        const contentHash = rawContent.replace(/[^a-zA-Z0-9]/g, '').substring(0, 16) || Date.now().toString();
+        const broadcastTag = `ncc-${contentHash}`;
 
         // ── Build the multicast message ──────────────────────────────────────
         // IMPORTANT: Both `notification` (for OS-level display) AND `android`/`apns`
@@ -61,7 +74,7 @@ export default async function handler(req, res) {
             // Android-specific config — required for foreground/background display on Android
             android: {
                 priority: 'high',                  // Wake up the device
-                collapseKey: 'ncc-broadcast-update', // Collapses duplicate notifications
+                collapseKey: broadcastTag, // Collapses duplicate notifications in FCM queue
                 notification: {
                     title: subject || 'NCC Portal Update',
                     body: message || 'You have a new update in the NCC Portal',
@@ -72,6 +85,7 @@ export default async function handler(req, res) {
                     click_action: 'FLUTTER_NOTIFICATION_CLICK',
                     notification_priority: 'PRIORITY_HIGH',
                     visibility: 'PUBLIC',           // Show on lock screen
+                    tag: broadcastTag,              // Replaces existing notifications with the same tag in the drawer
                 }
             },
 
@@ -87,7 +101,8 @@ export default async function handler(req, res) {
                     badge: 'https://ncc-portal-redesign.vercel.app/pwa-192x192.png',
                     vibrate: [200, 100, 200],
                     requireInteraction: false,
-                    tag: 'ncc-broadcast-update', // Collapses duplicate notifications
+                    tag: broadcastTag, // Collapses duplicate notifications
+
                 },
                 fcmOptions: {
                     link: 'https://ncc-portal-redesign.vercel.app',
