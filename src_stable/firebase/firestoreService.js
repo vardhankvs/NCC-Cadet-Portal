@@ -1174,6 +1174,72 @@ export const logCampAchievement = async (campId, cadetId, achievementText) => {
     });
 };
 
+export const removeCampAchievement = async (campId, cadetId, achievementText) => {
+    const campRef = doc(getCollectionRef('camps'), campId);
+    const cadetRef = doc(getCollectionRef('cadets'), cadetId);
+
+    return runTransaction(db, async (transaction) => {
+        const campDoc = await transaction.get(campRef);
+        const cadetDoc = await transaction.get(cadetRef);
+        
+        if (!campDoc.exists() || !cadetDoc.exists()) throw new Error("Data not found");
+        
+        // Remove from camp roster
+        const campData = campDoc.data();
+        const roster = campData.roster || [];
+        const rosterIndex = roster.findIndex(c => c.cadetId === cadetId);
+        if (rosterIndex >= 0 && roster[rosterIndex].achievements) {
+            roster[rosterIndex].achievements = roster[rosterIndex].achievements.filter(a => a !== achievementText);
+            transaction.update(campRef, { roster });
+        }
+
+        // Remove from cadet history
+        const cadetData = cadetDoc.data();
+        const campHistory = cadetData.campHistory || [];
+        const histIndex = campHistory.findIndex(c => c.campId === campId);
+        if (histIndex >= 0 && campHistory[histIndex].achievements) {
+            campHistory[histIndex].achievements = campHistory[histIndex].achievements.filter(a => a !== achievementText);
+            transaction.update(cadetRef, { campHistory });
+        }
+    });
+};
+
+export const updateCampAchievement = async (campId, cadetId, oldText, newText) => {
+    const campRef = doc(getCollectionRef('camps'), campId);
+    const cadetRef = doc(getCollectionRef('cadets'), cadetId);
+
+    return runTransaction(db, async (transaction) => {
+        const campDoc = await transaction.get(campRef);
+        const cadetDoc = await transaction.get(cadetRef);
+        
+        if (!campDoc.exists() || !cadetDoc.exists()) throw new Error("Data not found");
+        
+        // Update in camp roster
+        const campData = campDoc.data();
+        const roster = campData.roster || [];
+        const rosterIndex = roster.findIndex(c => c.cadetId === cadetId);
+        if (rosterIndex >= 0 && roster[rosterIndex].achievements) {
+            const achIndex = roster[rosterIndex].achievements.indexOf(oldText);
+            if (achIndex >= 0) {
+                roster[rosterIndex].achievements[achIndex] = newText;
+            }
+            transaction.update(campRef, { roster });
+        }
+
+        // Update in cadet history
+        const cadetData = cadetDoc.data();
+        const campHistory = cadetData.campHistory || [];
+        const histIndex = campHistory.findIndex(c => c.campId === campId);
+        if (histIndex >= 0 && campHistory[histIndex].achievements) {
+            const achIndex = campHistory[histIndex].achievements.indexOf(oldText);
+            if (achIndex >= 0) {
+                campHistory[histIndex].achievements[achIndex] = newText;
+            }
+            transaction.update(cadetRef, { campHistory });
+        }
+    });
+};
+
 export const addCampAchievementsBulk = async (campId, cadetIds, achievementText) => {
     const campRef = doc(getCollectionRef('camps'), campId);
 
