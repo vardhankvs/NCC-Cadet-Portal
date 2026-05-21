@@ -1,8 +1,8 @@
 // src/features/Profile/CadetProfileView.jsx
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { useDataContext } from '../../context/DataContext.jsx';
-import { ShieldCheck, Award, Calendar as CalendarIcon, Mail, Phone, List, Briefcase, MapPin, Droplet, CheckCircle, Shield, Download } from '../../components/Icons.jsx';
+import { ShieldCheck, Award, Calendar as CalendarIcon, Mail, Phone, List, Briefcase, MapPin, Droplet, CheckCircle, Shield, Download, X } from '../../components/Icons.jsx';
 import { format } from 'date-fns';
 import { generateCertificateApplicationPDF } from '../../utils/pdfGenerator.js';
 
@@ -15,6 +15,7 @@ import { formatDate } from '../../utils/dateUtils.js';
 export const CadetProfileView = () => {
     const { userEnrollmentId } = useAuthContext();
     const { cadets, loading } = useDataContext();
+    const [isImageModalOpen, setIsImageModalOpen] = useState(false);
 
 
     const currentCadet = useMemo(() => {
@@ -39,8 +40,18 @@ export const CadetProfileView = () => {
             <div className="ncc-card overflow-hidden">
                 {/* ── Profile Header ── */}
                 <div className="bg-ncc-navy p-5 sm:p-8 flex items-end gap-5">
-                    <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-full ring-4 ring-ncc-gold/60 overflow-hidden bg-ncc-navy/40 flex items-center justify-center text-2xl sm:text-4xl font-bold text-white shrink-0">
-                        {profileImage ? <img src={profileImage} alt="" className="w-full h-full object-cover" /> : <span>{initials}</span>}
+                    <div 
+                        className="w-20 h-20 sm:w-28 sm:h-28 rounded-full ring-4 ring-ncc-gold/60 overflow-hidden bg-ncc-navy/40 flex items-center justify-center text-2xl sm:text-4xl font-bold text-white shrink-0 relative group cursor-pointer"
+                        onClick={() => profileImage && setIsImageModalOpen(true)}
+                    >
+                        {profileImage ? (
+                            <>
+                                <img src={profileImage} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <span className="text-[10px] font-bold tracking-widest uppercase">View</span>
+                                </div>
+                            </>
+                        ) : <span>{initials}</span>}
                     </div>
                     <div className="min-w-0 pb-1">
                         <h2 className="font-display text-xl sm:text-2xl font-bold text-white truncate">{currentCadet.name}</h2>
@@ -267,6 +278,27 @@ export const CadetProfileView = () => {
                     )}
                 </div>
             </div>
+            {/* ── Image Modal ── */}
+            {isImageModalOpen && profileImage && (
+                <div 
+                    className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+                    onClick={() => setIsImageModalOpen(false)}
+                >
+                    <div className="relative max-w-2xl w-full max-h-[90vh] flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                        <button 
+                            onClick={() => setIsImageModalOpen(false)}
+                            className="absolute -top-12 right-0 sm:-right-12 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                        >
+                            <X className="w-6 h-6" />
+                        </button>
+                        <img 
+                            src={profileImage} 
+                            alt="Profile" 
+                            className="w-auto h-auto max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain ring-4 ring-white/20"
+                        />
+                    </div>
+                </div>
+            )}
         </>
     );
 };
