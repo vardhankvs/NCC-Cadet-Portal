@@ -49,38 +49,6 @@ messaging.onBackgroundMessage((payload) => {
   return showNCCNotification(title, body, payload.data);
 });
 
-// ── Native push fallback ─────────────────────────────────────────────────────
-// This is the most reliable hook for Web Push. It fires for EVERY push event,
-// regardless of whether the FCM SDK handles it. We suppress duplicate display
-// by using a flag that the SDK sets on the event when it already showed a notification.
-self.addEventListener('push', (event) => {
-  // If the Firebase SDK already handled this push (data-only path), skip
-  if (event.handled) return;
-
-  let title = 'NCC Portal Update';
-  let body  = 'You have a new update.';
-  let data  = {};
-
-  try {
-    if (event.data) {
-      // Try to parse as JSON (FCM format)
-      const raw = event.data.json();
-      // FCM sends notification in `notification` or nested under `data`
-      title = raw?.notification?.title || raw?.data?.title || title;
-      body  = raw?.notification?.body  || raw?.data?.body  || body;
-      data  = raw?.data || {};
-    }
-  } catch (e) {
-    // If JSON parse fails, try plain text
-    try {
-      body = event.data?.text() || body;
-    } catch (_) { /* ignore */ }
-  }
-
-  console.log('[firebase-messaging-sw.js] push event — showing notification:', title);
-  event.waitUntil(showNCCNotification(title, body, data));
-});
-
 // ── Notification click handler ───────────────────────────────────────────────
 // Opens the app when user taps the notification
 self.addEventListener('notificationclick', (event) => {
