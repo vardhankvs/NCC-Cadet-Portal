@@ -411,15 +411,15 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
                                                     {r.achievements && r.achievements.length > 0 ? (
                                                         <ul className="space-y-1">
                                                             {[...new Set(r.achievements)].map((ach, idx) => (
-                                                                <li key={idx} className="group relative flex items-center gap-1.5 text-xs text-emerald-800 font-medium bg-emerald-50 px-2 py-1 rounded inline-flex mr-2 mt-1 transition-all pr-6">
+                                                                <li key={idx} className="group relative flex items-center gap-1.5 text-xs text-emerald-800 font-medium bg-emerald-50 px-3 py-1.5 rounded-full inline-flex mr-2 mt-1 transition-all pr-12 border border-emerald-200">
                                                                     <Award className="w-3.5 h-3.5 shrink-0" />
                                                                     <span>{ach}</span>
                                                                     {userRole === 'admin' && (
-                                                                        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                            <button onClick={(e) => { e.stopPropagation(); handleEditAchievement(r.cadetId, ach); }} className="text-emerald-600 hover:text-emerald-900" title="Edit Award">
+                                                                        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                                                            <button onClick={(e) => { e.stopPropagation(); handleEditAchievement(r.cadetId, ach); }} className="w-5 h-5 flex items-center justify-center bg-white border border-emerald-200 rounded-full text-emerald-600 hover:text-emerald-900 hover:bg-emerald-100 transition-colors shadow-sm" title="Edit Award">
                                                                                 <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
                                                                             </button>
-                                                                            <button onClick={(e) => { e.stopPropagation(); handleRemoveAchievement(r.cadetId, ach); }} className="text-red-500 hover:text-red-700" title="Remove Award">
+                                                                            <button onClick={(e) => { e.stopPropagation(); handleRemoveAchievement(r.cadetId, ach); }} className="w-5 h-5 flex items-center justify-center bg-white border border-red-200 rounded-full text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors shadow-sm" title="Remove Award">
                                                                                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                                                             </button>
                                                                         </div>
