@@ -244,6 +244,36 @@ export const BroadcastManager = () => {
                         >
                             <Send className="w-3 h-3" /> Test Push to Me
                         </button>
+                        <button 
+                            onClick={async () => {
+                                if (!window.confirm("Are you sure you want to clear all notification tokens from the database? This fixes duplicate notifications.")) return;
+                                try {
+                                    toast.info("Clearing tokens...");
+                                    const { getDocs, updateDoc, deleteField } = await import('firebase/firestore');
+                                    const { getCollectionRef } = await import('../../firebase/firestoreService.js');
+                                    const collections = ['cadets', 'staff', 'users'];
+                                    let total = 0;
+                                    for (const col of collections) {
+                                        const querySnapshot = await getDocs(getCollectionRef(col));
+                                        for (const docSnap of querySnapshot.docs) {
+                                            const data = docSnap.data();
+                                            if (data.fcmTokens && Array.isArray(data.fcmTokens) && data.fcmTokens.length > 0) {
+                                                await updateDoc(docSnap.ref, { fcmTokens: deleteField() });
+                                                total++;
+                                            }
+                                        }
+                                    }
+                                    toast.success(`Cleared tokens from ${total} accounts! Please tap Enable Notifications again.`);
+                                } catch (e) {
+                                    console.error(e);
+                                    toast.error("Error clearing tokens.");
+                                }
+                            }}
+                            className="text-[10px] font-bold bg-amber-500 text-white px-3 py-1 rounded-full flex items-center gap-1.5 hover:bg-amber-600 transition-colors shadow-sm"
+                            type="button"
+                        >
+                            <Trash2 className="w-3 h-3" /> Clear Duplicate Tokens
+                        </button>
                     </div>
                 </div>
                 {isOverdue && (
