@@ -2,6 +2,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { db, appId } from '../firebase/config';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import heroBgImg from '../assets/hero_bg.png';
+import nccLogoImg from '../assets/ncc_logo.jpg';
 
 const TenantContext = createContext();
 
@@ -52,8 +54,8 @@ export const TenantProvider = ({ children }) => {
                         location: 'GMRIT Srikakulam',
                         primaryColor: '#1B3A6B',
                         secondaryColor: '#B8830E',
-                        heroBg: '/assets/hero_bg.png', // Default
-                        logo: '/assets/ncc_logo.png'
+                        heroBg: heroBgImg, // Default
+                        logo: nccLogoImg
                     });
                 }
             } catch (err) {
