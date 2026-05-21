@@ -23,7 +23,7 @@ import { toast } from 'react-toastify';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
 import { LoadingIndicator } from '../../components/ui/LoadingIndicator.jsx';
 import jsPDF from 'jspdf';
-import nccLogo from '../../assets/ncc_logo.jpg.jpg';
+import nccLogo from '../../assets/ncc_logo.jpg';
 import { formatDate } from '../../utils/dateUtils.js';
 import { generateNominalRollPDF } from '../../utils/pdfGenerator.js';
 

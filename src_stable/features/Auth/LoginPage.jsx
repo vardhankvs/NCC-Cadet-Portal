@@ -285,7 +285,7 @@ export const LoginPage = ({
                         <div className="flex flex-col items-center gap-3">
                             <div className="relative">
                                 <img
-                                    src="/src/assets/ncc_logo.jpg.jpg"
+                                    src="/src/assets/ncc_logo.jpg"
                                     alt="NCC Logo"
                                     className="h-16 w-16 object-contain drop-shadow-md"
                                     onError={(e) => {

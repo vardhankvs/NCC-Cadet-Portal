@@ -35,7 +35,7 @@ export const IDCardGenerator = ({ cadet }) => {
 
     if (!cadet) return null;
 
-    const officialLogo = "/src/assets/ncc_logo.jpg.jpg";
+    const officialLogo = "/src/assets/ncc_logo.jpg";
 
     return (
         <div className="flex flex-col items-center gap-6">

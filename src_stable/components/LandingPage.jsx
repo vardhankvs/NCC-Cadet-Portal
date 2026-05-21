@@ -41,7 +41,7 @@ import { doc, updateDoc, increment, setDoc, serverTimestamp } from 'firebase/fir
 import { getCollectionRef } from '../firebase/firestoreService';
 
 // Asset Imports
-import nccLogo from '../assets/ncc_logo.jpg.jpg';
+import nccLogo from '../assets/ncc_logo.jpg';
 import heroBg from '../assets/hero_bg.png';
 import legacyBg from '../assets/legacy_bg.png';
 import socialBg from '../assets/social_bg.png';
@@ -53,7 +53,7 @@ import drillImg from '../assets/drill_practice.png';
 import shootingImg from '../assets/shooting_range.png';
 import ceremonyImg from '../assets/ceremony.png';
 import genesisThumb from '../assets/genesis_real.png';
-import flagThumb from '../assets/ncc_logo.jpg.jpg';
+import flagThumb from '../assets/flag_thumb.png';
 import pledgeThumb from '../assets/cta_guard.png';
 import mottoThumb from '../assets/cta_unity.png';
 import aimThumb from '../assets/aim_real.png';
