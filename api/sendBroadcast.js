@@ -61,6 +61,7 @@ export default async function handler(req, res) {
             // Android-specific config — required for foreground/background display on Android
             android: {
                 priority: 'high',                  // Wake up the device
+                collapse_key: 'ncc-broadcast-update', // Collapses duplicate notifications
                 notification: {
                     title: subject || 'NCC Portal Update',
                     body: message || 'You have a new update in the NCC Portal',
@@ -86,6 +87,7 @@ export default async function handler(req, res) {
                     badge: 'https://ncc-portal-redesign.vercel.app/pwa-192x192.png',
                     vibrate: [200, 100, 200],
                     requireInteraction: false,
+                    tag: 'ncc-broadcast-update', // Collapses duplicate notifications
                 },
                 fcmOptions: {
                     link: 'https://ncc-portal-redesign.vercel.app',
