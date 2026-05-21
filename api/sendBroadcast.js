@@ -53,8 +53,8 @@ export default async function handler(req, res) {
             }
         };
 
-        // Send multicast push
-        const response = await firebaseAdmin.messaging().sendMulticast({
+        // Send multicast push (sendEachForMulticast is required for firebase-admin v12+)
+        const response = await firebaseAdmin.messaging().sendEachForMulticast({
             tokens: tokens,
             notification: payload.notification
         });
