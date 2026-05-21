@@ -231,7 +231,7 @@ export const BroadcastManager = () => {
                                         if(data.successCount > 0) {
                                             toast.success("Test push sent! Check your notification bar.");
                                         } else {
-                                            toast.error("Vercel Error: " + (data.error || data.details || "Token failed delivery. Is VAPID key correct?"));
+                                            toast.error("Vercel Error: " + (data.details || data.error || "Token failed delivery. Is VAPID key correct?"));
                                             console.error("Vercel Response:", data);
                                         }
                                     } catch(e) { toast.error("Network Error: " + e.message); }
