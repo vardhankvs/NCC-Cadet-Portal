@@ -10,9 +10,13 @@ import { toast } from 'react-toastify';
 
 export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
     const { userRole } = useAuthContext();
-    const { cadets } = useDataContext();
+    const { cadets, camps } = useDataContext();
+    
+    // Always use the latest camp data from context so the UI updates instantly
+    const currentCamp = camps?.find(c => c.id === camp.id) || camp;
+    
     const [searchTerm, setSearchTerm] = useState('');
-    const roster = camp.roster || [];
+    const roster = currentCamp.roster || [];
     
     // For adding cadets
     const [selectedCandidateIds, setSelectedCandidateIds] = useState([]);
