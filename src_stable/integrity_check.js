@@ -1,0 +1,1 @@
+console.log('BUILD_INTEGRITY_CHECK_SUCCESS_V2');
