@@ -1,14 +1,26 @@
-// src/features/Engagement/CadetNotifications.jsx
+// src/features/Engagement/UnitAlerts.jsx
 import React, { useState } from 'react';
 import { useDataContext } from '../../context/DataContext.jsx';
 import { useAuthContext } from '../../context/AuthContext.jsx';
-import { Bell, Calendar, User, Info, AlertTriangle, Shield } from '../../components/Icons.jsx';
+import { Bell, Calendar, User, Info, AlertTriangle, Shield, X } from '../../components/Icons.jsx';
 import { requestNotificationPermission } from '../../firebase/messagingService';
 import { toast } from 'react-toastify';
+import { db } from '../../firebase/config.js';
+import { doc, deleteDoc, collection } from 'firebase/firestore';
 
 export const UnitAlerts = () => {
     const { announcements, notifications, loading } = useDataContext();
-    const { userEnrollmentId, user } = useAuthContext();
+    const { userEnrollmentId, user, userRole } = useAuthContext();
+
+    const handleDismiss = async (noteId) => {
+        if (!noteId) return;
+        try {
+            await deleteDoc(doc(collection(db, 'notifications'), noteId));
+            toast.success('Notification dismissed');
+        } catch (e) {
+            toast.error('Could not dismiss notification');
+        }
+    };
 
     if (loading) return <div className="p-8 text-center text-text-dim italic">Scanning unit logs...</div>;
 
@@ -105,11 +117,23 @@ export const UnitAlerts = () => {
                                         <h3 className="font-bold text-main group-hover:text-ncc-gold transition-colors truncate">
                                             {note.title}
                                         </h3>
-                                        <span className={`text-[10px] font-bold whitespace-nowrap px-3 py-1 rounded-full shadow-sm ${
-                                            note.displayType === 'emergency' ? 'bg-ncc-red text-white' : 'bg-ncc-navy text-white dark:bg-ncc-gold dark:text-ncc-navy'
-                                        }`}>
-                                            {note.timestamp ? new Date(note.timestamp).toLocaleDateString() : 'Today'}
-                                        </span>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <span className={`text-[10px] font-bold whitespace-nowrap px-3 py-1 rounded-full shadow-sm ${
+                                                note.displayType === 'emergency' ? 'bg-ncc-red text-white' : 'bg-ncc-navy text-white dark:bg-ncc-gold dark:text-ncc-navy'
+                                            }`}>
+                                                {note.timestamp ? new Date(note.timestamp).toLocaleDateString() : 'Today'}
+                                            </span>
+                                            {/* Dismiss button — only show if note has an id (Firestore record) */}
+                                            {note.id && (
+                                                <button
+                                                    onClick={() => handleDismiss(note.id)}
+                                                    title="Dismiss notification"
+                                                    className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all"
+                                                >
+                                                    <X className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                     <p className="text-text-dim text-sm leading-relaxed">
                                         {note.content || note.message}
