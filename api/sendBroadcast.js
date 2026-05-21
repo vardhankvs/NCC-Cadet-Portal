@@ -61,7 +61,7 @@ export default async function handler(req, res) {
             // Android-specific config — required for foreground/background display on Android
             android: {
                 priority: 'high',                  // Wake up the device
-                collapse_key: 'ncc-broadcast-update', // Collapses duplicate notifications
+                collapseKey: 'ncc-broadcast-update', // Collapses duplicate notifications
                 notification: {
                     title: subject || 'NCC Portal Update',
                     body: message || 'You have a new update in the NCC Portal',
