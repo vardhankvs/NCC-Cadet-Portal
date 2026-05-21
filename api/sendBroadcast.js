@@ -43,7 +43,7 @@ export default async function handler(req, res) {
 
         // Intercept old cached PWA clients sending the hardcoded fee message to EVERYONE
         // We drop it completely because we can't determine the target cadet from the old payload
-        if (message === 'A fee payment has been verified and approved') {
+        if (message && message.includes('verified and approved')) {
             console.log('Blocked legacy fee broadcast from cached client');
             return res.status(200).json({ success: true, blocked: true, message: 'Legacy broadcast blocked' });
         }
