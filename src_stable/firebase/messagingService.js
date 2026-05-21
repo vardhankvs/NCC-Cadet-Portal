@@ -1,7 +1,7 @@
 import { getToken, onMessage } from 'firebase/messaging';
 import { messaging, db } from './config';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
-
+import { getCollectionRef } from './firestoreService.js';
 const VAPID_KEY = "BDC9rR9_H3fV5S7p3uN9r1_z2L4x6M7N8O9P0Q1R2S3T4U5V6W7X8Y9Z"; // Replace with real VAPID key if needed, or use default
 
 export const requestNotificationPermission = async (userId, collectionName = 'cadets') => {
@@ -19,7 +19,7 @@ export const requestNotificationPermission = async (userId, collectionName = 'ca
                 });
                 
                 if (token && userId) {
-                    const userRef = doc(db, collectionName, userId);
+                    const userRef = doc(getCollectionRef(collectionName), userId);
                     await updateDoc(userRef, { fcmTokens: arrayUnion(token) });
                     return token;
                 } else {
