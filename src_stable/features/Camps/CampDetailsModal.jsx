@@ -5,10 +5,10 @@ import { generateNominalRollPDF } from '../../utils/pdfGenerator.js';
 
 import { useDataContext } from '../../context/DataContext.jsx';
 import { useAuthContext } from '../../context/AuthContext.jsx';
-import { addCadetsToCampBulk, updateCampRoster, logCampAchievement, addCampAchievementsBulk } from '../../firebase/firestoreService.js';
+import { addCadetsToCampBulk, updateCampRoster, logCampAchievement, addCampAchievementsBulk, deleteCamp } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
 
-export const CampDetailsModal = ({ camp, onClose }) => {
+export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
     const { userRole } = useAuthContext();
     const { cadets } = useDataContext();
     const [searchTerm, setSearchTerm] = useState('');
@@ -102,6 +102,18 @@ export const CampDetailsModal = ({ camp, onClose }) => {
         else setRosterSelectedIds([]);
     };
 
+    const handleDeleteCamp = async () => {
+        if (window.confirm(`Are you sure you want to delete ${camp.name}? This cannot be undone.`)) {
+            try {
+                await deleteCamp(camp.id);
+                toast.success('Camp deleted successfully!');
+                onClose();
+            } catch (err) {
+                toast.error(`Failed to delete: ${err.message}`);
+            }
+        }
+    };
+
     const getStatusColor = (status) => {
         switch(status) {
             case 'Selected': return 'bg-emerald-100 text-emerald-800';
@@ -130,13 +142,21 @@ export const CampDetailsModal = ({ camp, onClose }) => {
                     
                     {/* Admin Actions */}
                     {userRole === 'admin' && (
-                        <div className="flex justify-start">
+                        <div className="flex justify-between items-center bg-white dark:bg-[#050b14] p-3 rounded-xl border border-[#ddd8cc] shadow-sm">
                             <button 
                                 onClick={() => setShowAddCadets(!showAddCadets)}
-                                className={`px-4 py-2 text-sm font-bold rounded-lg shadow-sm transition-all focus:outline-none ${showAddCadets ? 'bg-gray-200 text-gray-700 dark:text-white/90 hover:bg-gray-300' : 'bg-ncc-navy text-white hover:bg-ncc-navy/90'}`}
+                                className={`px-4 py-2 text-sm font-bold rounded-lg transition-all focus:outline-none ${showAddCadets ? 'bg-gray-200 text-gray-700 dark:text-white/90 hover:bg-gray-300' : 'bg-ncc-navy text-white hover:bg-ncc-navy/90'}`}
                             >
                                 {showAddCadets ? '↓ Hide Add Cadets Panel' : '+ Assign Cadets to Roster'}
                             </button>
+                            <div className="flex gap-2">
+                                <button onClick={onEditCamp} className="px-4 py-2 text-sm font-bold text-ncc-navy dark:text-white bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 rounded-lg transition">
+                                    Edit Camp
+                                </button>
+                                <button onClick={handleDeleteCamp} className="px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 rounded-lg transition">
+                                    Delete Camp
+                                </button>
+                            </div>
                         </div>
                     )}
 

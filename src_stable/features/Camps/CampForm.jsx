@@ -6,8 +6,14 @@ import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 const CAMP_TYPES = ['ATC', 'CATC', 'EBSB', 'RDC', 'TSC', 'NSC', 'VSC', 'SNIC', 'ALC', 'BLC', 'Trekking', 'Other'];
 
-export const CampForm = ({ onClose }) => {
-    const [formData, setFormData] = useState({
+export const CampForm = ({ onClose, initialData = null }) => {
+    const [formData, setFormData] = useState(initialData ? {
+        name: initialData.name || '',
+        type: initialData.type || 'ATC',
+        location: initialData.location || '',
+        startDate: initialData.startDate || '',
+        endDate: initialData.endDate || '',
+    } : {
         name: '',
         type: 'ATC',
         location: '',
@@ -20,9 +26,11 @@ export const CampForm = ({ onClose }) => {
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            await saveCamp(formData);
-            toast.success('Camp created successfully!');
-            sendPushToAll('🏕️ New Camp', `${formData.name} (${formData.type}) has been added. Check the Camps tab for details.`);
+            await saveCamp(formData, initialData?.id || null);
+            toast.success(initialData ? 'Camp updated successfully!' : 'Camp created successfully!');
+            if (!initialData) {
+                sendPushToAll('🏕️ New Camp', `${formData.name} (${formData.type}) has been added. Check the Camps tab for details.`);
+            }
             onClose();
         } catch (err) {
             toast.error(err.message);
@@ -37,7 +45,7 @@ export const CampForm = ({ onClose }) => {
                 <div className="flex items-center justify-between px-6 py-4 bg-ncc-navy text-white">
                     <div>
                         <p className="text-[10px] uppercase tracking-widest text-[#d4a83a] font-bold">Manage Camps</p>
-                        <h2 className="text-lg font-bold font-display">Create New Camp</h2>
+                        <h2 className="text-lg font-bold font-display">{initialData ? 'Edit Camp' : 'Create New Camp'}</h2>
                     </div>
                     <button onClick={onClose} className="p-2 text-white/70 hover:text-white hover:bg-white dark:bg-[#050b14]/10 rounded-lg transition">
                         <X className="w-5 h-5" />
@@ -93,7 +101,7 @@ export const CampForm = ({ onClose }) => {
                     <div className="flex justify-end gap-3 pt-4 border-t border-[#ede8df] mt-6">
                         <button type="button" onClick={onClose} className="ncc-btn ncc-btn-ghost">Cancel</button>
                         <button type="submit" disabled={isSubmitting} className="ncc-btn ncc-btn-primary">
-                            {isSubmitting ? 'Creating...' : 'Create Camp'}
+                            {isSubmitting ? (initialData ? 'Updating...' : 'Creating...') : (initialData ? 'Update Camp' : 'Create Camp')}
                         </button>
                     </div>
                 </form>

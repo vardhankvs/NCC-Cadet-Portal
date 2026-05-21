@@ -1017,6 +1017,12 @@ export const saveCamp = async (data, id = null) => {
     }
 };
 
+export const deleteCamp = async (campId) => {
+    const ref = doc(getCollectionRef('camps'), campId);
+    if (!ref) throw new Error('Database not ready.');
+    await deleteDoc(ref);
+};
+
 export const updateCampRoster = async (campId, cadetId, status = 'Selected') => {
     const campRef = doc(getCollectionRef('camps'), campId);
     const cadetRef = doc(getCollectionRef('cadets'), cadetId);

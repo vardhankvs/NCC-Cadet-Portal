@@ -12,6 +12,7 @@ export const CampsView = () => {
     const { userRole, userEnrollmentId } = useAuthContext();
     const { camps = [] } = useDataContext();
     const [showForm, setShowForm] = useState(false);
+    const [editingCamp, setEditingCamp] = useState(null);
     const [selectedCamp, setSelectedCamp] = useState(null);
     const [activeTab, setActiveTab] = useState('camps'); // 'camps' or 'nominations'
     const [searchQuery, setSearchQuery] = useState('');
@@ -154,7 +155,17 @@ export const CampsView = () => {
             )}
 
             {showForm && <CampForm onClose={() => setShowForm(false)} />}
-            {selectedCamp && <CampDetailsModal camp={selectedCamp} onClose={() => setSelectedCamp(null)} />}
+            {editingCamp && <CampForm initialData={editingCamp} onClose={() => setEditingCamp(null)} />}
+            {selectedCamp && (
+                <CampDetailsModal 
+                    camp={selectedCamp} 
+                    onClose={() => setSelectedCamp(null)}
+                    onEditCamp={() => {
+                        setEditingCamp(selectedCamp);
+                        setSelectedCamp(null);
+                    }}
+                />
+            )}
         </div>
     );
 };
