@@ -20,54 +20,7 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// ── Helper: show notification from any payload shape ────────────────────────
-function showNCCNotification(title, body, data) {
-  const uniqueTag = `ncc-${Date.now()}`;
-  return self.registration.showNotification(title || 'NCC Portal Update', {
-    body: body || 'You have a new update.',
-    icon: '/pwa-192x192.png',
-    badge: '/pwa-192x192.png',
-    tag: uniqueTag,
-    renotify: false,
-    vibrate: [200, 100, 200],
-    requireInteraction: false,
-    data: { url: 'https://ncc-portal-redesign.vercel.app', ...(data || {}) },
-  });
-}
+// The Firebase SDK automatically displays notifications when the push payload includes a `notification` object.
+// We DO NOT manually handle onBackgroundMessage here, as that causes duplicate notifications.
+// The SDK also automatically handles notification clicks via fcmOptions.link defined in the server payload.
 
-// ── onBackgroundMessage: Fired by Firebase SDK for DATA-ONLY messages ────────
-// NOTE: When the FCM message includes a `notification` key, the browser/OS
-// displays it automatically and this handler is NOT called.
-// For messages WITH a `notification` payload (which our sendBroadcast sends),
-// the native `push` handler below is the reliable intercept point.
-messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] onBackgroundMessage:', payload);
-
-  const title = payload.notification?.title || payload.data?.title || 'NCC Portal Update';
-  const body  = payload.notification?.body  || payload.data?.body  || 'You have a new update.';
-
-  return showNCCNotification(title, body, payload.data);
-});
-
-// ── Notification click handler ───────────────────────────────────────────────
-// Opens the app when user taps the notification
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-
-  const targetUrl = event.notification.data?.url || 'https://ncc-portal-redesign.vercel.app';
-
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // If app is already open, focus it
-      for (const client of clientList) {
-        if (client.url.includes('ncc-portal-redesign.vercel.app') && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      // Otherwise open a new window
-      if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
-      }
-    })
-  );
-});
