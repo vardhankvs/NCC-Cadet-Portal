@@ -163,7 +163,7 @@ export const CampsView = () => {
                                             </div>
 
                                             {userRole === 'admin' && (
-                                                <div className="absolute top-4 right-4 flex gap-1 bg-white/80 dark:bg-black/50 backdrop-blur-sm rounded-lg border border-gray-100 dark:border-white/10 p-1 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="absolute top-4 right-4 flex gap-1 bg-white/90 dark:bg-[#0a1628]/90 backdrop-blur-sm rounded-lg border border-[#ddd8cc] dark:border-white/10 p-1 shadow-sm">
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); setEditingCamp(camp); }}
                                                         className="p-1.5 text-gray-600 hover:text-ncc-navy hover:bg-gray-100 dark:text-white/70 dark:hover:text-white dark:hover:bg-white/20 rounded transition"
