@@ -1148,7 +1148,9 @@ export const logCampAchievement = async (campId, cadetId, achievementText) => {
         const rosterIndex = roster.findIndex(c => c.cadetId === cadetId);
         if (rosterIndex >= 0) {
             if (!roster[rosterIndex].achievements) roster[rosterIndex].achievements = [];
-            roster[rosterIndex].achievements.push(achievementText);
+            if (!roster[rosterIndex].achievements.includes(achievementText)) {
+                roster[rosterIndex].achievements.push(achievementText);
+            }
             transaction.update(campRef, { roster });
         }
 
@@ -1158,7 +1160,9 @@ export const logCampAchievement = async (campId, cadetId, achievementText) => {
         const histIndex = campHistory.findIndex(c => c.campId === campId);
         if (histIndex >= 0) {
             if (!campHistory[histIndex].achievements) campHistory[histIndex].achievements = [];
-            campHistory[histIndex].achievements.push(achievementText);
+            if (!campHistory[histIndex].achievements.includes(achievementText)) {
+                campHistory[histIndex].achievements.push(achievementText);
+            }
             transaction.update(cadetRef, { campHistory });
         }
         // Return data for notifications
