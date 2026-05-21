@@ -5,10 +5,10 @@ import { getCollectionRef } from '../../firebase/firestoreService.js';
 import { addDoc, onSnapshot, query, orderBy, limit, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Megaphone, Send, Users, Mail, Bell, MessageSquare, CheckCircle, Trash2, Edit3, Clock, Shield } from '../../components/Icons.jsx';
 import { toast } from 'react-toastify';
-
+import { requestNotificationPermission } from '../../firebase/messagingService.js';
 export const BroadcastManager = () => {
     const { cadets, allCadets, alumni } = useDataContext();
-    const { userInstitutionId } = useAuthContext();
+    const { userInstitutionId, user, userRole } = useAuthContext();
     const [selectedGroup, setSelectedGroup] = useState('All');
     const [subject, setSubject] = useState('');
     const [message, setMessage] = useState('');
@@ -212,6 +212,34 @@ export const BroadcastManager = () => {
                         <span className="text-[10px] font-bold text-gray-400 dark:text-white/60 flex items-center gap-1.5">
                             <Bell className="w-3 h-3" /> {allCadets.filter(c => c.fcmTokens?.length > 0).length} Reachable
                         </span>
+                        <button 
+                            onClick={async () => {
+                                const token = await requestNotificationPermission(user?.uid, userRole === 'admin' || userRole === 'staff' ? 'staff' : 'cadets');
+                                if (token) {
+                                    toast.success("Permissions granted! Sending test push...");
+                                    try {
+                                        const res = await fetch('/api/sendBroadcast', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                                subject: 'Test Notification',
+                                                message: 'Push notifications are working perfectly on this device!',
+                                                tokens: [token]
+                                            })
+                                        });
+                                        const data = await res.json();
+                                        if(data.successCount > 0) toast.success("Test push sent! Check your notification bar.");
+                                        else toast.error("Push sent, but failed to deliver. Check Vercel logs.");
+                                    } catch(e) { toast.error("Vercel backend failed to respond!"); }
+                                } else {
+                                    toast.error("Please allow notifications in your browser popup first.");
+                                }
+                            }}
+                            className="text-[10px] font-bold bg-ncc-red text-white px-3 py-1 rounded-full flex items-center gap-1.5 hover:bg-red-700 transition-colors shadow-sm"
+                            type="button"
+                        >
+                            <Send className="w-3 h-3" /> Test Push to Me
+                        </button>
                     </div>
                 </div>
                 {isOverdue && (
