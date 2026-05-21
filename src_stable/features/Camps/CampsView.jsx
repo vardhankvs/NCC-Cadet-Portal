@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { useDataContext } from '../../context/DataContext.jsx';
-import { Tent, Plus, Calendar, MapPin, Users, Search } from '../../components/Icons.jsx';
+import { Tent, Plus, Calendar, MapPin, Users, Search, Trash2, Edit2 } from '../../components/Icons.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
+import { deleteCamp } from '../../firebase/firestoreService.js';
+import { toast } from 'react-toastify';
 
 import { CampForm } from './CampForm.jsx';
 import { CampDetailsModal } from './CampDetailsModal.jsx';
@@ -28,6 +30,18 @@ export const CampsView = () => {
         }
         return filtered.sort((a, b) => new Date(b.startDate) - new Date(a.startDate)); // newest first
     }, [camps, searchQuery]);
+
+    const handleDeleteCamp = async (e, camp) => {
+        e.stopPropagation(); // Prevent opening the modal
+        if (window.confirm(`Are you sure you want to delete ${camp.name}? This cannot be undone.`)) {
+            try {
+                await deleteCamp(camp.id);
+                toast.success('Camp deleted successfully!');
+            } catch (err) {
+                toast.error(`Failed to delete: ${err.message}`);
+            }
+        }
+    };
 
     return (
         <div className="space-y-6 fade-in">
@@ -116,9 +130,9 @@ export const CampsView = () => {
                                     <div 
                                         key={camp.id} 
                                         onClick={() => setSelectedCamp(camp)}
-                                        className="bg-white dark:bg-[#050b14] rounded-xl shadow-sm border border-[#ddd8cc] overflow-hidden hover:shadow-md transition cursor-pointer flex flex-col"
+                                        className="group bg-white dark:bg-[#050b14] rounded-xl shadow-sm border border-[#ddd8cc] overflow-hidden hover:shadow-md transition cursor-pointer flex flex-col relative"
                                     >
-                                        <div className="p-5 flex-1 relative">
+                                        <div className="p-5 flex-1">
                                             <div className="flex justify-between items-start mb-3">
                                                 <span className={`px-2.5 py-1 text-[10px] font-bold tracking-widest uppercase rounded ${
                                                     isPast ? 'bg-gray-100 dark:bg-[#0d2137] text-gray-500 dark:text-white/70 dark:text-white/70' : 'bg-ncc-navy text-white'
@@ -139,6 +153,25 @@ export const CampsView = () => {
                                                     <span>{camp.location}</span>
                                                 </div>
                                             </div>
+
+                                            {userRole === 'admin' && (
+                                                <div className="absolute top-4 right-4 flex gap-1 bg-white/80 dark:bg-black/50 backdrop-blur-sm rounded-lg border border-gray-100 dark:border-white/10 p-1 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setEditingCamp(camp); }}
+                                                        className="p-1.5 text-gray-600 hover:text-ncc-navy hover:bg-gray-100 dark:text-white/70 dark:hover:text-white dark:hover:bg-white/20 rounded transition"
+                                                        title="Edit Camp"
+                                                    >
+                                                        <Edit2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => handleDeleteCamp(e, camp)}
+                                                        className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/40 rounded transition"
+                                                        title="Delete Camp"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="bg-[#f5f0e8] dark:bg-[#0a1628] px-5 py-3 border-t border-[#ddd8cc] flex items-center justify-between text-xs font-semibold text-ncc-navy dark:text-white">
                                             <div className="flex items-center gap-1.5">
