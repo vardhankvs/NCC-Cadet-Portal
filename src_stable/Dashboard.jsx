@@ -575,11 +575,17 @@ export function Dashboard() {
                         <strong>{payload.notification.title}</strong>
                         <p className="text-xs mt-1">{payload.notification.body}</p>
                     </div>, 
-                    { autoClose: 5000, position: "top-right", icon: false }
+                    { 
+                        autoClose: 5000, 
+                        position: "top-right", 
+                        icon: false,
+                        onClick: () => handleTabClick('notifications')
+                    }
                 );
             }
         });
         return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // ── Broadcast Sentinel (Automatic Safety Net) ──

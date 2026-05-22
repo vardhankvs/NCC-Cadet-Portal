@@ -105,7 +105,7 @@ export default async function handler(req, res) {
 
                 },
                 fcmOptions: {
-                    link: 'https://ncc-portal-redesign.vercel.app',
+                    link: 'https://ncc-portal-redesign.vercel.app/?tab=notifications',
                 }
             },
 
