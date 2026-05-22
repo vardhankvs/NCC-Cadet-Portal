@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { useDataContext } from '../../context/DataContext.jsx';
-import { Briefcase, Users, Award, ShieldCheck, Mail, MapPin, Filter, Search, Clock, Plus, Trash2 } from '../../components/Icons.jsx';
+import { Briefcase, Users, Award, ShieldCheck, Mail, MapPin, Filter, Search, Clock, Plus, Trash2, Edit3 } from '../../components/Icons.jsx';
 import { toast } from 'react-toastify';
 import { JobForm } from './JobForm.jsx';
 import { deleteJobOpportunity } from '../../firebase/firestoreService.js';
@@ -13,6 +13,7 @@ export const CareerBridgeView = () => {
     const [activeTab, setActiveTab] = useState('jobs');
     const [searchTerm, setSearchTerm] = useState('');
     const [showJobForm, setShowJobForm] = useState(false);
+    const [editingJob, setEditingJob] = useState(null);
 
     // alumni is already provided by context
     const mentors = alumni.filter(a => a.isMentor);
@@ -56,7 +57,7 @@ export const CareerBridgeView = () => {
                         </button>
                     </div>
                     {userRole === 'admin' && activeTab === 'jobs' && (
-                        <button onClick={() => setShowJobForm(true)} className="ncc-btn ncc-btn-primary whitespace-nowrap">
+                        <button onClick={() => { setEditingJob(null); setShowJobForm(true); }} className="ncc-btn ncc-btn-primary whitespace-nowrap">
                             <Plus className="w-4 h-4" /> Add Opportunity
                         </button>
                     )}
@@ -101,13 +102,22 @@ export const CareerBridgeView = () => {
                                             <MapPin className="w-3 h-3" /> {job.location}
                                         </div>
                                     {userRole === 'admin' && (
-                                        <button 
-                                            onClick={() => handleDeleteJob(job.id)}
-                                            className="absolute top-6 right-6 p-2 text-gray-300 hover:text-red-500 transition-colors"
-                                            title="Delete Opportunity"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
+                                        <div className="absolute top-6 right-6 flex gap-2">
+                                            <button 
+                                                onClick={() => { setEditingJob(job); setShowJobForm(true); }}
+                                                className="p-2 text-gray-300 hover:text-ncc-navy dark:hover:text-white transition-colors"
+                                                title="Edit Opportunity"
+                                            >
+                                                <Edit3 className="w-4 h-4" />
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDeleteJob(job.id)}
+                                                className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                                                title="Delete Opportunity"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     )}
 
                                     <p className="text-sm text-gray-500 dark:text-white/70 leading-relaxed italic">"{job.description}"</p>
@@ -167,7 +177,7 @@ export const CareerBridgeView = () => {
                 </div>
             )}
 
-            {showJobForm && <JobForm onClose={() => setShowJobForm(false)} />}
+            {showJobForm && <JobForm onClose={() => { setShowJobForm(false); setEditingJob(null); }} editingJob={editingJob} />}
         </div>
     );
 };

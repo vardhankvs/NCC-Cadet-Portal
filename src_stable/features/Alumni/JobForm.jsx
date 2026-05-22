@@ -1,11 +1,18 @@
 import React, { useState } from 'react';
-import { addJobOpportunity } from '../../firebase/firestoreService.js';
+import { addJobOpportunity, updateJobOpportunity } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
 import { Plus } from '../../components/Icons.jsx';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
-export const JobForm = ({ onClose }) => {
-    const [formData, setFormData] = useState({
+export const JobForm = ({ onClose, editingJob = null }) => {
+    const [formData, setFormData] = useState(editingJob ? {
+        title: editingJob.title || '',
+        type: editingJob.type || 'Armed Forces',
+        deadline: editingJob.deadline || '',
+        location: editingJob.location || '',
+        description: editingJob.description || '',
+        link: editingJob.link || ''
+    } : {
         title: '',
         type: 'Armed Forces',
         deadline: '',
@@ -19,9 +26,15 @@ export const JobForm = ({ onClose }) => {
         e.preventDefault();
         setLoading(true);
         try {
-            await addJobOpportunity(formData);
-            toast.success('Opportunity posted to the Career Bridge.');
-            sendPushToAll('💼 New Job Opportunity', `${formData.title} (${formData.type}) has been posted on the Job Board`);
+            if (editingJob) {
+                await updateJobOpportunity(editingJob.id, formData);
+                toast.success('Opportunity updated successfully.');
+                sendPushToAll('💼 Job Opportunity Updated', `${formData.title} (${formData.type}) has been updated on the Job Board`);
+            } else {
+                await addJobOpportunity(formData);
+                toast.success('Opportunity posted to the Career Bridge.');
+                sendPushToAll('💼 New Job Opportunity', `${formData.title} (${formData.type}) has been posted on the Job Board`);
+            }
             onClose();
         } catch (error) {
             console.error('Error posting job:', error);
@@ -36,7 +49,7 @@ export const JobForm = ({ onClose }) => {
             <div className="bg-white dark:bg-[#050b14] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden border border-[#ddd8cc] flex flex-col max-h-[90vh]">
                 <div className="p-6 bg-ncc-navy text-white flex justify-between items-center shrink-0">
                     <h2 className="text-xl font-display font-bold flex items-center gap-2">
-                        <Plus className="w-5 h-5 text-ncc-gold" /> Post Opportunity
+                        <Plus className="w-5 h-5 text-ncc-gold" /> {editingJob ? 'Edit Opportunity' : 'Post Opportunity'}
                     </h2>
                     <button type="button" onClick={onClose} className="text-white/60 hover:text-white">&times;</button>
                 </div>
@@ -90,7 +103,7 @@ export const JobForm = ({ onClose }) => {
                     <div className="flex gap-3 pt-4 border-t border-[#ddd8cc]">
                         <button type="button" onClick={onClose} className="flex-1 py-3 font-bold text-gray-500 dark:text-white/70 hover:bg-gray-50 dark:bg-[#0a1628] rounded-xl">Cancel</button>
                         <button type="submit" disabled={loading} className="flex-1 ncc-btn ncc-btn-primary py-3">
-                            {loading ? 'Posting...' : 'Publish'}
+                            {loading ? (editingJob ? 'Updating...' : 'Posting...') : (editingJob ? 'Update' : 'Publish')}
                         </button>
                     </div>
                 </form>

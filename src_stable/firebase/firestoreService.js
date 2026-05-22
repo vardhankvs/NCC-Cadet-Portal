@@ -1884,6 +1884,14 @@ export const addJobOpportunity = async (jobData) => {
     });
 };
 
+export const updateJobOpportunity = async (jobId, jobData) => {
+    const ref = doc(getCollectionRef('jobs'), jobId);
+    await updateDoc(ref, {
+        ...jobData,
+        updatedAt: new Date().toISOString()
+    });
+};
+
 export const deleteJobOpportunity = async (jobId) => {
     const ref = doc(getCollectionRef('jobs'), jobId);
     await deleteDoc(ref);
