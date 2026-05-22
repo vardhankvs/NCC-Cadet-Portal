@@ -7,7 +7,7 @@ import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, where,
 import { Send, Search, User, MessageCircle, Clock, CheckCircle, ChevronLeft, Droplet, Users, Trash2, Edit3, X } from '../../components/Icons.jsx';
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
-import { sendPushToAll } from '../../firebase/pushNotifications.js';
+import { sendPushToUser, sendPushToAdmins } from '../../firebase/pushNotifications.js';
 
 export const DirectChat = ({ initialCadetId, onClose }) => {
     const { user, userRole, userEnrollmentId } = useAuthContext();
@@ -161,7 +161,12 @@ export const DirectChat = ({ initialCadetId, onClose }) => {
             });
 
             setNewMessage('');
-            if (isAdmin) sendPushToAll('💬 New Message from Admin', 'You have a new message. Check your messages tab.');
+            if (isAdmin) {
+                sendPushToUser(currentCadetId, '💬 New Message from Admin', 'You have a new message. Check your messages tab.');
+            } else {
+                const senderName = cadets.find(c => c.enrollmentId === userEnrollmentId)?.name || 'a cadet';
+                sendPushToAdmins('💬 Message from Cadet', `You have a new message from ${senderName}.`);
+            }
         } catch (err) {
             console.error(err);
             toast.error("Failed to send message. Permission Denied.");

@@ -151,3 +151,43 @@ export const sendPushToCadets = async (cadetIds, title, body) => {
         console.warn('sendPushToCadets failed (non-critical):', e.message);
     }
 };
+
+/**
+ * Sends a push notification to all admins.
+ * Use for alerting admins about cadet actions (e.g. blood requests, donations).
+ *
+ * @param {string} title - Notification title
+ * @param {string} body  - Notification body
+ */
+export const sendPushToAdmins = async (title, body) => {
+    try {
+        const tokens = [];
+
+        try {
+            const snap = await getDocs(getCollectionRef('users'));
+            snap.forEach((d) => {
+                if (d.data().role === 'admin') {
+                    const t = d.data().fcmTokens;
+                    if (Array.isArray(t)) tokens.push(...t);
+                    else if (typeof t === 'string' && t) tokens.push(t);
+                }
+            });
+        } catch (e) { console.warn('FCM: admin user lookup skipped', e.message); }
+
+        try {
+            const snap = await getDocs(getCollectionRef('staff'));
+            snap.forEach((d) => {
+                // Default staff to admins if they have no role specified
+                if (!d.data().role || d.data().role === 'admin') {
+                    const t = d.data().fcmTokens;
+                    if (Array.isArray(t)) tokens.push(...t);
+                    else if (typeof t === 'string' && t) tokens.push(t);
+                }
+            });
+        } catch (e) { console.warn('FCM: staff admin lookup skipped', e.message); }
+
+        await _dispatch(tokens, title, body);
+    } catch (e) {
+        console.warn('sendPushToAdmins failed (non-critical):', e.message);
+    }
+};

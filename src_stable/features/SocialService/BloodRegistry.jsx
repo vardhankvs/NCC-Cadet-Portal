@@ -8,7 +8,7 @@ import { DirectChat } from '../Engagement/DirectChat.jsx';
 import { db } from '../../firebase/config';
 import { getCollectionRef } from '../../firebase/firestoreService.js';
 import { addDoc, serverTimestamp, query, orderBy, onSnapshot, updateDoc, doc, arrayUnion, deleteDoc } from 'firebase/firestore';
-import { sendPushToAll } from '../../firebase/pushNotifications.js';
+import { sendPushToAll, sendPushToAdmins } from '../../firebase/pushNotifications.js';
 
 
 const BloodGroupTag = ({ group, isActive, onClick }) => (
@@ -122,6 +122,7 @@ const ActiveRequestCard = ({ request, userEnrollmentId, userRole, cadets, onEdit
             });
 
             toast.success("Thank you for accepting! You can now call the patient.");
+            sendPushToAdmins('🩸 Donor Available', `Cadet ${cadet?.name || userEnrollmentId} has volunteered to donate blood for ${request.patientName}.`);
         } catch (e) {
             console.error(e);
             toast.error("Failed to accept request.");
