@@ -53,6 +53,15 @@ const CadetRow = ({ cadet, event, isSelected, onToggleSelection }) => {
                     ? 'Added to list'
                     : 'Removed from list';
             toast.success(`${action}: ${cadet.name}`);
+            
+            if (newStatus === 'confirmed') {
+                import('../../firebase/pushNotifications.js').then(({ sendPushToUser }) => {
+                    const enrollId = cadet.enrollmentId || cadet.regimentalNumber;
+                    if (enrollId) {
+                        sendPushToUser(enrollId, '📅 Event Roster', `You have been selected for the upcoming event: ${event.name}`);
+                    }
+                }).catch(console.error);
+            }
         } catch (e) {
             toast.error(`Failed to update: ${e.message}`);
         }
@@ -167,6 +176,19 @@ export const EventRosterModal = ({ eventId, onClose }) => {
             import('../../firebase/firestoreService.js').then(async ({ setEventAttendeeBulk }) => {
                 await setEventAttendeeBulk(event.id, cadetIdsArray, status);
                 toast.success(`Successfully ${status === 'confirmed' ? 'added to list' : 'removed from list'}`);
+                
+                if (status === 'confirmed') {
+                    import('../../firebase/pushNotifications.js').then(({ sendPushToUser }) => {
+                        cadetIdsArray.forEach(id => {
+                            const cadet = cadets.find(c => c.id === id);
+                            const enrollId = cadet?.enrollmentId || cadet?.regimentalNumber;
+                            if (enrollId) {
+                                sendPushToUser(enrollId, '📅 Event Roster', `You have been selected for the upcoming event: ${event.name}`);
+                            }
+                        });
+                    }).catch(console.error);
+                }
+
                 setSelectedCadets(new Set());
                 setIsBulkProcessing(false);
             }).catch(async () => {
@@ -176,6 +198,19 @@ export const EventRosterModal = ({ eventId, onClose }) => {
                     await setEventAttendeeStatus(event.id, cadetId, status);
                 }
                 toast.success(`Successfully processed ${cadetIdsArray.length} cadets`);
+                
+                if (status === 'confirmed') {
+                    import('../../firebase/pushNotifications.js').then(({ sendPushToUser }) => {
+                        cadetIdsArray.forEach(id => {
+                            const cadet = cadets.find(c => c.id === id);
+                            const enrollId = cadet?.enrollmentId || cadet?.regimentalNumber;
+                            if (enrollId) {
+                                sendPushToUser(enrollId, '📅 Event Roster', `You have been selected for the upcoming event: ${event.name}`);
+                            }
+                        });
+                    }).catch(console.error);
+                }
+
                 setSelectedCadets(new Set());
                 setIsBulkProcessing(false);
             });
