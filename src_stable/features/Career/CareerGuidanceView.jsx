@@ -36,6 +36,7 @@ export const CareerGuidanceView = () => {
             if (editingId) {
                 await saveCareerNotice(formData, editingId);
                 toast.success("Notice updated successfully.");
+                sendPushToAll('💼 Career Notice Updated', `${formData.title} has been updated. Check the Careers tab.`);
                 setEditingId(null);
             } else {
                 await saveCareerNotice(formData);
