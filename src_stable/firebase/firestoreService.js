@@ -1495,6 +1495,11 @@ export const addResource = async (resourceData) => {
         ...resourceData,
         createdAt: serverTimestamp()
     });
+    
+    // Notify all cadets about the new study material
+    import('./pushNotifications.js').then(({ sendPushToAll }) => {
+        sendPushToAll('📚 New Study Material', `A new manual "${resourceData.title}" has been uploaded to the library.`);
+    }).catch(err => console.error("Failed to import push module", err));
 };
 
 export const deleteResource = async (id) => {
@@ -1782,6 +1787,11 @@ export const addTutorial = async (data) => {
         institutionId,
         createdAt: serverTimestamp()
     });
+    
+    // Notify all cadets about the new video tutorial
+    import('./pushNotifications.js').then(({ sendPushToAll }) => {
+        sendPushToAll('▶️ New Video Tutorial', `A new tutorial "${data.title}" is now available in the library.`);
+    }).catch(err => console.error("Failed to import push module", err));
 };
 
 export const submitFeedback = async (data) => {

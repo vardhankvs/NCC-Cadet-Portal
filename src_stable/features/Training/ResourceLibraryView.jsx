@@ -535,6 +535,9 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
                                 if (editingTutorialId) {
                                     await updateDoc(doc(getCollectionRef('tutorials'), editingTutorialId), { ...newTutorial, videoUrl: vId, updatedAt: new Date().toISOString() });
                                     toast.success("Tutorial updated!");
+                                    import('../../firebase/pushNotifications.js').then(({ sendPushToAll }) => {
+                                        sendPushToAll('▶️ Tutorial Updated', `The video tutorial "${newTutorial.title}" has been updated.`);
+                                    }).catch(err => console.error("Failed to import push module", err));
                                 } else {
                                     await addTutorial({ ...newTutorial, videoUrl: vId });
                                     toast.success("Tutorial published!");
