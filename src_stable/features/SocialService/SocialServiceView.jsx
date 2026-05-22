@@ -157,16 +157,33 @@ export const SocialServiceView = () => {
     };
 
     const handleEdit = (activity) => {
+        let formattedDate = new Date().toISOString().split('T')[0];
+        if (activity.date) {
+            if (typeof activity.date === 'string') {
+                formattedDate = activity.date.split('T')[0];
+            } else if (activity.date.toDate) {
+                const d = activity.date.toDate();
+                formattedDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            }
+        }
+
         setEditingActivityId(activity.id);
         setNewActivity({
-            title: activity.title,
-            type: activity.type,
-            date: activity.date || new Date().toISOString().split('T')[0],
-            location: activity.location,
+            title: activity.title || '',
+            type: activity.type || 'Swachh Bharat',
+            date: formattedDate,
+            location: activity.location || '',
             description: activity.description || ''
         });
         setShowAddForm(true);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        
+        // Scroll to the top of the page so the user sees the form
+        setTimeout(() => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            document.documentElement.scrollTo({ top: 0, behavior: 'smooth' });
+            const mainContent = document.querySelector('main');
+            if (mainContent) mainContent.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 50);
     };
 
     const handleDelete = async (activityId) => {
