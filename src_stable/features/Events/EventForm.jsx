@@ -6,7 +6,9 @@ import { saveEvent } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
-export const EventForm = ({ currentEvent, onSaveSuccess, onCancel }) => {
+import { ImageIcon, List } from '../../components/Icons.jsx';
+
+export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGallery, onManageRoster }) => {
     const [formData, setFormData] = useState({
         name: currentEvent?.name || '',
         date: currentEvent?.date
@@ -134,9 +136,31 @@ export const EventForm = ({ currentEvent, onSaveSuccess, onCancel }) => {
                         className="ncc-input text-sm min-h-[140px] leading-relaxed"
                     />
                 </div>
+                </div>
             </div>
 
-            <div className="mt-10 flex items-center justify-between gap-4">
+            <div className="mt-8 pt-6 border-t border-gray-100 dark:border-white/10">
+                <label className="block text-[10px] font-black text-ncc-navy dark:text-white uppercase tracking-widest mb-3">Event Management</label>
+                {isEditMode ? (
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <button type="button" onClick={onManageGallery} className="flex-1 p-4 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 hover:border-ncc-navy dark:hover:border-ncc-gold transition-all group/btn flex items-center justify-center gap-2">
+                            <ImageIcon className="w-5 h-5 text-gray-400 group-hover/btn:text-ncc-navy dark:group-hover/btn:text-ncc-gold transition-colors" />
+                            <span className="text-xs font-bold text-ncc-navy dark:text-white">Manage Photo Gallery</span>
+                        </button>
+                        <button type="button" onClick={onManageRoster} className="flex-1 p-4 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 hover:border-ncc-navy dark:hover:border-ncc-gold transition-all group/btn flex items-center justify-center gap-2">
+                            <List className="w-5 h-5 text-gray-400 group-hover/btn:text-ncc-navy dark:group-hover/btn:text-ncc-gold transition-colors" />
+                            <span className="text-xs font-bold text-ncc-navy dark:text-white">Manage Cadet Roster</span>
+                        </button>
+                    </div>
+                ) : (
+                    <div className="p-4 rounded-xl bg-ncc-navy/5 dark:bg-ncc-gold/5 border border-dashed border-ncc-navy/20 dark:border-ncc-gold/20 flex flex-col items-center justify-center text-center">
+                        <p className="text-xs font-bold text-ncc-navy/70 dark:text-ncc-gold/80 mb-1">Save Event First</p>
+                        <p className="text-[10px] text-gray-500 dark:text-white/60">You can manage the cadet roster and photo gallery after creating this event.</p>
+                    </div>
+                )}
+            </div>
+
+            <div className="mt-8 flex items-center justify-between gap-4">
                 <button
                     type="button"
                     onClick={onCancel}

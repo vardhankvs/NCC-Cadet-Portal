@@ -115,7 +115,17 @@ export const EventsView = ({ events }) => {
 
     return (
         <>
-            {(isAddingEvent || editingEvent) && (<ModalOverlay><EventForm currentEvent={editingEvent} onSaveSuccess={handleModalClose} onCancel={handleModalClose} /></ModalOverlay>)}
+            {(isAddingEvent || editingEvent) && (
+                <ModalOverlay>
+                    <EventForm 
+                        currentEvent={editingEvent} 
+                        onSaveSuccess={handleModalClose} 
+                        onCancel={handleModalClose} 
+                        onManageGallery={() => { setViewingGalleryEvent(editingEvent); setEditingEvent(null); setIsAddingEvent(false); }}
+                        onManageRoster={() => { setManagingRosterEventId(editingEvent.id); setEditingEvent(null); setIsAddingEvent(false); }}
+                    />
+                </ModalOverlay>
+            )}
             {viewingGalleryEvent && <GalleryModal event={viewingGalleryEvent} onClose={handleModalClose} />}
             {managingRosterEventId && <EventRosterModal eventId={managingRosterEventId} onClose={handleModalClose} />}
             {itemToDelete && <ConfirmationModal itemType={itemToDelete.type} itemName={itemToDelete.name} onConfirm={handleDeleteConfirm} onCancel={handleModalClose} />}
