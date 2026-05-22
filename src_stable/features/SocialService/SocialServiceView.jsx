@@ -126,6 +126,7 @@ export const SocialServiceView = () => {
                     description: newActivity.description
                 });
                 toast.success("Activity updated successfully!");
+                sendPushToAll('Social Activity Updated', `The social service activity "${newActivity.title}" has been updated.`);
             } else {
                 const activitiesRef = getCollectionRef('social_activities');
                 await addDoc(activitiesRef, {
