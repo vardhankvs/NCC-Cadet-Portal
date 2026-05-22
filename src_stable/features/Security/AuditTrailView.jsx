@@ -130,11 +130,11 @@ export const AuditTrailView = () => {
                         style={{ background: 'var(--bg-input, var(--bg-secondary))', borderColor: 'var(--border-main)', color: 'var(--text-main)', width: 200 }}
                     />
                 </div>
-                <select value={filterAction} onChange={e => setFilterAction(e.target.value)} className="px-2 py-1.5 text-xs rounded-lg border outline-none" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-main)', color: 'var(--text-main)' }}>
-                    {actions.map(a => <option key={a} value={a}>{a === 'ALL' ? 'All Actions' : (ACTION_LABELS[a] || a)}</option>)}
+                <select value={filterAction} onChange={e => setFilterAction(e.target.value)} className="px-2 py-1.5 text-xs rounded-lg border outline-none bg-white dark:bg-[#0a1628] text-gray-900 dark:text-white" style={{ borderColor: 'var(--border-main)' }}>
+                    {actions.map(a => <option key={a} value={a} className="bg-white dark:bg-[#0a1628] text-gray-900 dark:text-white">{a === 'ALL' ? 'All Actions' : (ACTION_LABELS[a] || a)}</option>)}
                 </select>
-                <select value={filterCollection} onChange={e => setFilterCollection(e.target.value)} className="px-2 py-1.5 text-xs rounded-lg border outline-none" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-main)', color: 'var(--text-main)' }}>
-                    {collections.map(c => <option key={c} value={c}>{c === 'ALL' ? 'All Collections' : c}</option>)}
+                <select value={filterCollection} onChange={e => setFilterCollection(e.target.value)} className="px-2 py-1.5 text-xs rounded-lg border outline-none bg-white dark:bg-[#0a1628] text-gray-900 dark:text-white" style={{ borderColor: 'var(--border-main)' }}>
+                    {collections.map(c => <option key={c} value={c} className="bg-white dark:bg-[#0a1628] text-gray-900 dark:text-white">{c === 'ALL' ? 'All Collections' : c}</option>)}
                 </select>
             </div>
 
