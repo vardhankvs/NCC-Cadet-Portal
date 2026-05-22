@@ -107,6 +107,7 @@ import { DirectChat } from './features/Engagement/DirectChat.jsx';
 import { SecurityDashboard } from './features/Security/SecurityDashboard.jsx';
 import { AIAssistant } from './features/Engagement/AIAssistant.jsx';
 import { IDCardGenerator } from './features/Profile/IDCardGenerator.jsx';
+import { AppRatingPrompt } from './features/Engagement/AppRatingPrompt.jsx';
 
 
 // ─── NCC Logo mark ─────────────────────────────────────────────────────────
@@ -1167,6 +1168,8 @@ export function Dashboard() {
             </div>
             {/* Global AI Assistant Floating Widget */}
             <AIAssistant />
+            {/* Global App Rating Prompt */}
+            <AppRatingPrompt />
         </div>
     );
 }
