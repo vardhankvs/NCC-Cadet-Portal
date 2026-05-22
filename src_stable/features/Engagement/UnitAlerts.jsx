@@ -8,7 +8,7 @@ import { toast } from 'react-toastify';
 
 export const UnitAlerts = () => {
     const { announcements, notifications, loading } = useDataContext();
-    const { userEnrollmentId, user } = useAuthContext();
+    const { userEnrollmentId, user, userRole } = useAuthContext();
 
     if (loading) return <div className="p-8 text-center text-text-dim italic">Scanning unit logs...</div>;
 
@@ -18,6 +18,9 @@ export const UnitAlerts = () => {
     // - Broadcast notifications (subject/target field, no userId) show to everyone.
     const unitBroadcasts = (notifications || [])
         .filter(n => {
+            // Hide admin notifications from cadets
+            if (n.target === 'Admin' && userRole !== 'admin') return false;
+
             const isPersonal = !!(n.userId || n.enrollmentId);
             if (!isPersonal) return true; // broadcast — show to all
             // Personal: only show to this cadet

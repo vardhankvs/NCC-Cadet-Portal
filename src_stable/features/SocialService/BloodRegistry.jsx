@@ -121,6 +121,16 @@ const ActiveRequestCard = ({ request, userEnrollmentId, userRole, cadets, userIn
                 timestamp: serverTimestamp()
             });
 
+            await addDoc(getCollectionRef('notifications'), {
+                subject: `🩸 Donor Available: ${cadet?.name || userEnrollmentId}`,
+                message: `Cadet ${cadet?.name || userEnrollmentId} has volunteered to donate blood for ${request.patientName}.`,
+                timestamp: new Date().toISOString(),
+                sender: cadet?.name || userEnrollmentId,
+                target: 'Admin',
+                type: 'blood_donation',
+                institutionId: userInstitutionId || '14a-bn-srikakulam'
+            });
+
             toast.success("Thank you for accepting! You can now call the patient.");
             sendPushToAdmins('🩸 Donor Available', `Cadet ${cadet?.name || userEnrollmentId} has volunteered to donate blood for ${request.patientName}.`);
         } catch (e) {
