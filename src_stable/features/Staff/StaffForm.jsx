@@ -48,7 +48,7 @@ export const StaffForm = ({ currentStaff, onSaveSuccess, onCancel }) => {
     return (
         <form
             onSubmit={handleSubmit}
-            className="mx-auto w-full max-w-xl rounded-[2.5rem] bg-white dark:bg-[#050b14] p-8 shadow-2xl border border-[#ddd8cc] dark:border-white/10 relative overflow-hidden"
+            className="mx-auto w-full max-w-xl max-h-[90vh] overflow-y-auto ncc-scrollbar rounded-[2.5rem] bg-white dark:bg-[#050b14] p-8 shadow-2xl border border-[#ddd8cc] dark:border-white/10 relative"
         >
             {/* Tactical Header Decoration */}
             <div className="absolute top-0 left-0 w-full h-1.5 bg-ncc-gold" />

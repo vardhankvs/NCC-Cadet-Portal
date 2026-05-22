@@ -37,7 +37,7 @@ const StaffProfileModal = ({ member, onClose }) => {
     const academic = parseAcademic(member.academicProfile);
 
     return (
-        <div className="mx-auto w-full max-w-2xl rounded-[2.5rem] bg-white dark:bg-[#050b14] p-8 shadow-2xl border border-[#ddd8cc] dark:border-white/10 relative overflow-hidden animate-modalIn">
+        <div className="mx-auto w-full max-w-2xl max-h-[90vh] overflow-y-auto ncc-scrollbar rounded-[2.5rem] bg-white dark:bg-[#050b14] p-8 shadow-2xl border border-[#ddd8cc] dark:border-white/10 relative animate-modalIn">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-ncc-navy dark:bg-ncc-gold" />
             
             <div className="mb-8 flex items-start justify-between">
