@@ -41,42 +41,71 @@ export const EventsView = ({ events }) => {
     };
 
     const EventList = ({ eventList }) => (
-        <div className="space-y-3 mt-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-2">
             {eventList.length === 0 ? (
-                <p className="text-gray-400 dark:text-white/80 text-center py-6 text-sm italic">No events found.</p>
+                <div className="col-span-full text-center py-20 text-gray-400 dark:text-white/80 italic">No events found.</div>
             ) : eventList.map((event) => {
                 const myStatus = event.attendeeStatus?.[currentCadetId];
                 const isPast = event.date < today;
                 const confirmedCount = Object.values(event.attendeeStatus || {}).filter((s) => s === 'confirmed').length;
+                const eventDate = new Date(event.date);
+                const month = eventDate.toLocaleString('default', { month: 'short' }).toUpperCase();
+                const day = eventDate.getDate();
+
                 return (
-                    <div key={event.id} className="ncc-card p-4 hover:shadow-md transition border-2 border-ncc-navy/10 dark:border-white/20">
-                        <div className="flex justify-between items-start mb-2">
-                            <div className="flex-1 min-w-0 pr-2">
-                                <h4 className="font-bold text-ncc-navy dark:text-white text-sm leading-tight font-display">{event.name}</h4>
-                                <p className="text-xs text-gray-400 dark:text-white/80 mt-0.5">{formatDate(event.date)}{event.location ? ` · ${event.location}` : ''}</p>
+                    <div key={event.id} className="ncc-card group hover:border-ncc-gold transition-all relative overflow-hidden flex flex-col h-full bg-white dark:bg-[#050b14] border border-[#ddd8cc] dark:border-white/10 rounded-2xl shadow-sm">
+                        {userRole === 'cadet' && !isPast && myStatus === 'confirmed' && (
+                            <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[9px] font-black px-3 py-1 rounded-bl-xl shadow-md z-10 uppercase tracking-widest">
+                                ✓ Registered
                             </div>
-                            {userRole === 'cadet' && !isPast && myStatus === 'confirmed' && (
-                                <span className="flex-shrink-0 pill-present">✓ Registered</span>
-                            )}
-                        </div>
-                        {event.description && <p className="text-xs text-gray-500 dark:text-white/70 mb-2 line-clamp-2">{event.description}</p>}
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                            <button onClick={() => setViewingGalleryEvent(event)} className="ncc-btn bg-black text-white hover:bg-gray-800 ncc-btn-sm border-none shadow-sm">
-                                <ImageIcon className="w-3 h-3" /> Gallery ({event.imageUrls?.length || 0})
-                            </button>
-                            {userRole === 'admin' && (
-                                <>
-                                    <button onClick={() => setManagingRosterEventId(event.id)} className="ncc-btn ncc-btn-primary ncc-btn-sm">
-                                        <List className="w-3 h-3" /> Roster ({confirmedCount})
+                        )}
+                        
+                        <div className="p-6 flex-1 flex flex-col">
+                            <div className="flex gap-4 mb-4 items-start">
+                                <div className="flex-shrink-0 w-14 h-14 bg-ncc-navy/5 dark:bg-white/5 rounded-xl flex flex-col items-center justify-center border border-ncc-navy/10 dark:border-white/10 group-hover:bg-ncc-navy group-hover:border-ncc-navy transition-colors duration-300">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-ncc-gold mb-[-2px]">{month}</span>
+                                    <span className="text-xl font-display font-bold text-ncc-navy dark:text-white group-hover:text-white">{day}</span>
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-ncc-navy dark:text-white text-lg leading-tight font-display mb-1">{event.name}</h4>
+                                    <p className="text-xs font-bold text-ncc-gold/70 uppercase tracking-widest flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-ncc-gold"></span>
+                                        {event.location || 'TBA'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {event.description && <p className="text-xs text-gray-500 dark:text-white/70 mb-6 line-clamp-3 leading-relaxed">{event.description}</p>}
+                            
+                            <div className="mt-auto pt-4 border-t border-gray-100 dark:border-white/10 flex flex-wrap gap-2 items-center justify-between">
+                                <div className="flex gap-2">
+                                    <button onClick={() => setViewingGalleryEvent(event)} className="p-2 rounded-xl bg-ncc-navy/5 text-ncc-navy hover:bg-ncc-navy/10 dark:bg-white/5 dark:text-white/80 dark:hover:bg-white/10 transition flex items-center justify-center relative group/btn" title="Gallery">
+                                        <ImageIcon className="w-4 h-4" />
+                                        {event.imageUrls?.length > 0 && (
+                                            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-ncc-gold text-white text-[8px] font-black flex items-center justify-center">{event.imageUrls.length}</span>
+                                        )}
                                     </button>
-                                    <button onClick={() => setEditingEvent(event)} className="p-1.5 text-ncc-navy dark:text-white hover:bg-ncc-navy/10 rounded-lg transition">
-                                        <Edit className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button onClick={() => setItemToDelete({ type: 'events', id: event.id, name: event.name })} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition">
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                </>
-                            )}
+                                    {userRole === 'admin' && (
+                                        <button onClick={() => setManagingRosterEventId(event.id)} className="p-2 rounded-xl bg-ncc-navy/5 text-ncc-navy hover:bg-ncc-navy/10 dark:bg-white/5 dark:text-white/80 dark:hover:bg-white/10 transition flex items-center justify-center relative" title="Roster">
+                                            <List className="w-4 h-4" />
+                                            {confirmedCount > 0 && (
+                                                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-ncc-navy text-white text-[8px] font-black flex items-center justify-center">{confirmedCount}</span>
+                                            )}
+                                        </button>
+                                    )}
+                                </div>
+                                
+                                {userRole === 'admin' && (
+                                    <div className="flex gap-1">
+                                        <button onClick={() => setEditingEvent(event)} className="p-2 text-gray-400 dark:text-white/80 hover:text-ncc-navy dark:text-white hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl transition">
+                                            <Edit className="w-4 h-4" />
+                                        </button>
+                                        <button onClick={() => setItemToDelete({ type: 'events', id: event.id, name: event.name })} className="p-2 text-gray-400 dark:text-white/80 hover:text-ncc-red hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition">
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 );
@@ -91,23 +120,35 @@ export const EventsView = ({ events }) => {
             {managingRosterEventId && <EventRosterModal eventId={managingRosterEventId} onClose={handleModalClose} />}
             {itemToDelete && <ConfirmationModal itemType={itemToDelete.type} itemName={itemToDelete.name} onConfirm={handleDeleteConfirm} onCancel={handleModalClose} />}
 
-            <div className="ncc-card overflow-hidden">
-                <div className="flex justify-between items-center p-5 border-b border-[#ddd8cc]">
-                    <h2 className="ncc-section-title"><Megaphone className="w-5 h-5 text-ncc-gold" /> Events</h2>
-                    {userRole === 'admin' && (
-                        <button onClick={() => setIsAddingEvent(true)} className="ncc-btn ncc-btn-primary ncc-btn-sm">
-                            <Plus className="w-3.5 h-3.5" /> Add Event
-                        </button>
-                    )}
-                </div>
-                <div className="p-5">
-                    {error && <div className="mb-3"><ErrorDisplay message={error} /></div>}
-                    <div className="ncc-filter-group mb-4 w-full">
-                        <button onClick={() => setEventTab('upcoming')} className={`ncc-filter-btn flex-1 justify-center ${eventTab === 'upcoming' ? 'active' : ''}`}>Upcoming ({upcomingEvents.length})</button>
-                        <button onClick={() => setEventTab('past')} className={`ncc-filter-btn flex-1 justify-center ${eventTab === 'past' ? 'active' : ''}`}>Past ({pastEvents.length})</button>
+            <div className="space-y-6 fade-in">
+                <header className="bg-white dark:bg-[#050b14] p-6 rounded-2xl border border-[#ddd8cc] shadow-sm">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                        <div>
+                            <h2 className="text-2xl font-display font-bold text-ncc-navy dark:text-white flex items-center gap-3">
+                                <Megaphone className="w-8 h-8 text-ncc-gold" /> Unit Events
+                            </h2>
+                            <p className="text-gray-500 dark:text-white/70 text-sm">Manage upcoming activities, parades, and view past galleries.</p>
+                        </div>
+                        {userRole === 'admin' && (
+                            <button onClick={() => setIsAddingEvent(true)} className="ncc-btn ncc-btn-primary px-4 py-3 text-xs font-black uppercase tracking-widest shadow-xl">
+                                <Plus className="w-4 h-4 mr-2" /> Add Event
+                            </button>
+                        )}
                     </div>
-                    {eventTab === 'upcoming' ? <EventList eventList={upcomingEvents} /> : <EventList eventList={pastEvents} />}
-                </div>
+
+                    <div className="flex bg-ncc-navy/5 dark:bg-white/5 p-1 rounded-xl mt-6 border border-ncc-navy/5 dark:border-white/5">
+                        <button onClick={() => setEventTab('upcoming')} className={`flex-1 py-2 text-[10px] font-black uppercase tracking-[0.2em] rounded-lg transition-all ${eventTab === 'upcoming' ? 'bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white shadow-md' : 'text-ncc-navy dark:text-white/40 dark:hover:text-white hover:text-ncc-navy'}`}>
+                            Upcoming ({upcomingEvents.length})
+                        </button>
+                        <button onClick={() => setEventTab('past')} className={`flex-1 py-2 text-[10px] font-black uppercase tracking-[0.2em] rounded-lg transition-all ${eventTab === 'past' ? 'bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white shadow-md' : 'text-ncc-navy dark:text-white/40 dark:hover:text-white hover:text-ncc-navy'}`}>
+                            Past ({pastEvents.length})
+                        </button>
+                    </div>
+                </header>
+
+                {error && <div className="mb-3"><ErrorDisplay message={error} /></div>}
+                
+                {eventTab === 'upcoming' ? <EventList eventList={upcomingEvents} /> : <EventList eventList={pastEvents} />}
             </div>
         </>
     );
