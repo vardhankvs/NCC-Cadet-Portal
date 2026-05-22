@@ -116,6 +116,22 @@ export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
         } finally { setIsPromoting(false); }
     };
 
+    const getBase64ImageFromUrl = async (imageUrl) => {
+        try {
+            const res = await fetch(imageUrl, { mode: 'cors' });
+            const blob = await res.blob();
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        } catch (e) {
+            console.error("Failed to load image for PDF:", e);
+            return null;
+        }
+    };
+
     const generateBatchIds = async () => {
         if (!selectedIds.length) return;
         toast.info(`Generating ${selectedIds.length} Smart ID Cards...`);
@@ -164,12 +180,36 @@ export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
             doc.text("14(A) BN NCC Srikakulam", currentX + cardWidth/2, currentY + 10, { align: 'center' });
 
             // Photo Placeholder (Left)
-            doc.setDrawColor(200, 200, 200);
-            doc.setFillColor(240, 240, 240);
-            doc.rect(currentX + 4, currentY + 16, 17, 22, 'FD');
-            doc.setTextColor(150, 150, 150);
-            doc.setFontSize(6);
-            doc.text("PHOTO", currentX + 12.5, currentY + 28, { align: 'center' });
+            const photoUrl = cadet.photoUrl || cadet.photoURL;
+            let imgData = null;
+            if (photoUrl) {
+                imgData = await getBase64ImageFromUrl(photoUrl);
+            }
+
+            if (imgData) {
+                doc.setDrawColor(200, 200, 200);
+                doc.rect(currentX + 4, currentY + 16, 17, 22);
+                try {
+                    // Try to guess the format or just use 'JPEG' / 'PNG' based on the data URL
+                    const format = imgData.substring("data:image/".length, imgData.indexOf(";base64"));
+                    doc.addImage(imgData, format.toUpperCase(), currentX + 4, currentY + 16, 17, 22);
+                } catch (e) {
+                    console.error("Error adding image to pdf", e);
+                    doc.setDrawColor(200, 200, 200);
+                    doc.setFillColor(240, 240, 240);
+                    doc.rect(currentX + 4, currentY + 16, 17, 22, 'FD');
+                    doc.setTextColor(150, 150, 150);
+                    doc.setFontSize(6);
+                    doc.text("PHOTO ERR", currentX + 12.5, currentY + 28, { align: 'center' });
+                }
+            } else {
+                doc.setDrawColor(200, 200, 200);
+                doc.setFillColor(240, 240, 240);
+                doc.rect(currentX + 4, currentY + 16, 17, 22, 'FD');
+                doc.setTextColor(150, 150, 150);
+                doc.setFontSize(6);
+                doc.text("PHOTO", currentX + 12.5, currentY + 28, { align: 'center' });
+            }
 
             // Content (Middle)
             doc.setTextColor(10, 22, 40);
