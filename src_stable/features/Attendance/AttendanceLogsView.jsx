@@ -94,7 +94,7 @@ export const AttendanceLogsView = () => {
             
             // Send real-time notification
             import('../../firebase/pushNotifications.js').then(({ sendPushToCadets }) => {
-                sendPushToCadets(selectedCadetIds, '✅ Attendance Marked', `Your attendance was marked for today's class.`);
+                sendPushToCadets(selectedCadetIds, '✅ Attendance Marked', `Your attendance was marked for today's class.`, 'attendance');
             }).catch(console.error);
 
             toast.success(`Marked ${selectedCadetIds.length} cadets present.`);

@@ -98,7 +98,7 @@ export const SocialServiceView = () => {
                 
                 // Send push notification to newly added cadets
                 newIds.forEach(cadetId => {
-                    sendPushToUser(cadetId, 'Volunteer Registry', `You have been selected as a volunteer for: ${selectedActivity?.title || 'a social activity'}`);
+                    sendPushToUser(cadetId, 'Volunteer Registry', `You have been selected as a volunteer for: ${selectedActivity?.title || 'a social activity'}`, 'social');
                 });
             } else {
                 // Remove all visible IDs
@@ -126,7 +126,7 @@ export const SocialServiceView = () => {
                     description: newActivity.description
                 });
                 toast.success("Activity updated successfully!");
-                sendPushToAll('Social Activity Updated', `The social service activity "${newActivity.title}" has been updated.`);
+                sendPushToAll('Social Activity Updated', `The social service activity "${newActivity.title}" has been updated.`, 'social');
             } else {
                 const activitiesRef = getCollectionRef('social_activities');
                 await addDoc(activitiesRef, {
@@ -138,7 +138,7 @@ export const SocialServiceView = () => {
                     createdAt: serverTimestamp()
                 });
                 toast.success("Social activity logged successfully!");
-                sendPushToAll('New Social Activity', `A new social service activity has been posted: ${newActivity.title}`);
+                sendPushToAll('New Social Activity', `A new social service activity has been posted: ${newActivity.title}`, 'social');
             }
             setShowAddForm(false);
             setEditingActivityId(null);

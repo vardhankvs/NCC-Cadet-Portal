@@ -58,7 +58,7 @@ const CadetRow = ({ cadet, event, isSelected, onToggleSelection }) => {
                 import('../../firebase/pushNotifications.js').then(({ sendPushToUser }) => {
                     const enrollId = cadet.enrollmentId || cadet.regimentalNumber;
                     if (enrollId) {
-                        sendPushToUser(enrollId, 'Event Roster', `You have been selected for the upcoming event: ${event.name}`);
+                        sendPushToUser(enrollId, 'Event Roster', `You have been selected for the upcoming event: ${event.name}`, 'events');
                     }
                 }).catch(console.error);
             }
@@ -183,7 +183,7 @@ export const EventRosterModal = ({ eventId, onClose }) => {
                             const cadet = cadets.find(c => c.id === id);
                             const enrollId = cadet?.enrollmentId || cadet?.regimentalNumber;
                             if (enrollId) {
-                                sendPushToUser(enrollId, 'Event Roster', `You have been selected for the upcoming event: ${event.name}`);
+                                sendPushToUser(enrollId, 'Event Roster', `You have been selected for the upcoming event: ${event.name}`, 'events');
                             }
                         });
                     }).catch(console.error);
@@ -205,7 +205,7 @@ export const EventRosterModal = ({ eventId, onClose }) => {
                             const cadet = cadets.find(c => c.id === id);
                             const enrollId = cadet?.enrollmentId || cadet?.regimentalNumber;
                             if (enrollId) {
-                                sendPushToUser(enrollId, 'Event Roster', `You have been selected for the upcoming event: ${event.name}`);
+                                sendPushToUser(enrollId, 'Event Roster', `You have been selected for the upcoming event: ${event.name}`, 'events');
                             }
                         });
                     }).catch(console.error);

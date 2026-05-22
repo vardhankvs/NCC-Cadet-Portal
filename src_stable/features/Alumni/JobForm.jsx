@@ -29,11 +29,11 @@ export const JobForm = ({ onClose, editingJob = null }) => {
             if (editingJob) {
                 await updateJobOpportunity(editingJob.id, formData);
                 toast.success('Opportunity updated successfully.');
-                sendPushToAll('💼 Job Opportunity Updated', `${formData.title} (${formData.type}) has been updated on the Job Board`);
+                sendPushToAll('💼 Job Opportunity Updated', `${formData.title} (${formData.type}) has been updated on the Job Board`, 'career_bridge');
             } else {
                 await addJobOpportunity(formData);
                 toast.success('Opportunity posted to the Career Bridge.');
-                sendPushToAll('💼 New Job Opportunity', `${formData.title} (${formData.type}) has been posted on the Job Board`);
+                sendPushToAll('💼 New Job Opportunity', `${formData.title} (${formData.type}) has been posted on the Job Board`, 'career_bridge');
             }
             onClose();
         } catch (error) {

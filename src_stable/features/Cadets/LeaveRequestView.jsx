@@ -202,7 +202,8 @@ export const LeaveRequestView = () => {
             sendPushToUser(
                 cadetEnrollment,
                 status === 'approved' ? '✅ Leave Approved' : '❌ Leave Rejected',
-                `Your leave request (${req.type || 'Leave'}: ${req.startDate} to ${req.endDate}) has been ${status}${req.adminRemarks ? '. Remarks: ' + req.adminRemarks : ''}.`
+                `Your leave request (${req.type || 'Leave'}: ${req.startDate} to ${req.endDate}) has been ${status}${req.adminRemarks ? '. Remarks: ' + req.adminRemarks : ''}.`,
+                'leave_requests'
             );
         } catch (err) {
             console.error(err);

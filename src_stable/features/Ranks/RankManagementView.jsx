@@ -34,8 +34,9 @@ export const RankManagementView = () => {
             toast.success(`${selectedCadet.name} promoted to ${newRank}`);
             sendPushToUser(
                 selectedCadet.enrollmentId,
-                '⭐ Congratulations! Rank Promoted',
-                `You have been promoted to ${newRank}. Reason: ${reason}`
+                '⭐ Rank Promotion',
+                `Congratulations! You have been officially promoted to the rank of ${newRank}.`,
+                'profile'
             );
             setSelectedCadet(null);
             setNewRank('');

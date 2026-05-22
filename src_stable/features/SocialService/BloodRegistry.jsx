@@ -132,7 +132,7 @@ const ActiveRequestCard = ({ request, userEnrollmentId, userRole, cadets, userIn
             });
 
             toast.success("Thank you for accepting! You can now call the patient.");
-            sendPushToAdmins('🩸 Donor Available', `Cadet ${cadet?.name || userEnrollmentId} has volunteered to donate blood for ${request.patientName}.`);
+            sendPushToAdmins('🩸 Donor Available', `Cadet ${cadet?.name || userEnrollmentId} has volunteered to donate blood for ${request.patientName}.`, 'blood_registry');
         } catch (e) {
             console.error(e);
             toast.error("Failed to accept request.");
@@ -300,7 +300,7 @@ export const BloodRegistry = ({ onChat }) => {
                 });
 
                 toast.success("Emergency Alert Broadcasted successfully!");
-                sendPushToAll('🩸 Blood Bank Alert', `URGENT: ${formData.bloodGroup} blood needed for ${formData.patientName} at ${formData.hospital}`);
+                sendPushToAll('🩸 Blood Bank Alert', `URGENT: ${formData.bloodGroup} blood needed for ${formData.patientName} at ${formData.hospital}`, 'blood_registry');
             }
             
             setShowRequestModal(false);

@@ -215,7 +215,7 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
             await saveCadet({ ...formData, photoUrl }, currentCadet?.id);
             setSaved(true);
             toast.success(isEditMode ? 'Cadet updated!' : 'Cadet added!');
-            if (!isEditMode) sendPushToAll('👤 Roster Updated', 'A new cadet has been added to the unit roster');
+            if (!isEditMode) sendPushToAll('👤 Roster Updated', 'A new cadet has been added to the unit roster', 'hierarchy');
             setTimeout(() => onSaveSuccess(), 600);
         } catch (err) {
             toast.dismiss('photo-upload');

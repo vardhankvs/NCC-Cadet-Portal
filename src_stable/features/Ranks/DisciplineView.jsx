@@ -54,7 +54,8 @@ export const DisciplineView = () => {
             sendPushToUser(
                 selectedCadet.enrollmentId,
                 pointType === 'merit' ? '⭐ Merit Points Updated' : '⚠️ Discipline Record Updated',
-                `Your ${pointType} record has been updated to ${newAmount} points. Remark: ${remark || 'No remark'}`
+                `Your ${pointType} record has been updated to ${newAmount} points. Remark: ${remark || 'No remark'}`,
+                'profile'
             );
             setIsEditModalOpen(false);
         } catch (err) {

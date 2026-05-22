@@ -136,8 +136,9 @@ export const sendPushToUser = async (enrollmentId, title, body, targetTab = null
  * @param {Array<string>} cadetIds  - Array of cadet document IDs
  * @param {string} title            - Notification title
  * @param {string} body             - Notification body
+ * @param {string} targetTab        - Optional tab to open when notification is clicked
  */
-export const sendPushToCadets = async (cadetIds, title, body) => {
+export const sendPushToCadets = async (cadetIds, title, body, targetTab = null) => {
     if (!cadetIds || !Array.isArray(cadetIds) || cadetIds.length === 0) return;
     try {
         const tokens = [];
@@ -154,7 +155,7 @@ export const sendPushToCadets = async (cadetIds, title, body) => {
             });
         } catch (e) { console.warn('FCM: cadet lookup skipped', e.message); }
 
-        await _dispatch(tokens, title, body);
+        await _dispatch(tokens, title, body, targetTab);
     } catch (e) {
         console.warn('sendPushToCadets failed (non-critical):', e.message);
     }
@@ -164,10 +165,11 @@ export const sendPushToCadets = async (cadetIds, title, body) => {
  * Sends a push notification to all admins.
  * Use for alerting admins about cadet actions (e.g. blood requests, donations).
  *
- * @param {string} title - Notification title
- * @param {string} body  - Notification body
+ * @param {string} title         - Notification title
+ * @param {string} body          - Notification body
+ * @param {string} targetTab     - Optional tab to open when notification is clicked
  */
-export const sendPushToAdmins = async (title, body) => {
+export const sendPushToAdmins = async (title, body, targetTab = null) => {
     try {
         const tokens = [];
 
@@ -194,7 +196,7 @@ export const sendPushToAdmins = async (title, body) => {
             });
         } catch (e) { console.warn('FCM: staff admin lookup skipped', e.message); }
 
-        await _dispatch(tokens, title, body);
+        await _dispatch(tokens, title, body, targetTab);
     } catch (e) {
         console.warn('sendPushToAdmins failed (non-critical):', e.message);
     }

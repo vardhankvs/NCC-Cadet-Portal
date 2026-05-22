@@ -162,10 +162,10 @@ export const DirectChat = ({ initialCadetId, onClose }) => {
 
             setNewMessage('');
             if (isAdmin) {
-                sendPushToUser(currentCadetId, '💬 New Message from Admin', 'You have a new message. Check your messages tab.');
+                sendPushToUser(currentCadetId, '💬 New Message from Admin', 'You have a new message. Check your messages tab.', 'direct_chat');
             } else {
                 const senderName = cadets.find(c => c.enrollmentId === userEnrollmentId)?.name || 'a cadet';
-                sendPushToAdmins('💬 Message from Cadet', `You have a new message from ${senderName}.`);
+                sendPushToAdmins('💬 Message from Cadet', `You have a new message from ${senderName}.`, 'direct_chat');
             }
         } catch (err) {
             console.error(err);

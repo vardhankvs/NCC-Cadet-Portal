@@ -46,7 +46,7 @@ export const ReferenceForm = ({
                 );
             } else {
                 await saveReferenceLink(title, downloadURL);
-                sendPushToAll('📚 New Library Resource', `"${title}" has been added to the library`);
+                sendPushToAll('📚 New Library Resource', `"${title}" has been added to the library`, 'library');
             }
             onSaveSuccess();
         } catch (e) {

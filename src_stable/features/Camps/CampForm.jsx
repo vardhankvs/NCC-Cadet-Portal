@@ -29,7 +29,7 @@ export const CampForm = ({ onClose, initialData = null }) => {
             await saveCamp(formData, initialData?.id || null);
             toast.success(initialData ? 'Camp updated successfully!' : 'Camp created successfully!');
             if (!initialData) {
-                sendPushToAll('🏕️ New Camp', `${formData.name} (${formData.type}) has been added. Check the Camps tab for details.`);
+                sendPushToAll('🏕️ New Camp', `${formData.name} (${formData.type}) has been added. Check the Camps tab for details.`, 'camps');
             }
             onClose();
         } catch (err) {

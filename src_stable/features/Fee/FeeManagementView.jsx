@@ -147,7 +147,8 @@ export const FeeManagementView = () => {
             sendPushToUser(
                 tx.enrollmentId,
                 '💳 Payment Approved!',
-                `Your payment of ${formatCurrency(tx.amount)} has been verified and credited to your account.`
+                `Your payment of ${formatCurrency(tx.amount)} has been verified and credited to your account.`,
+                'fee'
             );
         } catch (err) {
             console.error('Approval error:', err);
@@ -178,7 +179,8 @@ export const FeeManagementView = () => {
             sendPushToUser(
                 tx.enrollmentId,
                 '❌ Payment Rejected',
-                `Your payment of ${formatCurrency(tx.amount)} was rejected. Reason: ${reason}`
+                `Your payment of ${formatCurrency(tx.amount)} was rejected. Reason: ${reason}`,
+                'fee'
             );
         } catch (err) {
             toast.error('Failed to reject payment.');

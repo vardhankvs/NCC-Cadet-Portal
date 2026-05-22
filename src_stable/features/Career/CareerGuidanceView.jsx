@@ -36,12 +36,12 @@ export const CareerGuidanceView = () => {
             if (editingId) {
                 await saveCareerNotice(formData, editingId);
                 toast.success("Notice updated successfully.");
-                sendPushToAll('💼 Career Notice Updated', `${formData.title} has been updated. Check the Careers tab.`);
+                sendPushToAll('💼 Career Notice Updated', `${formData.title} has been updated. Check the Careers tab.`, 'career');
                 setEditingId(null);
             } else {
                 await saveCareerNotice(formData);
                 toast.success("Notice posted successfully.");
-                sendPushToAll('💼 New Career Opportunity', `${formData.title} has been posted. Check the Careers tab.`);
+                sendPushToAll('💼 New Career Opportunity', `${formData.title} has been posted. Check the Careers tab.`, 'career');
             }
             setFormData({ title: '', description: '', link: '', category: 'Armed Forces' });
             setShowForm(false);

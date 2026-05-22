@@ -125,7 +125,7 @@ export const AttendanceScanner = () => {
 
             toast.success(`Attendance marked for ${cadet.name}`);
             import('../../firebase/pushNotifications.js').then(({ sendPushToCadets }) => {
-                sendPushToCadets([cadet.id], '✅ Attendance Marked', `Your attendance was marked for today's class.`);
+                sendPushToCadets([cadet.id], '✅ Attendance Marked', `Your attendance was marked for today's class.`, 'attendance');
             }).catch(console.error);
             
             // Add to local recent logs

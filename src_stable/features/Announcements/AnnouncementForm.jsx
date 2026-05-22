@@ -29,7 +29,7 @@ export const AnnouncementForm = ({ onClose, initialData = null }) => {
         try {
             await saveAnnouncement(title, content, targetCertificate, targetDivision, noticeDate, initialData?.id);
             toast.success(initialData ? "Formal notice updated." : "Formal notice posted to the unit board.");
-            if (!initialData) sendPushToAll('📢 New Announcement', title);
+            if (!initialData) sendPushToAll('📢 New Announcement', title, 'announcements');
             onClose();
         } catch (e) {
             setFormError(`Failed to save announcement: ${e.message}`);

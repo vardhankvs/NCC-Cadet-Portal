@@ -57,7 +57,7 @@ export const AttendanceTracker = ({ cadets }) => {
         try { 
             await recordAttendance(cadetId, selectedDate, newStatus);
             import('../../firebase/pushNotifications.js').then(({ sendPushToCadets }) => {
-                sendPushToCadets([cadet.id], '✅ Attendance Updated', `Your attendance was marked as ${newStatus} for today's class.`);
+                sendPushToCadets([cadet.id], '✅ Attendance Updated', `Your attendance was marked as ${newStatus} for today's class.`, 'attendance');
             }).catch(console.error);
         }
         catch (e) { setError(`Attendance update failed: ${e.message}`); }
