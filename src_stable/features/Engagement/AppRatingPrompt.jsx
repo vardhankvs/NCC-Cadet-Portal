@@ -18,7 +18,7 @@ export const AppRatingPrompt = () => {
     useEffect(() => {
         if (userRole !== 'cadet' || !userEnrollmentId) return;
 
-        if (localStorage.getItem('ncc_has_rated') === 'true' || localStorage.getItem('ncc_rating_dismissed') === 'true') {
+        if (localStorage.getItem('ncc_has_rated') === 'true') {
             return;
         }
 
@@ -76,8 +76,8 @@ export const AppRatingPrompt = () => {
     };
 
     const handleDismiss = () => {
-        // Maybe don't ask again for a while, or never
-        localStorage.setItem('ncc_rating_dismissed', 'true');
+        // Just hide it for this session. It will reappear next time the app is opened
+        // until they actually submit a rating.
         setShowModal(false);
     };
 
