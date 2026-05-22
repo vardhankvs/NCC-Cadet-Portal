@@ -35,7 +35,7 @@ export default async function handler(req, res) {
     }
 
     try {
-        const { subject, message, tokens } = req.body;
+        const { subject, message, tokens, targetTab } = req.body;
 
         if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
             return res.status(400).json({ error: 'No FCM tokens provided.' });
@@ -64,6 +64,9 @@ export default async function handler(req, res) {
         // configs are needed for notifications to appear on lock screen & notification bar.
         const multicastMessage = {
             tokens: uniqueTokens,
+            data: {
+                targetTab: targetTab || 'notifications'
+            },
 
             // OS-level notification — shown on lock screen, notification bar, home screen
             notification: {
@@ -105,7 +108,7 @@ export default async function handler(req, res) {
 
                 },
                 fcmOptions: {
-                    link: 'https://ncc-portal-redesign.vercel.app/?tab=notifications',
+                    link: targetTab ? `https://ncc-portal-redesign.vercel.app/?tab=${targetTab}` : 'https://ncc-portal-redesign.vercel.app/?tab=notifications',
                 }
             },
 

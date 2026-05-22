@@ -14,7 +14,7 @@ const getCollectionRef = (collectionName) => {
 const VERCEL_ORIGIN = 'https://ncc-portal-redesign.vercel.app';
 
 /** Internal: calls the Vercel FCM API with the given tokens */
-const _dispatch = async (tokens, title, body) => {
+const _dispatch = async (tokens, title, body, targetTab = null) => {
     const uniqueTokens = [...new Set(tokens.filter(Boolean))];
     if (uniqueTokens.length === 0) {
         console.warn('FCM: No tokens found — device may not have notifications enabled');
@@ -22,10 +22,12 @@ const _dispatch = async (tokens, title, body) => {
     }
     console.log(`FCM: Sending push to ${uniqueTokens.length} device(s): "${title}"`);
     try {
+        const payload = { subject: title, message: body, tokens: uniqueTokens };
+        if (targetTab) payload.targetTab = targetTab;
         const resp = await fetch(`${VERCEL_ORIGIN}/api/sendBroadcast`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ subject: title, message: body, tokens: uniqueTokens }),
+            body: JSON.stringify(payload),
         });
         if (!resp.ok) {
             const err = await resp.text();
@@ -43,7 +45,7 @@ const _dispatch = async (tokens, title, body) => {
  * Sends a push notification to ALL registered devices.
  * Use for general broadcasts (new camp, new exam, social update, etc.)
  */
-export const sendPushToAll = async (title, body) => {
+export const sendPushToAll = async (title, body, targetTab = null) => {
     try {
         const tokens = [];
 
@@ -77,7 +79,7 @@ export const sendPushToAll = async (title, body) => {
             });
         } catch (e) { console.warn('FCM: users fetch skipped', e.message); }
 
-        await _dispatch(tokens, title, body);
+        await _dispatch(tokens, title, body, targetTab);
     } catch (e) {
         console.warn('sendPushToAll failed (non-critical):', e.message);
     }
@@ -90,8 +92,9 @@ export const sendPushToAll = async (title, body) => {
  * @param {string} enrollmentId  - The cadet's enrollment ID (e.g. "14BNSD001")
  * @param {string} title         - Notification title
  * @param {string} body          - Notification body
+ * @param {string} targetTab     - Optional tab to open when notification is clicked
  */
-export const sendPushToUser = async (enrollmentId, title, body) => {
+export const sendPushToUser = async (enrollmentId, title, body, targetTab = null) => {
     if (!enrollmentId) return;
     try {
         const tokens = [];
@@ -118,9 +121,9 @@ export const sendPushToUser = async (enrollmentId, title, body) => {
                     else if (typeof t === 'string' && t) tokens.push(t);
                 }
             });
-        } catch (e) { console.warn('FCM: user lookup skipped', e.message); }
+        } catch (e) { console.warn('FCM: users (officer) fetch skipped for single user', e.message); }
 
-        await _dispatch(tokens, title, body);
+        await _dispatch(tokens, title, body, targetTab);
     } catch (e) {
         console.warn('sendPushToUser failed (non-critical):', e.message);
     }
