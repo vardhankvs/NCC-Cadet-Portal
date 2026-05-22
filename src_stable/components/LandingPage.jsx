@@ -1335,7 +1335,7 @@ export const LandingPage = ({ onGetStarted, user }) => {
                                 </div>
                                 <div className="space-y-0.5">
                                     <h4 className="font-bold text-ncc-navy dark:text-white text-lg">Email Us</h4>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400 font-medium leading-relaxed">ncc.unit@gmrit.edu.in</p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 font-medium leading-relaxed">gmritncc1@gmail.com</p>
                                 </div>
                             </div>
                         </div>
