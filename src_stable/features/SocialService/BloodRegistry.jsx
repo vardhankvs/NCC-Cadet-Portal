@@ -95,7 +95,7 @@ const DonorCard = ({ donor, onChat }) => {
     );
 };
 
-const ActiveRequestCard = ({ request, userEnrollmentId, userRole, cadets, onEdit, onDelete, onChat }) => {
+const ActiveRequestCard = ({ request, userEnrollmentId, userRole, cadets, userInstitutionId, onEdit, onDelete, onChat }) => {
     const isAccepted = request.acceptedBy?.includes(userEnrollmentId);
     const isAdmin = userRole === 'admin';
 
@@ -427,6 +427,7 @@ export const BloodRegistry = ({ onChat }) => {
                                         request={req} 
                                         userEnrollmentId={userEnrollmentId} 
                                         userRole={userRole} 
+                                        userInstitutionId={userInstitutionId}
                                         cadets={cadets} 
                                         onEdit={handleEditRequest}
                                         onDelete={handleDeleteRequest}
