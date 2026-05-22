@@ -4,7 +4,7 @@ import { useAuthContext } from '../../context/AuthContext.jsx';
 import { getCollectionRef, saveCareerNotice, deleteCareerNotice } from '../../firebase/firestoreService.js';
 import { onSnapshot, query, orderBy } from 'firebase/firestore';
 import axios from 'axios';
-import { Megaphone, ExternalLink, Trash2, Plus, Briefcase, Award, BookOpen, Clock } from '../../components/Icons.jsx';
+import { Megaphone, ExternalLink, Trash2, Edit3, Plus, Briefcase, Award, BookOpen, Clock } from '../../components/Icons.jsx';
 import { toast } from 'react-toastify';
 import { formatDate } from '../../utils/dateUtils.js';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
@@ -15,6 +15,7 @@ export const CareerGuidanceView = () => {
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [syncing, setSyncing] = useState(false);
+    const [editingId, setEditingId] = useState(null);
     const [formData, setFormData] = useState({ title: '', description: '', link: '', category: 'Armed Forces' });
 
     useEffect(() => {
@@ -32,14 +33,32 @@ export const CareerGuidanceView = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            await saveCareerNotice(formData);
-            toast.success("Notice posted successfully.");
-            sendPushToAll('💼 New Career Opportunity', `${formData.title} has been posted. Check the Careers tab.`);
+            if (editingId) {
+                await saveCareerNotice(formData, editingId);
+                toast.success("Notice updated successfully.");
+                setEditingId(null);
+            } else {
+                await saveCareerNotice(formData);
+                toast.success("Notice posted successfully.");
+                sendPushToAll('💼 New Career Opportunity', `${formData.title} has been posted. Check the Careers tab.`);
+            }
             setFormData({ title: '', description: '', link: '', category: 'Armed Forces' });
             setShowForm(false);
         } catch (err) {
-            toast.error("Failed to post: " + err.message);
+            toast.error("Failed to save: " + err.message);
         }
+    };
+
+    const handleEdit = (notice) => {
+        setFormData({
+            title: notice.title || '',
+            description: notice.description || '',
+            link: notice.link || '',
+            category: notice.category || 'Armed Forces'
+        });
+        setEditingId(notice.id);
+        setShowForm(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const handleDelete = async (id) => {
@@ -133,7 +152,11 @@ export const CareerGuidanceView = () => {
                                 {syncing ? 'Syncing...' : 'Sync Live'}
                             </button>
                             <button 
-                                onClick={() => setShowForm(!showForm)}
+                                onClick={() => {
+                                    setEditingId(null);
+                                    setFormData({ title: '', description: '', link: '', category: 'Armed Forces' });
+                                    setShowForm(!showForm);
+                                }}
                                 className="ncc-btn ncc-btn-primary flex items-center gap-2"
                             >
                                 <Plus className="w-4 h-4" /> Post Notice
@@ -144,7 +167,9 @@ export const CareerGuidanceView = () => {
 
                 {showForm && (
                     <form onSubmit={handleSubmit} className="ncc-card p-6 border-2 border-ncc-gold/30 space-y-4 animate-in slide-in-from-top-4">
-                        <h3 className="font-bold text-ncc-navy dark:text-white uppercase tracking-widest text-xs mb-2">New Career Notice</h3>
+                        <h3 className="font-bold text-ncc-navy dark:text-white uppercase tracking-widest text-xs mb-2">
+                            {editingId ? 'Edit Career Notice' : 'New Career Notice'}
+                        </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <input 
                                 type="text" 
@@ -180,8 +205,20 @@ export const CareerGuidanceView = () => {
                             onChange={e => setFormData({ ...formData, link: e.target.value })}
                         />
                         <div className="flex justify-end gap-3">
-                            <button type="button" onClick={() => setShowForm(false)} className="text-gray-400 dark:text-white/80 text-xs font-bold uppercase tracking-widest px-4">Cancel</button>
-                            <button type="submit" className="ncc-btn ncc-btn-success px-8">Post Opportunity</button>
+                            <button 
+                                type="button" 
+                                onClick={() => { 
+                                    setShowForm(false); 
+                                    setEditingId(null); 
+                                    setFormData({ title: '', description: '', link: '', category: 'Armed Forces' }); 
+                                }} 
+                                className="text-gray-400 dark:text-white/80 text-xs font-bold uppercase tracking-widest px-4"
+                            >
+                                Cancel
+                            </button>
+                            <button type="submit" className="ncc-btn ncc-btn-success px-8">
+                                {editingId ? 'Update Notice' : 'Post Opportunity'}
+                            </button>
                         </div>
                     </form>
                 )}
@@ -224,12 +261,20 @@ export const CareerGuidanceView = () => {
                                 </div>
                                 
                                 {userRole === 'admin' && (
-                                    <button 
-                                        onClick={() => handleDelete(notice.id)}
-                                        className="absolute top-4 right-4 p-2 text-gray-300 hover:text-red-500 transition-colors"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
+                                    <div className="absolute top-4 right-4 flex gap-2">
+                                        <button 
+                                            onClick={() => handleEdit(notice)}
+                                            className="p-2 text-gray-300 hover:text-ncc-navy dark:hover:text-white transition-colors"
+                                        >
+                                            <Edit3 className="w-4 h-4" />
+                                        </button>
+                                        <button 
+                                            onClick={() => handleDelete(notice.id)}
+                                            className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         ))
