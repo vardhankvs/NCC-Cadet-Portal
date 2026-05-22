@@ -12,7 +12,8 @@ import {
     Search,
     X as XIcon,
     AlertCircle,
-    Camera
+    Camera,
+    Edit
 } from '../../components/Icons.jsx';
 import { SocialGalleryModal } from './SocialGalleryModal.jsx';
 
@@ -33,6 +34,7 @@ export const SocialServiceView = () => {
     const { cadets, socialActivities, loading } = useDataContext();
     
     const [showAddForm, setShowAddForm] = useState(false);
+    const [editingActivityId, setEditingActivityId] = useState(null);
     const [newActivity, setNewActivity] = useState({
         title: '',
         type: 'Swachh Bharat',
@@ -114,18 +116,31 @@ export const SocialServiceView = () => {
         e.preventDefault();
         setProcessing(true);
         try {
-            const activitiesRef = getCollectionRef('social_activities');
-            await addDoc(activitiesRef, {
-                ...newActivity,
-                institutionId: userInstitutionId || '14a-bn-srikakulam',
-                volunteers: [],
-                imageUrls: [],
-                createdBy: userName || 'Admin',
-                createdAt: serverTimestamp()
-            });
-            toast.success("Social activity logged successfully!");
-            sendPushToAll('New Social Activity', `A new social service activity has been posted: ${newActivity.title}`);
+            if (editingActivityId) {
+                const activityRef = doc(getCollectionRef('social_activities'), editingActivityId);
+                await updateDoc(activityRef, {
+                    title: newActivity.title,
+                    type: newActivity.type,
+                    date: newActivity.date,
+                    location: newActivity.location,
+                    description: newActivity.description
+                });
+                toast.success("Activity updated successfully!");
+            } else {
+                const activitiesRef = getCollectionRef('social_activities');
+                await addDoc(activitiesRef, {
+                    ...newActivity,
+                    institutionId: userInstitutionId || '14a-bn-srikakulam',
+                    volunteers: [],
+                    imageUrls: [],
+                    createdBy: userName || 'Admin',
+                    createdAt: serverTimestamp()
+                });
+                toast.success("Social activity logged successfully!");
+                sendPushToAll('New Social Activity', `A new social service activity has been posted: ${newActivity.title}`);
+            }
             setShowAddForm(false);
+            setEditingActivityId(null);
             setNewActivity({
                 title: '',
                 type: 'Swachh Bharat',
@@ -135,9 +150,32 @@ export const SocialServiceView = () => {
             });
         } catch (err) {
             console.error(err);
-            toast.error("Failed to log activity.");
+            toast.error(editingActivityId ? "Failed to update activity." : "Failed to log activity.");
         } finally {
             setProcessing(false);
+        }
+    };
+
+    const handleEdit = (activity) => {
+        setEditingActivityId(activity.id);
+        setNewActivity({
+            title: activity.title,
+            type: activity.type,
+            date: activity.date || new Date().toISOString().split('T')[0],
+            location: activity.location,
+            description: activity.description || ''
+        });
+        setShowAddForm(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleDelete = async (activityId) => {
+        if (!window.confirm("Are you sure you want to delete this activity? This cannot be undone.")) return;
+        try {
+            await deleteDoc(doc(getCollectionRef('social_activities'), activityId));
+            toast.success("Activity deleted.");
+        } catch (err) {
+            toast.error("Failed to delete activity.");
         }
     };
 
@@ -277,7 +315,21 @@ export const SocialServiceView = () => {
                 </div>
                 {userRole === 'admin' && (
                     <button 
-                        onClick={() => setShowAddForm(!showAddForm)}
+                        onClick={() => {
+                            if (showAddForm) {
+                                setShowAddForm(false);
+                                setEditingActivityId(null);
+                                setNewActivity({
+                                    title: '',
+                                    type: 'Swachh Bharat',
+                                    date: new Date().toISOString().split('T')[0],
+                                    location: '',
+                                    description: ''
+                                });
+                            } else {
+                                setShowAddForm(true);
+                            }
+                        }}
                         className="ncc-btn ncc-btn-primary px-6 flex items-center gap-2"
                     >
                         {showAddForm ? <XIcon className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
@@ -344,7 +396,7 @@ export const SocialServiceView = () => {
                             disabled={processing}
                             className="ncc-btn ncc-btn-success w-full py-4 text-sm font-black tracking-widest uppercase"
                         >
-                            {processing ? 'Logging Activity...' : 'Create Social Activity'}
+                            {processing ? 'Saving...' : (editingActivityId ? 'Save Changes' : 'Create Social Activity')}
                         </button>
                     </form>
                 </div>
@@ -470,11 +522,27 @@ export const SocialServiceView = () => {
 
                                             <button 
                                                 onClick={() => setActiveGallery(activity)}
-                                                className="ncc-btn bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border-2 border-[#ddd8cc] hover:border-ncc-gold ncc-btn-sm w-full py-2 flex items-center justify-center gap-2"
+                                                className="ncc-btn bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border-2 border-[#ddd8cc] hover:border-ncc-gold ncc-btn-sm w-full py-2 flex items-center justify-center gap-2 mb-2"
                                             >
                                                 <Camera className="w-4 h-4 text-ncc-gold" /> Gallery
                                             </button>
 
+                                            {userRole === 'admin' && (
+                                                <div className="flex gap-2">
+                                                    <button 
+                                                        onClick={() => handleEdit(activity)}
+                                                        className="ncc-btn bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border border-[#ddd8cc] hover:border-ncc-navy ncc-btn-sm w-full py-2 flex items-center justify-center gap-2"
+                                                    >
+                                                        <Edit className="w-3 h-3" /> Edit
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleDelete(activity.id)}
+                                                        className="ncc-btn bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 ncc-btn-sm w-full py-2 flex items-center justify-center gap-2"
+                                                    >
+                                                        <Trash2 className="w-3 h-3" /> Delete
+                                                    </button>
+                                                </div>
+                                            )}
 
                                         </div>
                                     </div>
