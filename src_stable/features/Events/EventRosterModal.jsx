@@ -16,8 +16,8 @@ import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 // Removed html-to-docx and file-saver imports
 
-// Helper component for a single cadet row (no change)
-const CadetRow = ({ cadet, event }) => {
+// Helper component for a single cadet row
+const CadetRow = ({ cadet, event, isSelected, onToggleSelection }) => {
     // ... (This component's code remains exactly the same) ...
     const status = event.attendeeStatus?.[cadet.id] || null;
     let statusText = 'Not Invited';
@@ -58,7 +58,15 @@ const CadetRow = ({ cadet, event }) => {
         }
     };
     return (
-        <tr className="hover:bg-gray-50 dark:bg-[#0a1628]">
+        <tr className="hover:bg-gray-50 dark:hover:bg-[#0d2137] dark:bg-transparent transition-colors">
+            <td className="px-4 py-3">
+                <input 
+                    type="checkbox" 
+                    checked={isSelected} 
+                    onChange={() => onToggleSelection(cadet.id)}
+                    className="w-4 h-4 text-ncc-navy bg-gray-100 border-gray-300 rounded focus:ring-ncc-navy dark:focus:ring-ncc-navy dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                />
+            </td>
             <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap">
                 {cadet.name}
             </td>
@@ -84,7 +92,10 @@ const CadetRow = ({ cadet, event }) => {
 export const EventRosterModal = ({ eventId, onClose }) => {
     const { cadets, events } = useDataContext();
     const [selectedCertificate, setSelectedCertificate] = useState('All');
+    const [selectedDivision, setSelectedDivision] = useState('All');
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedCadets, setSelectedCadets] = useState(new Set());
+    const [isBulkProcessing, setIsBulkProcessing] = useState(false);
     // Removed isDownloadingWord state
 
     const event = useMemo(
@@ -101,16 +112,22 @@ export const EventRosterModal = ({ eventId, onClose }) => {
                 (cadet) => cadet.certificate === selectedCertificate
             );
         }
+        if (selectedDivision !== 'All') {
+            list = list.filter((cadet) => {
+                const regNo = cadet.enrollmentId || cadet.regimentalNumber || '';
+                return regNo.includes(selectedDivision);
+            });
+        }
         if (searchTerm) {
             const lowerSearch = searchTerm.toLowerCase();
             list = list.filter(
                 (cadet) =>
                     cadet.name.toLowerCase().includes(lowerSearch) ||
-                    cadet.enrollmentId.toLowerCase().includes(lowerSearch)
+                    (cadet.enrollmentId || '').toLowerCase().includes(lowerSearch)
             );
         }
         return list;
-    }, [sortedCadets, selectedCertificate, searchTerm]);
+    }, [sortedCadets, selectedCertificate, selectedDivision, searchTerm]);
 
     const confirmedCadets = useMemo(() => {
         if (!event) return [];
@@ -118,6 +135,55 @@ export const EventRosterModal = ({ eventId, onClose }) => {
             (cadet) => event.attendeeStatus?.[cadet.id] === 'confirmed'
         );
     }, [sortedCadets, event]);
+
+    const handleSelectAll = (e) => {
+        if (e.target.checked) {
+            setSelectedCadets(new Set(filteredCadets.map(c => c.id)));
+        } else {
+            setSelectedCadets(new Set());
+        }
+    };
+
+    const handleToggleSelection = (cadetId) => {
+        const newSet = new Set(selectedCadets);
+        if (newSet.has(cadetId)) {
+            newSet.delete(cadetId);
+        } else {
+            newSet.add(cadetId);
+        }
+        setSelectedCadets(newSet);
+    };
+
+    const handleBulkAction = async (status) => {
+        if (selectedCadets.size === 0) {
+            toast.warn('No cadets selected');
+            return;
+        }
+        setIsBulkProcessing(true);
+        try {
+            const cadetIdsArray = Array.from(selectedCadets);
+            // Assuming setEventAttendeeBulk is implemented in firestoreService
+            // If not, we can loop over them. Since we added it, let's use it.
+            import('../../firebase/firestoreService.js').then(async ({ setEventAttendeeBulk }) => {
+                await setEventAttendeeBulk(event.id, cadetIdsArray, status);
+                toast.success(`Successfully ${status === 'confirmed' ? 'added to list' : 'removed from list'}`);
+                setSelectedCadets(new Set());
+                setIsBulkProcessing(false);
+            }).catch(async () => {
+                // Fallback if bulk import fails
+                const { setEventAttendeeStatus } = await import('../../firebase/firestoreService.js');
+                for (const cadetId of cadetIdsArray) {
+                    await setEventAttendeeStatus(event.id, cadetId, status);
+                }
+                toast.success(`Successfully processed ${cadetIdsArray.length} cadets`);
+                setSelectedCadets(new Set());
+                setIsBulkProcessing(false);
+            });
+        } catch (error) {
+            toast.error(`Failed to process: ${error.message}`);
+            setIsBulkProcessing(false);
+        }
+    };
 
     // This function generates the HTML for the print page
     const generatePrintHtml = () => {
@@ -270,44 +336,93 @@ export const EventRosterModal = ({ eventId, onClose }) => {
                 </div>
 
                 {/* Filter Bar */}
-                <div className="flex space-x-1 bg-gray-100 dark:bg-[#0d2137] p-1 rounded-lg shadow-inner border border-gray-200 dark:border-white/10 flex-shrink-0 mb-4">
-                    {['All', 'B1', 'B2', 'C'].map((cert) => (
-                        <button
-                            key={cert}
-                            onClick={() => setSelectedCertificate(cert)}
-                            className={`px-3 py-1 text-xs sm:text-sm font-medium rounded-md transition duration-150 whitespace-nowrap ${
-                                selectedCertificate === cert
-                                    ? 'bg-indigo-600 text-white shadow-md'
-                                    : 'text-gray-700 dark:text-white/90 hover:bg-gray-200 hover:text-indigo-700'
-                            }`}
-                        >
-                            {cert === 'All' ? 'All' : `${cert} Cert`}
-                        </button>
-                    ))}
+                <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                    <div className="flex space-x-1 bg-gray-100 dark:bg-[#0d2137] p-1 rounded-lg shadow-inner border border-gray-200 dark:border-white/10 flex-1 overflow-x-auto ncc-scrollbar">
+                        {['All', 'B1', 'B2', 'C'].map((cert) => (
+                            <button
+                                key={cert}
+                                onClick={() => setSelectedCertificate(cert)}
+                                className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-md transition duration-150 whitespace-nowrap ${
+                                    selectedCertificate === cert
+                                        ? 'bg-ncc-navy dark:bg-white text-white dark:text-ncc-navy shadow-md'
+                                        : 'text-gray-700 dark:text-white/80 hover:bg-gray-200 dark:hover:bg-white/10'
+                                }`}
+                            >
+                                {cert === 'All' ? 'All Certs' : `${cert} Cert`}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="flex space-x-1 bg-gray-100 dark:bg-[#0d2137] p-1 rounded-lg shadow-inner border border-gray-200 dark:border-white/10 flex-1 overflow-x-auto ncc-scrollbar">
+                        {['All', 'SD', 'SW', 'JD', 'JW'].map((div) => (
+                            <button
+                                key={div}
+                                onClick={() => setSelectedDivision(div)}
+                                className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-md transition duration-150 whitespace-nowrap ${
+                                    selectedDivision === div
+                                        ? 'bg-ncc-navy dark:bg-white text-white dark:text-ncc-navy shadow-md'
+                                        : 'text-gray-700 dark:text-white/80 hover:bg-gray-200 dark:hover:bg-white/10'
+                                }`}
+                            >
+                                {div === 'All' ? 'All Divs' : div}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
-                {/* Search Bar */}
-                <div className="mb-4">
-                    <div className="relative">
+                {/* Search Bar & Bulk Actions */}
+                <div className="mb-4 flex flex-col md:flex-row gap-4 items-center justify-between">
+                    <div className="relative flex-1 w-full">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Search className="h-5 w-5 text-gray-400 dark:text-white/80" />
+                            <Search className="h-4 w-4 text-gray-400 dark:text-white/80" />
                         </div>
                         <input
                             type="text"
                             placeholder="Search by Name or Enrollment ID..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white dark:bg-[#050b14] placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-white/20 rounded-lg leading-5 bg-white dark:bg-[#050b14] dark:text-white placeholder-gray-500 focus:outline-none focus:ring-ncc-navy focus:border-ncc-navy sm:text-sm"
                         />
                     </div>
+                    
+                    {selectedCadets.size > 0 && (
+                        <div className="flex items-center gap-2 bg-ncc-navy/5 dark:bg-white/5 p-1.5 rounded-lg border border-ncc-navy/10 dark:border-white/10 animate-fade-in w-full md:w-auto">
+                            <span className="text-xs font-bold text-ncc-navy dark:text-white px-2 whitespace-nowrap">
+                                {selectedCadets.size} selected
+                            </span>
+                            <button 
+                                onClick={() => handleBulkAction('confirmed')}
+                                disabled={isBulkProcessing}
+                                className="px-3 py-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-700 text-xs font-bold flex items-center transition disabled:opacity-50"
+                            >
+                                {isBulkProcessing ? <Loader className="w-3 h-3 animate-spin mr-1"/> : <UserCheck className="w-3 h-3 mr-1" />}
+                                Add to Event
+                            </button>
+                            <button 
+                                onClick={() => handleBulkAction(null)}
+                                disabled={isBulkProcessing}
+                                className="px-3 py-1.5 bg-gray-200 text-gray-700 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 rounded hover:bg-gray-300 text-xs font-bold flex items-center transition disabled:opacity-50"
+                            >
+                                {isBulkProcessing ? <Loader className="w-3 h-3 animate-spin mr-1"/> : <UserX className="w-3 h-3 mr-1" />}
+                                Remove
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Table container */}
                 <div className="flex-grow overflow-y-auto">
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-white/10">
-                        <thead className="bg-gray-50 dark:bg-[#0a1628] sticky top-0">
+                        <thead className="bg-gray-50 dark:bg-[#0a1628] sticky top-0 border-b border-gray-200 dark:border-white/10">
                             <tr>
-                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-white/70 uppercase tracking-wider">
+                                <th className="px-4 py-3 text-left w-10">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={filteredCadets.length > 0 && selectedCadets.size === filteredCadets.length}
+                                        onChange={handleSelectAll}
+                                        className="w-4 h-4 text-ncc-navy bg-gray-100 border-gray-300 rounded focus:ring-ncc-navy dark:focus:ring-ncc-navy dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                                    />
+                                </th>
+                                <th className="px-4 py-3 text-left text-xs font-black text-gray-500 dark:text-white/70 uppercase tracking-wider">
                                     Name
                                 </th>
                                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-white/70 uppercase tracking-wider">
@@ -328,12 +443,14 @@ export const EventRosterModal = ({ eventId, onClose }) => {
                                         key={cadet.id}
                                         cadet={cadet}
                                         event={event}
+                                        isSelected={selectedCadets.has(cadet.id)}
+                                        onToggleSelection={handleToggleSelection}
                                     />
                                 ))
                             ) : (
                                 <tr>
                                     <td
-                                        colSpan="4"
+                                        colSpan="5"
                                         className="px-4 py-4 text-center text-gray-500 dark:text-white/70"
                                     >
                                         No cadets match your filters.
@@ -345,11 +462,11 @@ export const EventRosterModal = ({ eventId, onClose }) => {
                 </div>
 
                 {/* --- MODIFIED FOOTER (Word button removed) --- */}
-                <div className="flex justify-between items-center mt-6 pt-4 border-t">
+                <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200 dark:border-white/10">
                     <button
                         onClick={handlePrint}
                         disabled={confirmedCadets.length === 0}
-                        className="flex items-center px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400"
+                        className="flex items-center px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400 font-bold transition-colors shadow-sm"
                         title="Generate printable list (PDF)"
                     >
                         <Printer className="w-4 h-4 mr-2" />
@@ -357,7 +474,7 @@ export const EventRosterModal = ({ eventId, onClose }) => {
                     </button>
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300"
+                        className="px-6 py-2 text-sm font-bold bg-ncc-navy text-white hover:bg-ncc-navy/90 dark:bg-white dark:text-ncc-navy dark:hover:bg-gray-100 rounded-lg shadow-sm transition-colors"
                     >
                         Done
                     </button>

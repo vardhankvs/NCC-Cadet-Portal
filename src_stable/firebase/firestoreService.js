@@ -486,6 +486,18 @@ export const setEventAttendeeStatus = async (eventId, cadetId, status) => {
     }
 };
 
+export const setEventAttendeeBulk = async (eventId, cadetIds, status) => {
+    if (!eventId || !cadetIds || !Array.isArray(cadetIds)) return;
+    const eventRef = doc(getCollectionRef('events'), eventId);
+    
+    const updates = { updatedAt: serverTimestamp() };
+    cadetIds.forEach(cadetId => {
+        updates[`attendeeStatus.${cadetId}`] = status === null ? deleteField() : status;
+    });
+
+    await updateDoc(eventRef, updates);
+};
+
 // --- Staff ---
 export const saveStaff = async (data, id = null) => {
     const ref = getCollectionRef('staff');
