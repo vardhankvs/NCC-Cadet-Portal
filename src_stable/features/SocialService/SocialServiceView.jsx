@@ -20,7 +20,7 @@ import { addDoc, doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, serverTimes
 import { getCollectionRef } from '../../firebase/firestoreService.js';
 import { db } from '../../firebase/config.js';
 import { toast } from 'react-toastify';
-import { sendPushToAll } from '../../firebase/pushNotifications.js';
+import { sendPushToAll, sendPushToUser } from '../../firebase/pushNotifications.js';
 import { LoadingIndicator } from '../../components/ui/LoadingIndicator.jsx';
 import jsPDF from 'jspdf';
 import nccLogo from '../../assets/ncc_logo.jpg';
@@ -91,9 +91,13 @@ export const SocialServiceView = () => {
             let updatedVolunteers = [...(currentVolunteers || [])];
             
             if (action === 'select_all') {
-                // Add all visible IDs that are not already present
                 const newIds = visibleCadetIds.filter(id => !updatedVolunteers.includes(id));
                 updatedVolunteers = [...updatedVolunteers, ...newIds];
+                
+                // Send push notification to newly added cadets
+                newIds.forEach(cadetId => {
+                    sendPushToUser(cadetId, 'Volunteer Registry', `You have been selected as a volunteer for: ${selectedActivity?.title || 'a social activity'}`);
+                });
             } else {
                 // Remove all visible IDs
                 updatedVolunteers = updatedVolunteers.filter(id => !visibleCadetIds.includes(id));
@@ -120,7 +124,7 @@ export const SocialServiceView = () => {
                 createdAt: serverTimestamp()
             });
             toast.success("Social activity logged successfully!");
-            sendPushToAll('🤝 New Social Activity', 'A new social service activity has been posted');
+            sendPushToAll('New Social Activity', `A new social service activity has been posted: ${newActivity.title}`);
             setShowAddForm(false);
             setNewActivity({
                 title: '',
@@ -143,6 +147,11 @@ export const SocialServiceView = () => {
             await updateDoc(activityRef, {
                 volunteers: isParticipating ? arrayRemove(cadetId) : arrayUnion(cadetId)
             });
+            
+            if (!isParticipating) {
+                // If they were NOT participating, they just got added.
+                sendPushToUser(cadetId, 'Volunteer Registry', `You have been selected as a volunteer for: ${selectedActivity?.title || 'a social activity'}`);
+            }
         } catch (err) {
             toast.error("Update failed.");
         }
