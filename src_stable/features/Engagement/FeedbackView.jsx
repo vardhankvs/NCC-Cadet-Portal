@@ -23,7 +23,8 @@ export const FeedbackView = () => {
     
     // Admin state
     const [feedbacks, setFeedbacks] = useState([]);
-    const [stats, setStats] = useState({ average: 0, total: 0, distribution: [0,0,0,0,0] });
+    const [selectedCert, setSelectedCert] = useState('All');
+    const [selectedDiv, setSelectedDiv] = useState('All');
 
     // Check cadet's previous feedback
     useEffect(() => {
@@ -47,18 +48,38 @@ export const FeedbackView = () => {
         const unsubscribe = onSnapshot(fbQuery, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setFeedbacks(data);
-            
-            // Calculate stats
-            if (data.length > 0) {
-                const total = data.length;
-                const sum = data.reduce((acc, f) => acc + (f.rating || 0), 0);
-                const distribution = [0,0,0,0,0];
-                data.forEach(f => { if(f.rating) distribution[f.rating - 1]++; });
-                setStats({ average: (sum / total).toFixed(1), total, distribution });
-            }
         });
         return () => unsubscribe();
     }, [isAdmin]);
+
+    const filteredFeedbacks = React.useMemo(() => {
+        return feedbacks.filter(f => {
+            if (selectedCert === 'All' && selectedDiv === 'All') return true;
+            
+            const linkedCadet = cadets.find(c => c.enrollmentId === f.enrollmentId);
+            
+            if (selectedCert !== 'All') {
+                const cert = linkedCadet?.certificate || linkedCadet?.B || '';
+                if (String(cert).trim().toUpperCase() !== selectedCert.toUpperCase()) return false;
+            }
+            
+            if (selectedDiv !== 'All') {
+                const regNo = (linkedCadet?.enrollmentId || linkedCadet?.regimentalNumber || '').toUpperCase();
+                if (!regNo.includes(selectedDiv)) return false;
+            }
+            
+            return true;
+        });
+    }, [feedbacks, cadets, selectedCert, selectedDiv]);
+
+    const displayStats = React.useMemo(() => {
+        if (filteredFeedbacks.length === 0) return { average: 0, total: 0, distribution: [0,0,0,0,0] };
+        const total = filteredFeedbacks.length;
+        const sum = filteredFeedbacks.reduce((acc, f) => acc + (f.rating || 0), 0);
+        const distribution = [0,0,0,0,0];
+        filteredFeedbacks.forEach(f => { if(f.rating) distribution[f.rating - 1]++; });
+        return { average: (sum / total).toFixed(1), total, distribution };
+    }, [filteredFeedbacks]);
 
     const handleDelete = async (id) => {
         if (!window.confirm("Remove this feedback entry?")) return;
@@ -170,15 +191,32 @@ export const FeedbackView = () => {
                                 <div className="flex items-center gap-2">
                                     <div className="flex">
                                         {[1,2,3,4,5].map(s => (
-                                            <Star key={s} className={`w-4 h-4 ${Math.round(stats.average) >= s ? 'text-ncc-gold fill-ncc-gold' : 'text-gray-200'}`} />
+                                            <Star key={s} className={`w-4 h-4 ${Math.round(displayStats.average) >= s ? 'text-ncc-gold fill-ncc-gold' : 'text-gray-200'}`} />
                                         ))}
                                     </div>
-                                    <span className="text-2xl font-display font-bold text-ncc-navy dark:text-white">{stats.average}</span>
+                                    <span className="text-2xl font-display font-bold text-ncc-navy dark:text-white">{displayStats.average}</span>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </header>
+
+                <div className="flex flex-wrap gap-2 -mt-4">
+                    <div className="ncc-filter-group">
+                        {['All', 'SD', 'SW'].map((cat) => (
+                            <button key={cat} onClick={() => setSelectedDiv(cat)} className={`ncc-filter-btn ${selectedDiv === cat ? 'active' : ''}`}>
+                                {cat === 'All' ? 'All Div.' : cat}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="ncc-filter-group">
+                        {['All', 'B1', 'B2', 'C'].map((cert) => (
+                            <button key={cert} onClick={() => setSelectedCert(cert)} className={`ncc-filter-btn ${selectedCert === cert ? 'active' : ''}`}>
+                                {cert === 'All' ? 'All Certs' : cert}
+                            </button>
+                        ))}
+                    </div>
+                </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-1 space-y-6">
@@ -194,20 +232,20 @@ export const FeedbackView = () => {
                                         <div className="flex-1 h-2 bg-ncc-navy/5 rounded-full overflow-hidden">
                                             <div 
                                                 className="h-full bg-ncc-gold transition-all duration-1000" 
-                                                style={{ width: `${(stats.distribution[r-1] / stats.total * 100) || 0}%` }}
+                                                style={{ width: `${(displayStats.distribution[r-1] / displayStats.total * 100) || 0}%` }}
                                             />
                                         </div>
-                                        <span className="text-[10px] font-bold text-ncc-navy dark:text-white/40 w-8 text-right">{stats.distribution[r-1]}</span>
+                                        <span className="text-[10px] font-bold text-ncc-navy dark:text-white/40 w-8 text-right">{displayStats.distribution[r-1]}</span>
                                     </div>
                                 ))}
                             </div>
-                            <p className="mt-8 pt-6 border-t border-ncc-navy/5 text-[10px] font-bold text-ncc-navy dark:text-white/40 uppercase tracking-widest text-center">Total Responses: {stats.total}</p>
+                            <p className="mt-8 pt-6 border-t border-ncc-navy/5 text-[10px] font-bold text-ncc-navy dark:text-white/40 uppercase tracking-widest text-center">Total Responses: {displayStats.total}</p>
                         </div>
 
                         <div className="ncc-card p-8 bg-ncc-navy text-white relative overflow-hidden">
                             <div className="relative z-10">
                                 <h4 className="font-display font-bold text-xl mb-2">Unit Morale</h4>
-                                <p className="text-xs text-white/60 mb-6 leading-relaxed">Systematic analysis of recent feedback indicates a {stats.average > 4 ? 'very positive' : 'stable'} unit morale.</p>
+                                <p className="text-xs text-white/60 mb-6 leading-relaxed">Systematic analysis of recent feedback indicates a {displayStats.average > 4 ? 'very positive' : 'stable'} unit morale.</p>
                                 <div className="flex items-center gap-2 text-ncc-gold">
                                     <Users className="w-4 h-4" />
                                     <span className="text-xs font-bold uppercase tracking-widest">Active Monitoring</span>
@@ -223,7 +261,11 @@ export const FeedbackView = () => {
                             <div className="text-[10px] font-bold text-ncc-navy dark:text-white/40 uppercase">Newest First</div>
                         </div>
                         <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 ncc-scrollbar">
-                                    {feedbacks.map(f => {
+                                    {filteredFeedbacks.length === 0 ? (
+                                        <div className="p-8 text-center bg-white/5 rounded-2xl border border-white/5">
+                                            <p className="text-sm text-ncc-navy/50 dark:text-white/40 italic">No feedback found for this selection.</p>
+                                        </div>
+                                    ) : filteredFeedbacks.map(f => {
                                         const linkedCadet = cadets.find(c => c.enrollmentId === f.enrollmentId);
                                         const displayName = f.cadetName !== 'Anonymous Cadet' ? f.cadetName : (linkedCadet?.fullName || linkedCadet?.name || 'Anonymous Cadet');
                                         
