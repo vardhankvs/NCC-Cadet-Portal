@@ -3,8 +3,13 @@
 // sendPushToAll(title, body)   — broadcasts to ALL registered devices
 // sendPushToUser(enrollmentId, title, body) — sends to ONE specific cadet/user only
 
-import { getDocs, query, where } from 'firebase/firestore';
-import { getCollectionRef } from './firestoreService.js';
+import { getDocs, query, where, collection } from 'firebase/firestore';
+import { db, appId } from './config.js';
+
+const getCollectionRef = (collectionName) => {
+    if (!db || !appId) return null;
+    return collection(db, 'artifacts', appId, 'public', 'data', collectionName);
+};
 
 const VERCEL_ORIGIN = 'https://ncc-portal-redesign.vercel.app';
 
