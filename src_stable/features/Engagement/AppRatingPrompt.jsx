@@ -16,7 +16,7 @@ export const AppRatingPrompt = () => {
     const [hasChecked, setHasChecked] = useState(false);
 
     useEffect(() => {
-        if (userRole !== 'cadet' || !userEnrollmentId) return;
+        if (!userEnrollmentId) return;
 
         if (localStorage.getItem('ncc_has_rated') === 'true') {
             return;
@@ -30,13 +30,15 @@ export const AppRatingPrompt = () => {
             if (!snapshot.empty) {
                 localStorage.setItem('ncc_has_rated', 'true');
             } else {
-                // If not already rated, check the opens counter.
-                // We use a simple time-based debounce to prevent rapid refreshes from counting.
-                const lastOpen = parseInt(localStorage.getItem('ncc_last_open_time') || '0', 10);
+                // Increment immediately for testing purposes
                 let opens = parseInt(localStorage.getItem('ncc_app_opens') || '0', 10);
                 
+                // We use a small 2-second debounce just to prevent React double-mounts from double-counting,
+                // but allow manual refreshes to count quickly.
+                const lastOpen = parseInt(localStorage.getItem('ncc_last_open_time') || '0', 10);
                 const now = Date.now();
-                if (now - lastOpen > 10000) { // 10 seconds debounce
+                
+                if (now - lastOpen > 2000) {
                     opens += 1;
                     localStorage.setItem('ncc_app_opens', opens.toString());
                     localStorage.setItem('ncc_last_open_time', now.toString());
