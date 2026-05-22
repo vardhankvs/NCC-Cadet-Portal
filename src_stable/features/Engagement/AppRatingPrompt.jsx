@@ -18,41 +18,38 @@ export const AppRatingPrompt = () => {
     useEffect(() => {
         if (userRole !== 'cadet' || !userEnrollmentId) return;
 
-        // Check if previously rated in localStorage first
         if (localStorage.getItem('ncc_has_rated') === 'true' || localStorage.getItem('ncc_rating_dismissed') === 'true') {
             return;
         }
 
-        // Check Firestore for previous feedback
         const ref = getCollectionRef('feedback');
         if (!ref) return;
         const fbQuery = query(ref, where('enrollmentId', '==', userEnrollmentId));
         
         const unsubscribe = onSnapshot(fbQuery, (snapshot) => {
             if (!snapshot.empty) {
-                // Already rated
                 localStorage.setItem('ncc_has_rated', 'true');
-            } else if (!hasChecked) {
-                setHasChecked(true);
-                // Not rated, check opens
-                const opens = parseInt(localStorage.getItem('ncc_app_opens') || '0', 10);
+            } else {
+                // If not already rated, check the opens counter.
+                // We use a simple time-based debounce to prevent rapid refreshes from counting.
+                const lastOpen = parseInt(localStorage.getItem('ncc_last_open_time') || '0', 10);
+                let opens = parseInt(localStorage.getItem('ncc_app_opens') || '0', 10);
                 
-                if (!sessionStorage.getItem('ncc_session_counted')) {
-                    const newOpens = opens + 1;
-                    localStorage.setItem('ncc_app_opens', newOpens.toString());
-                    sessionStorage.setItem('ncc_session_counted', 'true');
-                    
-                    if (newOpens >= 3) {
-                        setShowModal(true);
-                    }
-                } else if (opens >= 3) {
+                const now = Date.now();
+                if (now - lastOpen > 10000) { // 10 seconds debounce
+                    opens += 1;
+                    localStorage.setItem('ncc_app_opens', opens.toString());
+                    localStorage.setItem('ncc_last_open_time', now.toString());
+                }
+                
+                if (opens >= 3) {
                     setShowModal(true);
                 }
             }
         });
 
         return () => unsubscribe();
-    }, [userRole, userEnrollmentId, hasChecked]);
+    }, [userRole, userEnrollmentId]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
