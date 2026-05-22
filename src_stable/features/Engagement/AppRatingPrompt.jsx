@@ -16,11 +16,7 @@ export const AppRatingPrompt = () => {
     const [hasChecked, setHasChecked] = useState(false);
 
     useEffect(() => {
-        if (!userEnrollmentId) return;
-
-        if (localStorage.getItem('ncc_has_rated') === 'true') {
-            return;
-        }
+        if (userRole !== 'cadet' || !userEnrollmentId) return;
 
         const ref = getCollectionRef('feedback');
         if (!ref) return;
@@ -28,7 +24,8 @@ export const AppRatingPrompt = () => {
         
         const unsubscribe = onSnapshot(fbQuery, (snapshot) => {
             if (!snapshot.empty) {
-                localStorage.setItem('ncc_has_rated', 'true');
+                // If they have feedback in the database, don't show prompt
+                setShowModal(false);
             } else {
                 // Increment immediately for testing purposes
                 let opens = parseInt(localStorage.getItem('ncc_app_opens') || '0', 10);
@@ -67,7 +64,6 @@ export const AppRatingPrompt = () => {
                 message,
                 timestamp: new Date().toISOString()
             });
-            localStorage.setItem('ncc_has_rated', 'true');
             setShowModal(false);
             toast.success('Thank you for rating the app!');
         } catch (err) {
