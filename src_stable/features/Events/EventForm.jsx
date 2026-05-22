@@ -136,8 +136,8 @@ export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGalle
                         className="ncc-input text-sm min-h-[140px] leading-relaxed"
                     />
                 </div>
-                </div>
             </div>
+
 
             <div className="mt-8 pt-6 border-t border-gray-100 dark:border-white/10">
                 <label className="block text-[10px] font-black text-ncc-navy dark:text-white uppercase tracking-widest mb-3">Event Management</label>
