@@ -515,7 +515,7 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
             {/* Add/Edit Tutorial Modal */}
             {isAddingTutorial && (
                 <ModalOverlay onClose={() => { setIsAddingTutorial(false); setEditingTutorialId(null); }}>
-                    <div className="p-10 w-[600px] max-w-[95vw] relative bg-white dark:bg-[#050b14]">
+                    <div className="p-10 w-[600px] max-w-[95vw] max-h-[90vh] overflow-y-auto ncc-scrollbar relative bg-white dark:bg-[#050b14]">
                         <button onClick={() => { setIsAddingTutorial(false); setEditingTutorialId(null); }} className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:bg-[#0d2137] rounded-full transition z-10"><X className="w-5 h-5 text-gray-400 dark:text-white/80" /></button>
                         <div className="mb-10">
                             <h3 className="text-3xl font-display font-bold text-ncc-navy dark:text-white">{editingTutorialId ? 'Edit Tutorial' : 'New Video Tutorial'}</h3>
@@ -635,7 +635,7 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
 
             {isUploadModalOpen && (
                 <ModalOverlay onClose={() => setIsUploadModalOpen(false)}>
-                    <div className="p-10 w-[600px] max-w-[95vw] relative bg-white dark:bg-[#050b14]">
+                    <div className="p-10 w-[600px] max-w-[95vw] max-h-[90vh] overflow-y-auto ncc-scrollbar relative bg-white dark:bg-[#050b14]">
                         <button onClick={() => setIsUploadModalOpen(false)} className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:bg-[#0d2137] rounded-full transition z-10"><X className="w-5 h-5 text-gray-400 dark:text-white/80" /></button>
                         <div className="mb-10">
                             <h3 className="text-3xl font-display font-bold text-ncc-navy dark:text-white">Upload Resource</h3>
