@@ -201,3 +201,86 @@ export const sendPushToAdmins = async (title, body, targetTab = null) => {
         console.warn('sendPushToAdmins failed (non-critical):', e.message);
     }
 };
+
+/**
+ * Sends an attendance-verification push notification to specific cadets.
+ * Carries pendingDocId + adminLocation as FCM data fields so the service
+ * worker can build the deep-link and show the "✅ Mark Attendance" action button.
+ *
+ * @param {Array<string>} cadetIds   - Array of cadet Firestore document IDs
+ * @param {string} pendingDocId      - Firestore doc ID of the pending_attendance record
+ * @param {{ latitude: number, longitude: number }} adminLocation - Admin GPS coords
+ */
+export const sendAttendancePush = async (cadetIds, pendingDocId, adminLocation) => {
+    if (!cadetIds || !Array.isArray(cadetIds) || cadetIds.length === 0) return;
+    try {
+        const tokens = [];
+
+        // Collect FCM tokens for targeted cadets
+        try {
+            const snap = await getDocs(getCollectionRef('cadets'));
+            snap.forEach((d) => {
+                if (cadetIds.includes(d.id)) {
+                    const t = d.data().fcmTokens;
+                    if (Array.isArray(t)) tokens.push(...t);
+                    else if (typeof t === 'string' && t) tokens.push(t);
+                }
+            });
+        } catch (e) { console.warn('FCM: cadet token lookup skipped', e.message); }
+
+        const uniqueTokens = [...new Set(tokens.filter(Boolean))];
+        if (uniqueTokens.length === 0) {
+            console.warn('FCM Attendance: No tokens found for cadet(s)');
+            return;
+        }
+
+        const payload = {
+            subject: '📍 Attendance Verification Required',
+            message: 'Your ANO has scanned your QR code. Tap "On Location" to verify your location.',
+            tokens: uniqueTokens,
+            notificationType: 'attendance',
+            pendingDocId: pendingDocId || '',
+            adminLat: String(adminLocation?.latitude  ?? ''),
+            adminLng: String(adminLocation?.longitude ?? ''),
+        };
+
+        console.log(`FCM Attendance: Sending to ${uniqueTokens.length} device(s), pendingDocId=${pendingDocId}`);
+
+        const resp = await fetch(`${VERCEL_ORIGIN}/api/sendBroadcast`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (!resp.ok) {
+            const err = await resp.text();
+            console.warn('FCM Attendance API error:', resp.status, err);
+        } else {
+            const result = await resp.json();
+            console.log(`FCM Attendance: ${result.successCount} delivered, ${result.failureCount} failed`);
+        }
+    } catch (e) {
+        console.warn('sendAttendancePush failed (non-critical):', e.message);
+    }
+};
+
+/**
+ * Sends a push notification reminder for an upcoming training event to ALL cadets.
+ * Use when admin clicks "Send Reminder" on the Training Calendar.
+ *
+ * @param {string} eventName     - Name of the drill/event
+ * @param {string} eventTime     - Time string e.g. "06:00"
+ * @param {string} eventLocation - Location string
+ * @param {string} eventDate     - Date string e.g. "2026-06-01"
+ * @param {string} targetTab     - Optional tab to navigate to in the PWA
+ */
+export const sendEventReminderPush = async (eventName, eventTime, eventLocation, eventDate, targetTab = 'training') => {
+    try {
+        const title = `⏰ Reminder: ${eventName}`;
+        const body  = `Reports at ${eventTime} · ${eventLocation} · ${new Date(eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+        await sendPushToAll(title, body, targetTab);
+        console.log(`FCM Event Reminder: Sent for "${eventName}"`);
+    } catch (e) {
+        console.warn('sendEventReminderPush failed (non-critical):', e.message);
+    }
+};

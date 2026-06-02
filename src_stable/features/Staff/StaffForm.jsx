@@ -21,7 +21,7 @@ export const StaffForm = ({ currentStaff, onSaveSuccess, onCancel }) => {
     const [formError, setFormError] = useState(null);
     const [loading, setLoading] = useState(false);
 
-    const isEditMode = !!currentStaff;
+    const isEditMode = !!currentStaff?.id;
 
     const handleChange = (e) =>
         setFormData({ ...formData, [e.target.name]: e.target.value });

@@ -250,7 +250,6 @@ export const BroadcastManager = () => {
                                 try {
                                     toast.info("Clearing tokens...");
                                     const { getDocs, updateDoc, deleteField } = await import('firebase/firestore');
-                                    const { getCollectionRef } = await import('../../firebase/firestoreService.js');
                                     const collections = ['cadets', 'staff', 'users'];
                                     let total = 0;
                                     for (const col of collections) {

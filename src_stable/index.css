@@ -5,6 +5,7 @@
 
 @layer base {
     :root {
+        color-scheme: light;
         /* Colors */
         --ncc-navy: #0a1628;
         --ncc-navy-light: #112240;
@@ -37,6 +38,7 @@
     }
 
     [data-theme='dark'] {
+        color-scheme: dark;
         /* Theme Tokens (Dark Mode) */
         --bg-page: #050b14;
         --bg-card: #0a1628;
@@ -366,6 +368,11 @@
 @keyframes shimmer {
     0% { background-position: -200% center; }
     100% { background-position: 200% center; }
+}
+
+@keyframes shine {
+    0% { transform: translateX(-200%) skewX(-15deg); }
+    100% { transform: translateX(200%) skewX(-15deg); }
 }
 
 @keyframes slideIn {

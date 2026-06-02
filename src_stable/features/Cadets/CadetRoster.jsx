@@ -17,8 +17,10 @@ import {
     Search,
     Download,
     ShieldCheck,
+    Award
 } from '../../components/Icons.jsx';
 import { BulkImportModal } from './BulkImportModal.jsx';
+import { CertificateUploadModal } from './CertificateUploadModal.jsx';
 import { toast } from 'react-toastify';
 import { formatDate } from '../../utils/dateUtils.js';
 
@@ -50,6 +52,7 @@ export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
     const [isPromoting, setIsPromoting] = useState(false);
     const [promotionOption, setPromotionOption] = useState('');
     const [selectedIds, setSelectedIds] = useState([]);
+    const [certModalCadet, setCertModalCadet] = useState(null);
 
     const downloadTemplate = () => {
         const headers = ['Name','Regimental Number','JNTU NO','Rank','CERT','Father Name','Mother Name','Year','Branch','Aadhaar Number','Phone number (Personal)','Phone Number (Parents)','Address (Present)','Address (Permanent) If both present & Permanent are Same Just Ignore','Hosteler / Days scholar','ECA/CCA','Date of Birth','Email ID (Personal)','Email ID (College Mail)','Blood Group'];
@@ -276,7 +279,7 @@ export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
     const handleSelectAll = (e) => { if (e.target.checked) setSelectedIds(filteredCadets.map((c) => c.id)); else setSelectedIds([]); };
     const handleSelectOne = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]);
     const handleBulkDeleteInitiate = () => { if (!selectedIds.length) return; setItemToDelete({ type: 'cadets', id: selectedIds, name: `${selectedIds.length} selected cadets`, isBulk: true }); };
-    const handleModalClose = () => { setIsAdding(false); setEditingCadet(null); setItemToDelete(null); setIsImporting(false); setError(null); };
+    const handleModalClose = () => { setIsAdding(false); setEditingCadet(null); setItemToDelete(null); setIsImporting(false); setError(null); setCertModalCadet(null); };
     const handleDeleteConfirm = async () => {
         setError(null);
         if (!itemToDelete) return;
@@ -296,6 +299,7 @@ export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
                 </ModalOverlay>
             )}
             {isImporting && <BulkImportModal onClose={handleModalClose} />}
+            {certModalCadet && <CertificateUploadModal cadet={certModalCadet} onClose={() => setCertModalCadet(null)} />}
             {itemToDelete && (
                 <ConfirmationModal itemType={itemToDelete.type} itemName={itemToDelete.name} onConfirm={handleDeleteConfirm} onCancel={handleModalClose} />
             )}
@@ -417,6 +421,7 @@ export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
                                                     <button onClick={() => setEditingCadet({ ...cadet, dob: formatDateForInput(cadet.dob) })} className="inline-flex p-1.5 rounded-lg hover:bg-ncc-navy/10 transition">
                                                         <Edit className="w-3.5 h-3.5 text-ncc-navy dark:text-white" />
                                                     </button>
+
                                                     <button onClick={() => setItemToDelete({ type: 'cadets', id: cadet.id, name: cadet.name })} className="inline-flex p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition ml-0.5">
                                                         <Trash2 className="w-3.5 h-3.5 text-red-500" />
                                                     </button>

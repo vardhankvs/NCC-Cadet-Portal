@@ -244,7 +244,7 @@ exports.onNotificationCreated = functions.firestore
                 if (response.failureCount > 0) {
                     response.responses.forEach((r, idx) => {
                         if (!r.success) {
-                            functions.logger.warn('FCM token failed:', batch[idx], r.error?.message);
+                            functions.logger.warn('FCM token failed:', batch[idx], r.error && r.error.message);
                         }
                     });
                 }
@@ -259,3 +259,19 @@ exports.onNotificationCreated = functions.firestore
             return null;
         }
     });
+
+/**
+ * Callable Function: logoutFromAllDevices
+ * Revokes all refresh tokens for the calling user, forcing them to re-authenticate on all devices.
+ */
+exports.logoutFromAllDevices = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+    }
+    try {
+        await admin.auth().revokeRefreshTokens(context.auth.uid);
+        return { message: 'Successfully revoked tokens for all devices.' };
+    } catch (error) {
+        throw new functions.https.HttpsError('internal', error.message);
+    }
+});

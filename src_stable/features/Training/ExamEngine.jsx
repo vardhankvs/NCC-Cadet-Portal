@@ -1,15 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BookOpen, Clock, CheckCircle, AlertCircle, Award, Trophy, Zap, List, Shield, Camera } from '../../components/Icons.jsx';
-import { getExamSettings, getQuizQuestions, submitExamAttempt, getUserExamAttempt, getExamAttempts } from '../../firebase/firestoreService.js';
+import { FileText, Clock, CheckCircle, AlertCircle, Award, Trophy, Zap, List, Shield, Camera } from '../../components/Icons.jsx';
+import { getExams, getQuizQuestions, submitExamAttempt, getExamAttempts } from '../../firebase/firestoreService.js';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
 
 export const ExamEngine = () => {
-    const { user, userRole, userEnrollmentId, userName } = useAuthContext();
+    const { user, userRole, userEnrollmentId, userName, userInstitutionId } = useAuthContext();
     const [status, setStatus] = useState('dashboard'); // dashboard, ready, active, finished
-    const [config, setConfig] = useState({ timer: 15, questionLimit: 10, negativeMarking: false, examTitle: 'General Knowledge' });
+    
+    // Multi-topic states
+    const [exams, setExams] = useState([]);
+    
+    // Active exam state
+    const [config, setConfig] = useState(null);
     const [allQuestions, setAllQuestions] = useState([]);
     const [examQuestions, setExamQuestions] = useState([]);
+    
     const [currentIdx, setCurrentIdx] = useState(0);
     const [answers, setAnswers] = useState({});
     const [timeLeft, setTimeLeft] = useState(0);
@@ -19,12 +25,8 @@ export const ExamEngine = () => {
     useEffect(() => {
         const loadData = async () => {
             try {
-                const [settings, questions] = await Promise.all([
-                    getExamSettings(),
-                    getQuizQuestions()
-                ]);
-                setConfig(settings);
-                setAllQuestions(questions);
+                const fetchedExams = await getExams();
+                setExams(fetchedExams);
 
                 const uid = userEnrollmentId || user?.uid;
                 if (!uid) return;
@@ -69,17 +71,30 @@ export const ExamEngine = () => {
         return () => clearInterval(timer);
     }, [status, timeLeft]);
 
+    const handleSelectExam = async (exam) => {
+        setLoading(true);
+        try {
+            const questions = await getQuizQuestions(exam.id);
+            setConfig(exam);
+            setAllQuestions(questions);
+            setStatus('ready');
+        } catch(err) {
+            toast.error("Failed to load questions for this topic");
+        }
+        setLoading(false);
+    };
+
     const handleStart = () => {
         if (allQuestions.length === 0) {
-            toast.warning("No questions available in the test bank.");
+            toast.warning("No questions available in the test bank for this topic.");
             return;
         }
 
         const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
-        const selected = shuffled.slice(0, config.questionLimit);
+        const selected = shuffled.slice(0, config.questionLimit || 10);
         
         setExamQuestions(selected);
-        setTimeLeft(config.timer * 60);
+        setTimeLeft((config.timer || 15) * 60);
         setStatus('active');
         setCurrentIdx(0);
         setAnswers({});
@@ -107,7 +122,7 @@ export const ExamEngine = () => {
                 attempted++;
                 if (userAns === q.correct) {
                     score += (q.marks || 1);
-                } else if (config.negativeMarking) {
+                } else if (config?.negativeMarking) {
                     score -= (q.negativeMarks || 0.25);
                 }
             }
@@ -122,9 +137,12 @@ export const ExamEngine = () => {
             totalQuestions: examQuestions.length,
             certificate: user.certificate || 'N/A',
             division: userEnrollmentId?.includes('SW') ? 'SW' : 'SD',
-            examTitle: config.examTitle || 'General Knowledge',
+            institutionId: userInstitutionId || '14a-bn-srikakulam',
+            examTitle: config?.examTitle || 'General Knowledge',
+            examId: config?.id || 'default',
             answers: answers,
-            examQuestions: examQuestions
+            examQuestions: examQuestions,
+            timestamp: new Date() // Fallback timestamp
         };
 
         try {
@@ -144,9 +162,6 @@ export const ExamEngine = () => {
     if (loading) return <div className="p-20 text-center animate-pulse text-ncc-navy dark:text-white uppercase tracking-widest font-black">Establishing Command Link...</div>;
 
     if (status === 'dashboard') {
-        const activeTitle = config.examTitle || 'General Knowledge';
-        const hasTakenActive = pastAttempts.some(a => (a.examTitle || 'General Knowledge') === activeTitle);
-
         return (
             <div className="space-y-8 fade-in">
                 <header>
@@ -157,55 +172,68 @@ export const ExamEngine = () => {
                 </header>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 items-stretch">
-                    {!hasTakenActive && allQuestions.length > 0 && (
-                        <div 
-                            onClick={() => setStatus('ready')}
-                            className="bg-blue-50 p-6 rounded-2xl shadow-sm border border-blue-100 cursor-pointer hover:-translate-y-1 hover:shadow-md hover:border-blue-200 transition-all group relative overflow-hidden flex flex-col h-full min-h-[12rem]"
-                        >
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100/50 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110"></div>
-                            <div className="w-10 h-10 bg-white dark:bg-[#050b14] rounded-xl flex items-center justify-center mb-4 shadow-sm border border-blue-100/50 relative z-10 shrink-0">
-                                <Zap className="w-5 h-5 text-blue-600" />
-                            </div>
-                            <h3 className="text-base font-bold text-ncc-navy dark:text-white mb-4 leading-tight relative z-10">{config.examTitle || 'General Knowledge'}</h3>
-                            <div className="mt-auto flex items-center justify-between border-t border-blue-200/50 pt-3 relative z-10">
-                                <span className="text-[9px] font-black bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase tracking-widest shrink-0">Active</span>
-                                <div className="flex items-center text-[9px] font-black text-blue-700 uppercase tracking-widest group-hover:text-blue-900 transition-colors">
-                                    Commence <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                    {/* Render Available Exams */}
+                    {exams.map(exam => {
+                        // Check if cadet has taken this exam
+                        const hasTaken = pastAttempts.some(a => a.examTitle === exam.examTitle);
+                        if (hasTaken) return null; // Hide if already taken, or you can allow retakes. Wait, usually we don't hide, or maybe we do? Let's hide active card if taken.
 
+                        return (
+                            <div 
+                                key={exam.id}
+                                onClick={() => handleSelectExam(exam)}
+                                className="bg-white dark:bg-[#0d2137] p-6 rounded-2xl shadow-sm border border-blue-100 dark:border-white/10 cursor-pointer hover:-translate-y-1 hover:shadow-md hover:border-blue-300 dark:hover:border-white/30 transition-all group relative overflow-hidden flex flex-col h-full min-h-[12rem]"
+                            >
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 dark:bg-white/5 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110"></div>
+                                <div className="w-10 h-10 bg-blue-50 dark:bg-[#0a1628] rounded-xl flex items-center justify-center mb-4 shadow-sm border border-blue-100/50 dark:border-white/10 relative z-10 shrink-0 group-hover:bg-blue-100 dark:group-hover:bg-[#112a46] transition-colors">
+                                    <Zap className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                </div>
+                                <h3 className="text-base font-bold text-ncc-navy dark:text-white mb-4 leading-tight relative z-10 group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors">{exam.examTitle}</h3>
+                                <div className="mt-auto flex items-center justify-between border-t border-blue-100 dark:border-white/10 pt-3 relative z-10">
+                                    <span className="text-[9px] font-black bg-blue-50 dark:bg-white/10 text-blue-700 dark:text-white/80 px-2 py-0.5 rounded uppercase tracking-widest shrink-0">Active</span>
+                                    <div className="flex items-center text-[9px] font-black text-blue-700 dark:text-white/80 uppercase tracking-widest group-hover:text-blue-900 dark:group-hover:text-white transition-colors">
+                                        Commence <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    {/* Render Past Attempts */}
                     {pastAttempts.map((attempt, idx) => (
-                        <div 
-                            key={idx}
-                            onClick={() => {
-                                setExamQuestions(attempt.examQuestions || []);
-                                setAnswers(attempt.answers || {});
-                                setStatus('finished');
-                            }}
-                            className="bg-white dark:bg-[#050b14] p-6 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm cursor-pointer hover:shadow-md hover:border-ncc-navy/30 hover:-translate-y-1 transition-all group flex flex-col h-full min-h-[12rem]"
-                        >
-                            <div className="flex justify-between items-start mb-4 shrink-0">
-                                <div className="w-10 h-10 bg-gray-50 dark:bg-[#0a1628] rounded-xl flex items-center justify-center border border-gray-100 dark:border-white/5 shadow-sm group-hover:bg-ncc-navy/5 group-hover:border-ncc-navy/20 transition-colors">
-                                    <Award className="w-5 h-5 text-gray-400 dark:text-white/80 group-hover:text-ncc-navy dark:text-white transition-colors" />
+                            <div 
+                                key={idx}
+                                onClick={() => {
+                                    setConfig({ 
+                                        examTitle: attempt.examTitle,
+                                        negativeMarking: false // past attempt view doesn't rely on config settings much
+                                    });
+                                    setExamQuestions(attempt.examQuestions || []);
+                                    setAnswers(attempt.answers || {});
+                                    setStatus('finished');
+                                }}
+                                className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm cursor-pointer hover:shadow-md hover:border-ncc-navy/30 dark:hover:border-white/30 hover:-translate-y-1 transition-all group flex flex-col h-full min-h-[12rem]"
+                            >
+                                <div className="flex justify-between items-start mb-4 shrink-0">
+                                    <div className="w-10 h-10 bg-gray-50 dark:bg-[#1f2937] rounded-xl flex items-center justify-center border border-gray-100 dark:border-white/10 shadow-sm group-hover:bg-ncc-navy/5 dark:group-hover:bg-[#374151] transition-colors">
+                                        <Award className="w-5 h-5 text-gray-400 dark:text-gray-400 group-hover:text-ncc-navy dark:group-hover:text-white transition-colors" />
+                                    </div>
+                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${attempt.score >= (attempt.totalPossible * 0.5) ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/50' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-800/50'}`}>
+                                        {attempt.score >= (attempt.totalPossible * 0.5) ? 'Passed' : 'Failed'}
+                                    </span>
                                 </div>
-                                <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${attempt.score >= (attempt.totalPossible * 0.5) ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
-                                    {attempt.score >= (attempt.totalPossible * 0.5) ? 'Passed' : 'Failed'}
-                                </span>
-                            </div>
-                            <h3 className="text-base font-bold text-gray-800 dark:text-white mb-4 leading-tight">{attempt.examTitle || 'General Knowledge'}</h3>
-                            
-                            <div className="mt-auto pt-3 border-t border-gray-100 dark:border-white/5 flex flex-col gap-2">
-                                <span className="text-[10px] font-bold text-gray-400 dark:text-white/80">{attempt.score} <span className="text-[8px]">/ {attempt.totalPossible} Points</span></span>
-                                <div className="flex items-center justify-between text-[9px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest group-hover:text-ncc-navy dark:text-white transition-colors">
-                                    Review <span className="text-lg leading-none group-hover:translate-x-1 transition-transform">→</span>
+                                <h3 className="text-base font-bold text-gray-800 dark:text-gray-100 mb-4 leading-tight group-hover:text-ncc-navy dark:group-hover:text-white transition-colors">{attempt.examTitle || 'General Knowledge'}</h3>
+                                
+                                <div className="mt-auto pt-3 border-t border-gray-100 dark:border-white/10 flex flex-col gap-2">
+                                    <span className="text-[10px] font-bold text-gray-400 dark:text-gray-400">{attempt.score} <span className="text-[8px]">/ {attempt.totalPossible} Points</span></span>
+                                    <div className="flex items-center justify-between text-[9px] font-black text-gray-400 dark:text-gray-400 uppercase tracking-widest group-hover:text-ncc-navy dark:group-hover:text-white transition-colors">
+                                        Review <span className="text-lg leading-none group-hover:translate-x-1 transition-transform">→</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
                     ))}
 
-                    {hasTakenActive && pastAttempts.length === 0 && (
+                    {exams.length === 0 && pastAttempts.length === 0 && (
                          <div className="col-span-full p-8 text-center bg-gray-50 dark:bg-[#0a1628] rounded-2xl border border-gray-200 dark:border-white/10 border-dashed">
                              <p className="text-gray-400 dark:text-white/80 font-bold uppercase tracking-widest text-[10px] mb-1">No Active Deployments</p>
                              <p className="text-[10px] text-gray-400 dark:text-white/80">Await further instructions from command.</p>
@@ -221,23 +249,23 @@ export const ExamEngine = () => {
             <div className="space-y-8 fade-in">
                 <header>
                     <h2 className="text-3xl font-display font-bold text-ncc-navy dark:text-white flex items-center gap-3">
-                        <Shield className="w-10 h-10 text-ncc-navy dark:text-white" /> {config.examTitle || 'Command Examination Engine'}
+                        <Shield className="w-10 h-10 text-ncc-navy dark:text-white" /> {config?.examTitle || 'Command Examination Engine'}
                     </h2>
                     <p className="text-gray-500 dark:text-white/70 font-medium">Standardized CBT platform for NCC B and C Certificate Theory Papers.</p>
                 </header>
 
                 <div className="bg-white dark:bg-[#050b14] p-8 max-w-2xl mx-auto rounded-3xl border border-[#ddd8cc] shadow-sm text-center relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-8 opacity-5">
-                        <BookOpen className="w-24 h-24" />
+                        <FileText className="w-24 h-24" />
                     </div>
                     <div className="w-14 h-14 bg-ncc-navy/5 rounded-2xl flex items-center justify-center mx-auto mb-4">
                         <Award className="w-6 h-6 text-ncc-navy dark:text-white" />
                     </div>
                     <h3 className="text-xl font-bold text-ncc-navy dark:text-white mb-4">Official Mock Test Session</h3>
                     <div className="flex flex-wrap justify-center gap-4 mb-6 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/80">
-                        <span className="flex items-center gap-1.5 bg-gray-50 dark:bg-[#0a1628] px-3 py-1.5 rounded-full"><Clock className="w-3 h-3 text-ncc-navy dark:text-white" /> {config.timer} Mins</span>
-                        <span className="flex items-center gap-1.5 bg-gray-50 dark:bg-[#0a1628] px-3 py-1.5 rounded-full"><List className="w-3 h-3 text-ncc-navy dark:text-white" /> {config.questionLimit} Qs</span>
-                        <span className="flex items-center gap-1.5 bg-gray-50 dark:bg-[#0a1628] px-3 py-1.5 rounded-full"><Zap className="w-3 h-3 text-ncc-gold" /> {config.negativeMarking ? 'Neg. Marking Active' : 'No Neg. Marks'}</span>
+                        <span className="flex items-center gap-1.5 bg-gray-50 dark:bg-[#0a1628] px-3 py-1.5 rounded-full"><Clock className="w-3 h-3 text-ncc-navy dark:text-white" /> {config?.timer} Mins</span>
+                        <span className="flex items-center gap-1.5 bg-gray-50 dark:bg-[#0a1628] px-3 py-1.5 rounded-full"><List className="w-3 h-3 text-ncc-navy dark:text-white" /> {config?.questionLimit} Qs</span>
+                        <span className="flex items-center gap-1.5 bg-gray-50 dark:bg-[#0a1628] px-3 py-1.5 rounded-full"><Zap className="w-3 h-3 text-ncc-gold" /> {config?.negativeMarking ? 'Neg. Marking Active' : 'No Neg. Marks'}</span>
                     </div>
                     
                     <div className="bg-amber-50 p-5 rounded-2xl border border-amber-100 mb-8 text-left">
@@ -274,7 +302,7 @@ export const ExamEngine = () => {
         const score = Object.keys(answers).reduce((acc, idx) => {
             const q = examQuestions[idx];
             if (answers[idx] === q.correct) return acc + (q.marks || 1);
-            if (config.negativeMarking) return acc - (q.negativeMarks || 0.25);
+            if (config?.negativeMarking) return acc - (q.negativeMarks || 0.25);
             return acc;
         }, 0);
         

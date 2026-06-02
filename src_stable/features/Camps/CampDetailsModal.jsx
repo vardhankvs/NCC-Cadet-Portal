@@ -153,15 +153,20 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 fade-in">
-            <div className="bg-white dark:bg-[#050b14] rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] modal-in flex flex-col">
-                <div className="flex items-center justify-between px-6 py-4 bg-ncc-navy text-white flex-shrink-0">
-                    <div>
-                        <p className="text-[10px] uppercase tracking-widest text-[#d4a83a] font-bold border border-[#d4a83a] inline-block px-1.5 py-0.5 rounded mb-1">{camp.type}</p>
-                        <h2 className="text-xl font-bold font-display leading-tight">{camp.name}</h2>
-                        <p className="text-xs text-white/60 mt-0.5">{camp.location} | {formatDate(camp.startDate)} to {formatDate(camp.endDate)}</p>
+            <div className="bg-white dark:bg-[#050b14] rounded-[2rem] shadow-2xl w-full max-w-5xl max-h-[95vh] modal-in flex flex-col overflow-hidden border border-gray-200 dark:border-white/10">
+                <div className="relative px-8 py-6 bg-gradient-to-r from-ncc-navy via-[#1a365d] to-ncc-navy flex-shrink-0 border-b border-white/10">
+                    <div className="absolute inset-0 bg-[url('/noise.png')] opacity-20 mix-blend-overlay"></div>
+                    <div className="relative z-10 pr-12">
+                        <p className="text-[10px] uppercase tracking-widest text-ncc-gold font-bold border border-ncc-gold/50 bg-ncc-gold/10 inline-block px-2 py-0.5 rounded mb-2 shadow-sm">{camp.type}</p>
+                        <h2 className="text-3xl font-black font-display text-white tracking-tight mb-1">{camp.name}</h2>
+                        <p className="text-sm font-medium text-white/70 flex items-center gap-2">
+                            <span>{camp.location}</span>
+                            <span className="w-1 h-1 rounded-full bg-ncc-gold"></span>
+                            <span>{formatDate(camp.startDate)} to {formatDate(camp.endDate)}</span>
+                        </p>
                     </div>
-                    <button onClick={onClose} className="p-2 text-white/70 hover:text-white hover:bg-white dark:bg-[#050b14]/10 rounded-lg transition">
-                        <X className="w-6 h-6" />
+                    <button onClick={onClose} className="absolute top-6 right-6 p-2.5 bg-white/5 hover:bg-white/20 rounded-full transition-colors group z-20">
+                        <X className="w-5 h-5 text-white/60 group-hover:text-white transition-colors" />
                     </button>
                 </div>
 
@@ -291,11 +296,12 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
                     )}
 
                     {/* Roster Table */}
-                    <div className="bg-white dark:bg-[#050b14] rounded-xl border border-[#ddd8cc] shadow-sm flex-1 flex flex-col overflow-hidden">
-                        <div className="px-5 py-4 border-b border-[#ddd8cc] bg-[#f5f0e8] dark:bg-[#0a1628] flex justify-between items-center">
-                            <div className="flex items-center gap-4">
-                                <h3 className="font-bold text-ncc-navy dark:text-white">Final Roster</h3>
-                                <span className="text-xs font-bold text-gray-500 dark:text-white/70">{roster.length} Cadets</span>
+                    <div className="bg-white dark:bg-[#050b14] rounded-[1.5rem] border border-gray-200 dark:border-white/10 shadow-sm flex-1 flex flex-col overflow-hidden">
+                        <div className="px-6 py-5 border-b border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#0a1628] flex justify-between items-center relative overflow-hidden group">
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 dark:via-white/5 to-transparent skew-x-12 translate-x-[-150%] group-hover:translate-x-[150%] transition-transform duration-1000" />
+                            <div className="flex items-center gap-4 relative z-10 flex-wrap">
+                                <h3 className="font-black text-xl font-display text-ncc-navy dark:text-white tracking-tight">Final Roster</h3>
+                                <span className="text-[10px] font-black text-ncc-gold uppercase tracking-widest px-2.5 py-1 bg-ncc-gold/10 border border-ncc-gold/20 rounded shadow-sm">{roster.length} Cadets</span>
                                 {userRole === 'admin' && roster.length > 0 && (
                                     <div className="flex items-center gap-2">
                                         <button 
@@ -369,23 +375,23 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
                                 <div className="p-8 text-center text-gray-400 dark:text-white/80 font-medium">No cadets added to this camp yet.</div>
                             ) : (
                                 <table className="w-full text-sm text-left">
-                                    <thead className="ncc-table-head">
+                                    <thead className="bg-gray-100 dark:bg-[#11233c] text-[10px] font-black uppercase tracking-widest text-ncc-navy dark:text-white/70 border-b border-gray-200 dark:border-white/10">
                                         <tr>
                                             {userRole === 'admin' && (
-                                                <th className="ncc-th w-10 text-center">
+                                                <th className="px-4 py-4 w-10 text-center">
                                                     <input 
                                                         type="checkbox" 
-                                                        className="rounded border-gray-300"
+                                                        className="rounded border-gray-300 dark:border-white/20 dark:bg-[#050b14] text-ncc-navy focus:ring-ncc-navy"
                                                         checked={roster.length > 0 && rosterSelectedIds.length === roster.length}
                                                         onChange={handleRosterSelectAll}
                                                     />
                                                 </th>
                                             )}
-                                            <th className="ncc-th">Regimental No.</th>
-                                            <th className="ncc-th">Name</th>
-                                            <th className="ncc-th">Status</th>
-                                            <th className="ncc-th w-2/5">Achievements / Awards</th>
-                                            {userRole === 'admin' && <th className="ncc-th">Action</th>}
+                                            <th className="px-4 py-4">Regimental No.</th>
+                                            <th className="px-4 py-4">Name</th>
+                                            <th className="px-4 py-4">Status</th>
+                                            <th className="px-4 py-4 w-2/5">Achievements / Awards</th>
+                                            {userRole === 'admin' && <th className="px-4 py-4 text-right">Action</th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-white/5">
@@ -442,10 +448,10 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
                                                     )}
                                                 </td>
                                                 {userRole === 'admin' && (
-                                                    <td className="px-4 py-3">
+                                                    <td className="px-4 py-3 text-right">
                                                         <button 
                                                             onClick={() => {setAchievementTarget(r.cadetId); setAchievementText('');}}
-                                                            className="text-xs font-bold text-ncc-gold hover:underline"
+                                                            className="text-[10px] font-black uppercase tracking-widest text-ncc-gold hover:text-[#b8830e] hover:bg-ncc-gold/10 px-2.5 py-1.5 rounded transition-colors"
                                                             disabled={achievementTarget === r.cadetId}
                                                         >
                                                             + Award

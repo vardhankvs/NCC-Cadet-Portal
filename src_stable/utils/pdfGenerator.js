@@ -314,3 +314,135 @@ export const generateCertificateApplicationPDF = (cadet) => {
     console.log('[PDF] Preparing to download certificate:', filename);
     safeDownload(doc, filename);
 };
+
+/**
+ * Generates an official Certificate of Examination Results PDF.
+ * @param {object} cadet - Cadet object
+ * @param {object} cert - Certificate object containing marks and grade
+ */
+export const generateResultCertificatePDF = (cadet, cert) => {
+    const doc = new jsPDF('l', 'mm', 'a4'); // Landscape
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+
+    // Premium Background - faint cream color
+    doc.setFillColor(253, 251, 247);
+    doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
+    // Ornamental Borders
+    doc.setDrawColor(...NCC_GOLD); // Gold
+    doc.setLineWidth(4);
+    doc.rect(10, 10, pageWidth - 20, pageHeight - 20); // Outer border
+    
+    doc.setLineWidth(0.5);
+    doc.setDrawColor(...NCC_NAVY); // Navy
+    doc.rect(15, 15, pageWidth - 30, pageHeight - 30); // Inner border 1
+    
+    doc.setDrawColor(...NCC_GOLD);
+    doc.rect(16.5, 16.5, pageWidth - 33, pageHeight - 33); // Inner border 2
+
+    // Corner Accents (Squares)
+    doc.setFillColor(...NCC_NAVY);
+    doc.rect(15, 15, 4, 4, 'F'); // Top-left
+    doc.rect(pageWidth - 19, 15, 4, 4, 'F'); // Top-right
+    doc.rect(15, pageHeight - 19, 4, 4, 'F'); // Bottom-left
+    doc.rect(pageWidth - 19, pageHeight - 19, 4, 4, 'F'); // Bottom-right
+
+    // Distinction watermark if Grade A
+    const isDistinction = cert.finalGrade === 'A' || cert.finalGrade === 'A+';
+    if (isDistinction) {
+        doc.setFont('times', 'bolditalic');
+        doc.setFontSize(100);
+        doc.setTextColor(250, 240, 210); // Very faint gold
+        doc.text('DISTINCTION', pageWidth / 2, pageHeight / 2 + 20, { align: 'center', angle: 25 });
+    }
+
+    doc.setFontSize(42);
+    doc.setFont('times', 'bold');
+    doc.setTextColor(...NCC_NAVY);
+    doc.text('NATIONAL CADET CORPS', pageWidth / 2, 50, { align: 'center' });
+
+    doc.setFontSize(16);
+    doc.setFont('times', 'normal');
+    doc.setTextColor(...NCC_GOLD);
+    doc.text('C E R T I F I C A T E   O F   E X A M I N A T I O N', pageWidth / 2, 65, { align: 'center' });
+
+    doc.setDrawColor(...NCC_GOLD);
+    doc.setLineWidth(0.5);
+    doc.line(pageWidth / 2 - 40, 72, pageWidth / 2 + 40, 72);
+
+    doc.setFontSize(16);
+    doc.setFont('times', 'italic');
+    doc.setTextColor(80, 80, 80);
+    doc.text(`This is to certify that`, pageWidth / 2, 90, { align: 'center' });
+
+    doc.setFontSize(32);
+    doc.setFont('times', 'bold');
+    doc.setTextColor(...NCC_NAVY);
+    doc.text(cadet.name?.toUpperCase() || 'CADET', pageWidth / 2, 110, { align: 'center' });
+
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Regimental No. ${cadet.enrollmentId || 'N/A'}`, pageWidth / 2, 122, { align: 'center' });
+
+    const rawCertLevel = cert.certLevel.replace(' Certificate', '');
+    
+    doc.setFontSize(16);
+    doc.setFont('times', 'normal');
+    doc.setTextColor(60, 60, 60);
+    doc.text(`has successfully passed the `, pageWidth / 2 - 5, 142, { align: 'right' });
+    
+    doc.setFont('times', 'bold');
+    doc.setTextColor(...NCC_NAVY);
+    doc.text(`${rawCertLevel} Certificate Examination`, pageWidth / 2, 142, { align: 'left' });
+
+    doc.setFontSize(14);
+    doc.setFont('times', 'normal');
+    doc.setTextColor(60, 60, 60);
+    doc.text(`held in the year ${cert.year}.`, pageWidth / 2, 155, { align: 'center' });
+
+    doc.setFontSize(18);
+    doc.setFont('times', 'italic');
+    doc.text(`Grade Awarded:`, pageWidth / 2 - 10, 175, { align: 'right' });
+    
+    doc.setFontSize(32);
+    doc.setFont('times', 'bold');
+    if (cert.finalGrade === 'Fail') {
+        doc.setTextColor(220, 38, 38);
+    } else if (isDistinction) {
+        doc.setTextColor(217, 119, 6); // Amber-600
+    } else {
+        doc.setTextColor(16, 185, 129); // Emerald-500
+    }
+    doc.text(cert.finalGrade, pageWidth / 2, 177, { align: 'left' });
+
+    if (isDistinction) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(217, 119, 6);
+        doc.text(`(PASSED WITH DISTINCTION)`, pageWidth / 2, 188, { align: 'center' });
+    }
+
+    // Signatures
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...NCC_NAVY);
+    
+    doc.line(30, pageHeight - 40, 85, pageHeight - 40);
+    const today = new Date();
+    doc.setFontSize(10);
+    doc.text(`${today.toLocaleDateString()}`, 57.5, pageHeight - 43, { align: 'center' });
+    doc.setFontSize(12);
+    doc.text('Date', 57.5, pageHeight - 32, { align: 'center' });
+
+    doc.line(pageWidth - 85, pageHeight - 40, pageWidth - 30, pageHeight - 40);
+    doc.text('Commanding Officer', pageWidth - 57.5, pageHeight - 32, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text('14(A) BN NCC', pageWidth - 57.5, pageHeight - 26, { align: 'center' });
+
+    const filename = `${cadet.enrollmentId || 'Cadet'}_${rawCertLevel}_Certificate.pdf`;
+    console.log('[PDF] Preparing to download result certificate:', filename);
+    safeDownload(doc, filename);
+};

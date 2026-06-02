@@ -3,6 +3,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging } from 'firebase/messaging';
+import { getFunctions } from 'firebase/functions';
 
 // ── AppId ────────────────────────────────────────────────────────────────────
 // Declared with const at module scope so Vite can statically export it.
@@ -39,6 +40,7 @@ let auth;
 let db;
 let storage;
 let messaging;
+let functions;
 
 if (firebaseConfig?.projectId) {
     try {
@@ -46,6 +48,7 @@ if (firebaseConfig?.projectId) {
         auth = getAuth(app);
         db = getFirestore(app);
         storage = getStorage(app);
+        functions = getFunctions(app);
         // Messaging might not be supported in some environments (SSR/Old Browsers)
         try {
             messaging = getMessaging(app);
@@ -59,4 +62,4 @@ if (firebaseConfig?.projectId) {
     console.error('Firebase init skipped: invalid config.');
 }
 
-export { auth, db, storage, messaging };
+export { auth, db, storage, messaging, functions };

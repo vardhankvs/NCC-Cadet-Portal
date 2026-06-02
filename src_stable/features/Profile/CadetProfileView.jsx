@@ -30,7 +30,7 @@ export const CadetProfileView = () => {
     );
 
     const initials = currentCadet.name ? currentCadet.name.split(' ').map((s) => s[0] || '').join('').slice(0, 2).toUpperCase() : 'NA';
-    const profileImage = currentCadet.photoUrl || null;
+    const profileImage = currentCadet.photoURL || currentCadet.photoUrl || null;
     const cert = currentCadet.certificate || currentCadet.B;
     const certCls = cert === 'C' ? 'cert-c' : cert === 'B2' ? 'cert-b2' : cert ? 'cert-b1' : '';
 
@@ -149,9 +149,6 @@ export const CadetProfileView = () => {
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-black tracking-widest uppercase ${idx === 0 ? 'bg-ncc-navy text-ncc-gold' : 'bg-gray-100 dark:bg-[#0d2137] text-gray-500 dark:text-white/70'}`}>
                                                 {history.rank}
                                             </span>
-                                            <span className="text-[10px] font-bold text-gray-400 dark:text-white/80 font-mono">
-                                                {formatDate(history.date)}
-                                            </span>
                                         </div>
                                         <p className="text-xs font-semibold text-ncc-navy dark:text-white mt-1">{history.reason || 'Promotion'}</p>
                                     </div>
@@ -254,15 +251,64 @@ export const CadetProfileView = () => {
                     <CheckCircle className="w-4 h-4 text-ncc-gold" />
                 </div>
                 <div className="p-0">
-                    {(!currentCadet.examHistory || currentCadet.examHistory.length === 0) ? (
+                    {(!currentCadet.examHistory?.length && !currentCadet.certifications?.length) ? (
                         <div className="p-5 text-center text-xs font-semibold text-gray-500 dark:text-white/70">
-                            No exams taken yet.
+                            No exams or certifications logged yet.
                         </div>
                     ) : (
-                        <div className="divide-y divide-[#ede8df]">
-                            {currentCadet.examHistory.map((exam, idx) => (
-                                <div key={idx} className="px-5 py-4 flex justify-between items-center">
+                        <div className="divide-y divide-[#ede8df] dark:divide-white/10">
+                            {/* Official Certifications */}
+                            {currentCadet.certifications?.map((cert, idx) => (
+                                <div key={`cert-${idx}`} className="px-5 py-5 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-amber-50/30 dark:bg-amber-900/10">
+                                    <div className="flex items-start gap-4">
+                                        <div className="w-12 h-12 bg-gradient-to-br from-amber-200 to-amber-400 dark:from-amber-600 dark:to-amber-800 rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0">
+                                            <Award className="w-6 h-6 text-amber-900 dark:text-amber-100" />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="px-2 py-0.5 bg-ncc-navy text-white text-[9px] font-black tracking-widest uppercase rounded">
+                                                    Official Certificate
+                                                </span>
+                                                <span className="text-[10px] font-bold text-gray-500 dark:text-white/60 uppercase tracking-widest">
+                                                    {cert.year}
+                                                </span>
+                                            </div>
+                                            <h4 className="text-lg font-display font-bold text-ncc-navy dark:text-white">{cert.certLevel}</h4>
+                                            <div className="flex items-center gap-4 mt-2">
+                                                <div className="text-[10px] font-bold text-gray-500 dark:text-white/70">
+                                                    <span className="uppercase tracking-widest block opacity-70">Theory</span>
+                                                    <span className="text-ncc-navy dark:text-white">{cert.theoryMarks} <span className="opacity-50">/ {cert.theoryMax}</span></span>
+                                                </div>
+                                                <div className="text-[10px] font-bold text-gray-500 dark:text-white/70 border-l border-gray-300 dark:border-white/20 pl-4">
+                                                    <span className="uppercase tracking-widest block opacity-70">Practical</span>
+                                                    <span className="text-ncc-navy dark:text-white">{cert.practicalMarks} <span className="opacity-50">/ {cert.practicalMax}</span></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="text-right flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center border-t sm:border-t-0 sm:border-l border-gray-200 dark:border-white/10 pt-3 sm:pt-0 sm:pl-5 mt-2 sm:mt-0">
+                                        <div className="text-center">
+                                            <div className="text-[10px] font-black text-gray-400 dark:text-white/60 uppercase tracking-widest mb-1">Final Grade</div>
+                                            <div className={`text-2xl font-display font-bold ${
+                                                cert.finalGrade === 'Fail' ? 'text-red-500' : 
+                                                cert.finalGrade === 'A' ? 'text-emerald-500' : 'text-ncc-gold'
+                                            }`}>
+                                                {cert.finalGrade === 'Fail' ? 'FAIL' : `${cert.finalGrade}`}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+
+                            {/* Digital Mock Exams */}
+                            {currentCadet.examHistory?.map((exam, idx) => (
+                                <div key={`exam-${idx}`} className="px-5 py-4 flex justify-between items-center">
                                     <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="px-1.5 py-0.5 bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/80 text-[8px] font-black tracking-widest uppercase rounded">
+                                                Mock Test
+                                            </span>
+                                        </div>
                                         <p className="text-sm font-bold text-ncc-navy dark:text-white">{exam.title}</p>
                                         <p className="text-xs text-gray-500 dark:text-white/70 mt-0.5">Attempted: {exam.date ? formatDate(exam.date) : 'N/A'}</p>
                                     </div>

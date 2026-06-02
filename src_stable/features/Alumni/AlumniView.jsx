@@ -3,14 +3,14 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useDataContext } from '../../context/DataContext.jsx';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { Search, Filter, UserCheck, GraduationCap, Users, ShieldCheck, Mail, Phone, Award, Star, X } from '../../components/Icons.jsx';
-import { transitionCadetsToAlumni, getCollectionRef, toggleMentorStatus, toggleHallOfFame, deleteMultipleCadets } from '../../firebase/firestoreService.js';
+import { transitionCadetsToAlumni, getCollectionRef, toggleMentorStatus, toggleHallOfFame, deleteMultipleCadets, submitMentorshipRequest, updateMentorshipStatus } from '../../firebase/firestoreService.js';
 import { onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { toast } from 'react-toastify';
 import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
 
 export const AlumniView = () => {
     const { cadets, loading, alumni } = useDataContext();
-    const { userRole } = useAuthContext();
+    const { userRole, userProfile } = useAuthContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [filterYear, setFilterYear] = useState('All');
     const [showTransitionTool, setShowTransitionTool] = useState(false);
@@ -21,6 +21,7 @@ export const AlumniView = () => {
     const [showMentorshipModal, setShowMentorshipModal] = useState(false);
     const [mentorshipStep, setMentorshipStep] = useState(1); // 1: Info, 2: Success
     const [hallOfFameModal, setHallOfFameModal] = useState(null);
+    const [mentorshipRequests, setMentorshipRequests] = useState([]);
 
     const [transitionSearchTerm, setTransitionSearchTerm] = useState('');
     const [transitionDivisionFilter, setTransitionDivisionFilter] = useState('All');
@@ -63,6 +64,17 @@ export const AlumniView = () => {
         });
         return unsubscribe;
     }, []);
+
+    useEffect(() => {
+        if (userRole !== 'admin') return;
+        const ref = getCollectionRef('mentorship_requests');
+        if (!ref) return;
+        const q = query(ref, orderBy('createdAt', 'desc'));
+        const unsubscribe = onSnapshot(q, (snap) => {
+            setMentorshipRequests(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        return unsubscribe;
+    }, [userRole]);
 
     const handleTransition = async () => {
         if (selectedForTransition.length === 0) return;
@@ -177,6 +189,16 @@ export const AlumniView = () => {
                     >
                         <Star className="w-4 h-4" /> Hall of Fame
                     </button>
+                    {userRole === 'admin' && (
+                        <button 
+                            onClick={() => setActiveTab('mentorshipRequests')}
+                            className={`pb-3 px-6 text-sm font-bold tracking-widest uppercase transition-all flex items-center gap-2 ${
+                                activeTab === 'mentorshipRequests' ? 'border-b-2 border-ncc-gold text-ncc-gold' : 'text-gray-400 dark:text-white/60 hover:text-ncc-navy dark:hover:text-white'
+                            }`}
+                        >
+                            <Users className="w-4 h-4" /> Mentorship Requests
+                        </button>
+                    )}
                 </div>
             )}
 
@@ -404,7 +426,7 @@ export const AlumniView = () => {
                         )}
                     </div>
                 </>
-            ) : (
+            ) : activeTab === 'hallOfFame' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {hallOfFameAlumni.length === 0 ? (
                         <div className="col-span-full py-20 text-center text-gray-400 dark:text-white/80 italic bg-white dark:bg-[#050b14] rounded-3xl border-2 border-dashed border-[#ddd8cc]">
@@ -452,7 +474,39 @@ export const AlumniView = () => {
                         ))
                     )}
                 </div>
-            )}
+            ) : activeTab === 'mentorshipRequests' && userRole === 'admin' ? (
+                <div className="space-y-4">
+                    {mentorshipRequests.length === 0 ? (
+                        <div className="py-20 text-center text-gray-400 dark:text-white/80 italic bg-white dark:bg-[#050b14] rounded-3xl border-2 border-dashed border-[#ddd8cc]">
+                            No pending mentorship requests.
+                        </div>
+                    ) : (
+                        mentorshipRequests.map(req => (
+                            <div key={req.id} className="bg-white dark:bg-[#050b14] p-6 rounded-2xl border border-[#ddd8cc] shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                <div>
+                                    <h4 className="font-bold text-ncc-navy dark:text-white">{req.cadetName}</h4>
+                                    <p className="text-xs text-gray-500 font-mono mb-2">{req.enrollmentId}</p>
+                                    <p className="text-sm text-gray-600 dark:text-white/80">Contact: {req.contactInfo}</p>
+                                    <span className={`inline-block mt-2 px-2 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg ${req.status === 'pending' ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                        Status: {req.status}
+                                    </span>
+                                </div>
+                                {req.status === 'pending' && (
+                                    <button 
+                                        onClick={() => {
+                                            updateMentorshipStatus(req.id, 'assigned');
+                                            toast.success("Marked as Assigned");
+                                        }}
+                                        className="ncc-btn ncc-btn-primary text-xs px-4 py-2"
+                                    >
+                                        Mark Assigned
+                                    </button>
+                                )}
+                            </div>
+                        ))
+                    )}
+                </div>
+            ) : null}
             {hallOfFameModal && (
                 <ModalOverlay>
                     <form onSubmit={handleToggleHallOfFame} className="bg-white dark:bg-[#050b14] p-8 rounded-[2.5rem] max-w-md w-full shadow-2xl animate-in zoom-in-95 border border-[#ddd8cc] dark:border-white/10 relative overflow-hidden z-[100]">
@@ -534,7 +588,15 @@ export const AlumniView = () => {
                                 <div className="flex gap-3">
                                     <button onClick={() => setShowMentorshipModal(false)} className="flex-1 px-6 py-3 text-xs font-black text-gray-400 dark:text-white/80 uppercase tracking-widest">Cancel</button>
                                     <button 
-                                        onClick={() => setMentorshipStep(2)}
+                                        onClick={async () => {
+                                            try {
+                                                await submitMentorshipRequest(userProfile.id, userProfile.name, userProfile.enrollmentId, userProfile.phonePersonal || userProfile.phone || userProfile.personalEmail);
+                                                setMentorshipStep(2);
+                                            } catch (err) {
+                                                toast.error("Failed to submit request.");
+                                                console.error(err);
+                                            }
+                                        }}
                                         className="flex-1 ncc-btn ncc-btn-primary py-3"
                                     >
                                         Confirm Request

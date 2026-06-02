@@ -140,9 +140,9 @@ export const BulkImportModal = ({ onClose }) => {
         <ModalOverlay>
             <form
                 onSubmit={handleSubmit}
-                className="p-8 bg-white dark:bg-[#050b14] rounded-3xl shadow-2xl w-full max-w-2xl mx-auto border border-ncc-navy/5 dark:border-white/5"
+                className="bg-white dark:bg-[#050b14] rounded-3xl shadow-2xl w-full max-w-2xl mx-auto border border-ncc-navy/5 dark:border-white/5 flex flex-col max-h-[92vh]"
             >
-                <div className="flex justify-between items-start mb-6 border-b border-ncc-navy/5 dark:border-white/5 pb-4">
+                <div className="p-8 pb-6 border-b border-ncc-navy/5 dark:border-white/5 shrink-0 flex justify-between items-start">
                     <div>
                         <h2 className="text-2xl font-display font-bold text-ncc-navy dark:text-white flex items-center gap-3">
                             <div className="w-10 h-10 bg-ncc-navy/5 rounded-xl flex items-center justify-center">
@@ -157,60 +157,62 @@ export const BulkImportModal = ({ onClose }) => {
                     </button>
                 </div>
 
-                {formError && (
-                    <div className="mb-6">
-                        <ErrorDisplay message={formError} />
-                    </div>
-                )}
-
-                <div className="bg-ncc-navy/5 dark:bg-white/5 p-6 rounded-2xl mb-8 border border-ncc-navy/5 dark:border-white/10">
-                    <div className="flex justify-between items-center mb-4">
-                        <p className="text-sm font-black text-ncc-navy dark:text-white uppercase tracking-widest">
-                            Required CSV Headers
-                        </p>
-                        <button 
-                            type="button" 
-                            onClick={downloadTemplate}
-                            className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest bg-ncc-navy text-white px-3 py-1.5 rounded-lg hover:bg-ncc-navy/90 transition-all"
-                        >
-                            <Download className="w-3 h-3" /> Template
-                        </button>
-                    </div>
-                    <div className="bg-white dark:bg-[#0a1628] p-4 rounded-xl text-[10px] font-mono break-words border border-gray-200 dark:border-white/5 uppercase text-gray-600 dark:text-white/70 leading-relaxed shadow-inner overflow-y-auto max-h-32 ncc-scrollbar">
-                        {REQUIRED_HEADERS.join(', ')}
-                    </div>
-                    <p className="text-[10px] text-gray-500 mt-3 font-bold italic">
-                        * Note: Headers are case-insensitive but must exactly match the phrasing above.
-                    </p>
-                </div>
-
-                <div className="mb-8">
-                    <label className="block text-[10px] font-black text-ncc-navy dark:text-white uppercase tracking-widest mb-3">
-                        Upload Data File <span className="text-ncc-red">*</span>
-                    </label>
-                    <div className="relative group">
-                        <div className="absolute inset-0 bg-ncc-navy/5 dark:bg-white/5 rounded-2xl border-2 border-dashed border-ncc-navy/20 dark:border-white/20 group-hover:border-ncc-navy dark:group-hover:border-white transition-colors pointer-events-none flex flex-col items-center justify-center">
-                            <FileText className="w-8 h-8 text-ncc-navy/40 dark:text-white/40 mb-2" />
-                            <span className="text-xs font-bold text-gray-500 dark:text-white/60">Click or drag CSV file here</span>
-                        </div>
-                        <input
-                            id="csv-file-input"
-                            type="file"
-                            accept=".csv"
-                            onChange={handleFileChange}
-                            required
-                            className="w-full h-32 opacity-0 cursor-pointer"
-                        />
-                    </div>
-                    {file && (
-                        <div className="mt-3 text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                            <XCircle className="w-4 h-4" onClick={() => setFile(null)} style={{cursor: 'pointer'}} />
-                            Selected: {file.name}
+                <div className="p-8 py-6 flex-1 overflow-y-auto ncc-scrollbar">
+                    {formError && (
+                        <div className="mb-6">
+                            <ErrorDisplay message={formError} />
                         </div>
                     )}
+
+                    <div className="bg-ncc-navy/5 dark:bg-white/5 p-6 rounded-2xl mb-8 border border-ncc-navy/5 dark:border-white/10">
+                        <div className="flex justify-between items-center mb-4">
+                            <p className="text-sm font-black text-ncc-navy dark:text-white uppercase tracking-widest">
+                                Required CSV Headers
+                            </p>
+                            <button 
+                                type="button" 
+                                onClick={downloadTemplate}
+                                className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest bg-ncc-navy text-white px-3 py-1.5 rounded-lg hover:bg-ncc-navy/90 transition-all"
+                            >
+                                <Download className="w-3 h-3" /> Template
+                            </button>
+                        </div>
+                        <div className="bg-white dark:bg-[#0a1628] p-4 rounded-xl text-[10px] font-mono break-words border border-gray-200 dark:border-white/5 uppercase text-gray-600 dark:text-white/70 leading-relaxed shadow-inner overflow-y-auto max-h-32 ncc-scrollbar">
+                            {REQUIRED_HEADERS.join(', ')}
+                        </div>
+                        <p className="text-[10px] text-gray-500 mt-3 font-bold italic">
+                            * Note: Headers are case-insensitive but must exactly match the phrasing above.
+                        </p>
+                    </div>
+
+                    <div className="mb-2">
+                        <label className="block text-[10px] font-black text-ncc-navy dark:text-white uppercase tracking-widest mb-3">
+                            Upload Data File <span className="text-ncc-red">*</span>
+                        </label>
+                        <div className="relative group">
+                            <div className="absolute inset-0 bg-ncc-navy/5 dark:bg-white/5 rounded-2xl border-2 border-dashed border-ncc-navy/20 dark:border-white/20 group-hover:border-ncc-navy dark:group-hover:border-white transition-colors pointer-events-none flex flex-col items-center justify-center">
+                                <FileText className="w-8 h-8 text-ncc-navy/40 dark:text-white/40 mb-2" />
+                                <span className="text-xs font-bold text-gray-500 dark:text-white/60">Click or drag CSV file here</span>
+                            </div>
+                            <input
+                                id="csv-file-input"
+                                type="file"
+                                accept=".csv"
+                                onChange={handleFileChange}
+                                required
+                                className="w-full h-32 opacity-0 cursor-pointer"
+                            />
+                        </div>
+                        {file && (
+                            <div className="mt-3 text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                                <XCircle className="w-4 h-4" onClick={() => setFile(null)} style={{cursor: 'pointer'}} />
+                                Selected: {file.name}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
-                <div className="flex justify-end gap-4 pt-4 border-t border-ncc-navy/5 dark:border-white/5">
+                <div className="p-6 shrink-0 border-t border-ncc-navy/5 dark:border-white/5 flex justify-end gap-4 rounded-b-3xl">
                     <button
                         type="button"
                         onClick={onClose}

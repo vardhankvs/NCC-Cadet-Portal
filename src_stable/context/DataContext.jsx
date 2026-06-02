@@ -57,6 +57,7 @@ export const DataProvider = ({ children }) => {
 
     const { data: transactions, loading: loadingTransactions } = useFirestoreSubscription('transactions');
     const { data: notifications, loading: loadingNotifications } = useFirestoreSubscription('notifications');
+    const { data: quizAttempts, loading: loadingQuizAttempts } = useFirestoreSubscription('quiz_attempts');
 
     // --- NEW: Extract Payment Document ---
     const paymentSettings = useMemo(() => {
@@ -104,7 +105,8 @@ export const DataProvider = ({ children }) => {
         loadingGrievances ||
         loadingSettings ||
         loadingTransactions ||
-        loadingNotifications;
+        loadingNotifications ||
+        loadingQuizAttempts;
 
     // --- NEW: Check for New Announcements (Smart) ---
     const newAnnouncementCount = useMemo(() => {
@@ -253,6 +255,7 @@ export const DataProvider = ({ children }) => {
         gallery,
         transactions,
         notifications,
+        quizAttempts,
     };
 
     return (

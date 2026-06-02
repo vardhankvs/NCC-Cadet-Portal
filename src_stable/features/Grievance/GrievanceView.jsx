@@ -276,12 +276,14 @@ export const GrievanceView = () => {
                             onChange={e => setSearchQuery(e.target.value)}
                         />
                     </div>
-                    <button 
-                        onClick={() => setShowSubmitModal(true)}
-                        className="bg-ncc-navy text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                    >
-                        <LifeBuoy className="w-4 h-4 text-ncc-gold" /> Submit New Issue
-                    </button>
+                    {userRole !== 'admin' && (
+                        <button 
+                            onClick={() => setShowSubmitModal(true)}
+                            className="bg-ncc-navy text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                        >
+                            <LifeBuoy className="w-4 h-4 text-ncc-gold" /> Submit New Issue
+                        </button>
+                    )}
                 </div>
             </header>
 

@@ -8,7 +8,7 @@ import { toast } from 'react-toastify';
 import { LoadingIndicator } from '../../components/ui/LoadingIndicator.jsx';
 import * as XLSX from 'xlsx';
 import { formatDate } from '../../utils/dateUtils.js';
-
+import { sendPushToCadets } from '../../firebase/pushNotifications.js';
 
 export const AttendanceLogsView = () => {
     const { cadets } = useDataContext();
@@ -93,9 +93,11 @@ export const AttendanceLogsView = () => {
             await batch.commit();
             
             // Send real-time notification
-            import('../../firebase/pushNotifications.js').then(({ sendPushToCadets }) => {
+            try {
                 sendPushToCadets(selectedCadetIds, '✅ Attendance Marked', `Your attendance was marked for today's class.`, 'attendance');
-            }).catch(console.error);
+            } catch (e) {
+                console.error(e);
+            }
 
             toast.success(`Marked ${selectedCadetIds.length} cadets present.`);
             setShowManualMark(false);

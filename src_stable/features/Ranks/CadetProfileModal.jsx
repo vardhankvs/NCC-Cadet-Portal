@@ -198,8 +198,8 @@ export const CadetProfileModal = ({ cadet, attendancePct, attendancePresentCount
                     <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
                         <div className="flex items-center gap-6">
                             <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl ring-2 ring-ncc-gold/40 overflow-hidden bg-white dark:bg-[#050b14]/10 flex items-center justify-center text-2xl font-black text-ncc-navy dark:text-white shrink-0 shadow-xl">
-                                {cadet.photoUrl
-                                    ? <img src={cadet.photoUrl} alt={cadet.name} className="w-full h-full object-cover" />
+                                {cadet.photoURL || cadet.photoUrl
+                                    ? <img src={cadet.photoURL || cadet.photoUrl} alt={cadet.name} className="w-full h-full object-cover" />
                                     : <span>{initials}</span>
                                 }
                             </div>

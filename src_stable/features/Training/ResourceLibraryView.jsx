@@ -15,6 +15,7 @@ import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
 import { QuizEngine } from './QuizEngine.jsx';
 import { QuizForm } from './QuizForm.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const ResourceLibraryView = ({ mode = 'library' }) => {
     const { user: currentUser, userRole, userEnrollmentId } = useAuthContext();
@@ -491,7 +492,7 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
             {selectedVideo && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-ncc-navy/95 backdrop-blur-xl">
                     <div className="relative w-full max-w-4xl aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl">
-                        <button onClick={() => setSelectedVideo(null)} className="absolute top-4 right-4 z-10 p-2 bg-white dark:bg-[#050b14]/10 hover:bg-white dark:bg-[#050b14]/20 rounded-full text-white transition"><X className="w-6 h-6" /></button>
+                        <button onClick={() => setSelectedVideo(null)} className="absolute top-4 right-4 z-10 p-2 bg-white/10 dark:bg-[#050b14]/10 hover:bg-white/20 dark:hover:bg-[#050b14]/20 rounded-full text-white transition"><X className="w-6 h-6" /></button>
                         {selectedVideo.sourceType === 'external' ? (
                             <div className="w-full h-full flex flex-col items-center justify-center text-white p-20 text-center">
                                 <ExternalLink className="w-20 h-20 text-ncc-gold mb-6" />
@@ -516,7 +517,7 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
             {isAddingTutorial && (
                 <ModalOverlay onClose={() => { setIsAddingTutorial(false); setEditingTutorialId(null); }}>
                     <div className="p-10 w-[600px] max-w-[95vw] max-h-[90vh] overflow-y-auto ncc-scrollbar relative bg-white dark:bg-[#050b14]">
-                        <button onClick={() => { setIsAddingTutorial(false); setEditingTutorialId(null); }} className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:bg-[#0d2137] rounded-full transition z-10"><X className="w-5 h-5 text-gray-400 dark:text-white/80" /></button>
+                        <button onClick={() => { setIsAddingTutorial(false); setEditingTutorialId(null); }} className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition z-10"><X className="w-5 h-5 text-gray-400 dark:text-white/80" /></button>
                         <div className="mb-10">
                             <h3 className="text-3xl font-display font-bold text-ncc-navy dark:text-white">{editingTutorialId ? 'Edit Tutorial' : 'New Video Tutorial'}</h3>
                             <p className="text-sm text-gray-500 dark:text-white/70 font-medium">Update training content details and sources.</p>
@@ -535,9 +536,9 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
                                 if (editingTutorialId) {
                                     await updateDoc(doc(getCollectionRef('tutorials'), editingTutorialId), { ...newTutorial, videoUrl: vId, updatedAt: new Date().toISOString() });
                                     toast.success("Tutorial updated!");
-                                    import('../../firebase/pushNotifications.js').then(({ sendPushToAll }) => {
+                                    try {
                                         sendPushToAll('▶️ Tutorial Updated', `The video tutorial "${newTutorial.title}" has been updated.`);
-                                    }).catch(err => console.error("Failed to import push module", err));
+                                    } catch (err) { console.error(err); }
                                 } else {
                                     await addTutorial({ ...newTutorial, videoUrl: vId });
                                     toast.success("Tutorial published!");
@@ -639,7 +640,7 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
             {isUploadModalOpen && (
                 <ModalOverlay onClose={() => setIsUploadModalOpen(false)}>
                     <div className="p-10 w-[600px] max-w-[95vw] max-h-[90vh] overflow-y-auto ncc-scrollbar relative bg-white dark:bg-[#050b14]">
-                        <button onClick={() => setIsUploadModalOpen(false)} className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:bg-[#0d2137] rounded-full transition z-10"><X className="w-5 h-5 text-gray-400 dark:text-white/80" /></button>
+                        <button onClick={() => setIsUploadModalOpen(false)} className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition z-10"><X className="w-5 h-5 text-gray-400 dark:text-white/80" /></button>
                         <div className="mb-10">
                             <h3 className="text-3xl font-display font-bold text-ncc-navy dark:text-white">Upload Resource</h3>
                             <p className="text-sm text-gray-500 dark:text-white/70 font-medium">Distribute manuals, circulars, or training materials to the unit.</p>

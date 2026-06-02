@@ -7,6 +7,7 @@ import {
     loginUser,
     signupUser,
     logoutUser,
+    logoutAllDevices,
     loginAdminWithOTP,
 } from '../firebase/authService';
 import {
@@ -267,6 +268,22 @@ export const useAuth = () => {
         }
     };
 
+    const handleLogoutAllDevices = async () => {
+        setAuthLoading(true);
+        try {
+            stopHeartbeat();
+            if (sessionIdRef.current) {
+                await terminateSession(sessionIdRef.current);
+                sessionIdRef.current = null;
+            }
+            await logoutAllDevices();
+            setSignupSuccess(false);
+        } catch (e) {
+            setAuthError(e.message);
+        }
+        setAuthLoading(false);
+    };
+
     const markAnnouncementsAsRead = async () => {
         if (!user || userRole !== 'cadet') return;
         try {
@@ -308,6 +325,7 @@ export const useAuth = () => {
         handleLogin,
         handleSignup,
         handleLogout,
+        handleLogoutAllDevices,
         lastViewedAnnouncements,
         markAnnouncementsAsRead,
         lastViewedNotifications,

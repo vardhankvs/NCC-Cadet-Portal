@@ -11,10 +11,11 @@ import {
     Loader,
     Search,
 } from '../../components/Icons.jsx';
-import { setEventAttendeeStatus } from '../../firebase/firestoreService.js';
+import { setEventAttendeeStatus, setEventAttendeeBulk } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 // Removed html-to-docx and file-saver imports
+import { sendPushToUser } from '../../firebase/pushNotifications.js';
 
 // Helper component for a single cadet row
 const CadetRow = ({ cadet, event, isSelected, onToggleSelection }) => {
@@ -55,12 +56,12 @@ const CadetRow = ({ cadet, event, isSelected, onToggleSelection }) => {
             toast.success(`${action}: ${cadet.name}`);
             
             if (newStatus === 'confirmed') {
-                import('../../firebase/pushNotifications.js').then(({ sendPushToUser }) => {
+                try {
                     const enrollId = cadet.enrollmentId || cadet.regimentalNumber;
                     if (enrollId) {
                         sendPushToUser(enrollId, 'Event Roster', `You have been selected for the upcoming event: ${event.name}`, 'events');
                     }
-                }).catch(console.error);
+                } catch (e) { console.error(e); }
             }
         } catch (e) {
             toast.error(`Failed to update: ${e.message}`);
@@ -173,12 +174,12 @@ export const EventRosterModal = ({ eventId, onClose }) => {
             const cadetIdsArray = Array.from(selectedCadets);
             // Assuming setEventAttendeeBulk is implemented in firestoreService
             // If not, we can loop over them. Since we added it, let's use it.
-            import('../../firebase/firestoreService.js').then(async ({ setEventAttendeeBulk }) => {
+            try {
                 await setEventAttendeeBulk(event.id, cadetIdsArray, status);
                 toast.success(`Successfully ${status === 'confirmed' ? 'added to list' : 'removed from list'}`);
                 
                 if (status === 'confirmed') {
-                    import('../../firebase/pushNotifications.js').then(({ sendPushToUser }) => {
+                    try {
                         cadetIdsArray.forEach(id => {
                             const cadet = cadets.find(c => c.id === id);
                             const enrollId = cadet?.enrollmentId || cadet?.regimentalNumber;
@@ -186,21 +187,20 @@ export const EventRosterModal = ({ eventId, onClose }) => {
                                 sendPushToUser(enrollId, 'Event Roster', `You have been selected for the upcoming event: ${event.name}`, 'events');
                             }
                         });
-                    }).catch(console.error);
+                    } catch (e) { console.error(e); }
                 }
 
                 setSelectedCadets(new Set());
                 setIsBulkProcessing(false);
-            }).catch(async () => {
+            } catch (fallbackError) {
                 // Fallback if bulk import fails
-                const { setEventAttendeeStatus } = await import('../../firebase/firestoreService.js');
                 for (const cadetId of cadetIdsArray) {
                     await setEventAttendeeStatus(event.id, cadetId, status);
                 }
                 toast.success(`Successfully processed ${cadetIdsArray.length} cadets`);
                 
                 if (status === 'confirmed') {
-                    import('../../firebase/pushNotifications.js').then(({ sendPushToUser }) => {
+                    try {
                         cadetIdsArray.forEach(id => {
                             const cadet = cadets.find(c => c.id === id);
                             const enrollId = cadet?.enrollmentId || cadet?.regimentalNumber;
@@ -208,12 +208,12 @@ export const EventRosterModal = ({ eventId, onClose }) => {
                                 sendPushToUser(enrollId, 'Event Roster', `You have been selected for the upcoming event: ${event.name}`, 'events');
                             }
                         });
-                    }).catch(console.error);
+                    } catch (e) { console.error(e); }
                 }
 
                 setSelectedCadets(new Set());
                 setIsBulkProcessing(false);
-            });
+            }
         } catch (error) {
             toast.error(`Failed to process: ${error.message}`);
             setIsBulkProcessing(false);

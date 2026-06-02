@@ -35,93 +35,168 @@ export default async function handler(req, res) {
     }
 
     try {
-        const { subject, message, tokens, targetTab } = req.body;
+        const { subject, message, tokens, targetTab, notificationType, pendingDocId, adminLat, adminLng } = req.body;
 
         if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
             return res.status(400).json({ error: 'No FCM tokens provided.' });
         }
 
+        const isAttendance = notificationType === 'attendance';
+
         // Intercept old cached PWA clients sending the hardcoded fee message to EVERYONE
-        // We drop it completely because we can't determine the target cadet from the old payload
         if (message && message.includes('verified and approved')) {
             console.log('Blocked legacy fee broadcast from cached client');
             return res.status(200).json({ success: true, blocked: true, message: 'Legacy broadcast blocked' });
         }
 
-        // Deduplicate tokens just in case
+        // Deduplicate tokens
         const uniqueTokens = [...new Set(tokens.filter(Boolean))];
 
         const firebaseAdmin = getFirebaseAdmin();
-        
-        // Generate a unique tag for this specific broadcast based on content
-        // This ensures identical broadcasts to the same device (via duplicate tokens) collapse into one
+
         const rawContent = (subject || '') + (message || '');
         const contentHash = rawContent.replace(/[^a-zA-Z0-9]/g, '').substring(0, 16) || Date.now().toString();
         const broadcastTag = `ncc-${contentHash}`;
 
-        // ── Build the multicast message ──────────────────────────────────────
-        // IMPORTANT: Both `notification` (for OS-level display) AND `android`/`apns`
-        // configs are needed for notifications to appear on lock screen & notification bar.
+        // ─────────────────────────────────────────────────────────────────────
+        // ATTENDANCE — Data-only message (no `notification` field at any level)
+        // ─────────────────────────────────────────────────────────────────────
+        // WHY data-only?
+        //   When a FCM message has a `notification` field, the Firebase SDK in
+        //   the service worker (firebase-messaging-compat.js) auto-displays the
+        //   notification WITHOUT action buttons AND suppresses our custom handler
+        //   on Android Chrome. By omitting `notification` entirely, FCM delivers
+        //   a raw data push — the SDK calls our onBackgroundMessage handler which
+        //   then shows the notification WITH action buttons via showNotification().
+        //   This is the ONLY reliable cross-platform way to get action buttons on
+        //   Android Chrome PWA.
+        // ─────────────────────────────────────────────────────────────────────
+        if (isAttendance) {
+            const attendanceDeepLink = `https://ncc-portal-redesign.vercel.app/?tab=attendance&autoVerify=${pendingDocId || ''}&adminLat=${adminLat || ''}&adminLng=${adminLng || ''}`;
+
+            const attendanceMessage = {
+                tokens: uniqueTokens,
+
+                // ALL content goes into `data` — service worker reads these to
+                // build and display the notification with action buttons.
+                data: {
+                    notificationType: 'attendance',
+                    pendingDocId:     pendingDocId || '',
+                    adminLat:         adminLat     || '',
+                    adminLng:         adminLng     || '',
+                    title:            subject  || '📍 Attendance Verification Required',
+                    body:             message  || 'Your ANO has scanned your QR code. Tap to verify your location.',
+                    tag:              `attendance-${pendingDocId || Date.now()}`,
+                },
+
+                // No top-level `notification` field — prevents SDK auto-display.
+
+                android: {
+                    priority: 'high',
+                    // No android.notification block — service worker handles display.
+                },
+
+                webpush: {
+                    headers: { Urgency: 'high' },
+                    // No webpush.notification block — service worker handles display
+                    // with showNotification() including actions: [].
+                    fcmOptions: {
+                        // Fallback deep-link if service worker click handler fails
+                        link: attendanceDeepLink,
+                    },
+                },
+
+                apns: {
+                    headers: { 'apns-priority': '10' },
+                    payload: {
+                        aps: {
+                            // iOS doesn't support Web Push actions; show a plain alert.
+                            alert: {
+                                title: subject || '📍 Attendance Verification Required',
+                                body:  message || 'Your ANO has scanned your QR code. Open the app to verify.',
+                            },
+                            sound: 'default',
+                            badge: 1,
+                            'content-available': 1,
+                        },
+                    },
+                },
+            };
+
+            const response = await firebaseAdmin.messaging().sendEachForMulticast(attendanceMessage);
+
+            if (response.failureCount > 0) {
+                response.responses.forEach((resp, idx) => {
+                    if (!resp.success) {
+                        console.warn(`FCM Attendance failed token[${idx}]:`, resp.error?.message);
+                    }
+                });
+            }
+
+            console.log(`FCM Attendance (data-only): ${response.successCount} delivered, ${response.failureCount} failed`);
+            return res.status(200).json({
+                success: true,
+                successCount: response.successCount,
+                failureCount: response.failureCount,
+                total: uniqueTokens.length,
+            });
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STANDARD BROADCAST — `notification` field present, SDK auto-displays.
+        // ─────────────────────────────────────────────────────────────────────
         const multicastMessage = {
             tokens: uniqueTokens,
             data: {
-                targetTab: targetTab || 'notifications'
+                targetTab: targetTab || 'notifications',
             },
 
-            // OS-level notification — shown on lock screen, notification bar, home screen
+            // OS-level notification — shown on lock screen, notification bar
             notification: {
                 title: subject || 'NCC Portal Update',
-                body: message || 'You have a new update in the NCC Portal',
+                body:  message || 'You have a new update in the NCC Portal',
             },
 
-            // Android-specific config — required for foreground/background display on Android
             android: {
-                priority: 'high',                  // Wake up the device
-                collapseKey: broadcastTag, // Collapses duplicate notifications in FCM queue
+                priority: 'high',
+                collapseKey: broadcastTag,
                 notification: {
                     title: subject || 'NCC Portal Update',
-                    body: message || 'You have a new update in the NCC Portal',
-                    icon: 'ic_notification',        // Must match a drawable in Android app (for web PWA this is ignored, notification.icon in SW is used)
-                    color: '#1a2a4a',               // NCC Navy
+                    body:  message || 'You have a new update in the NCC Portal',
+                    color: '#1a2a4a',
                     sound: 'default',
-                    channel_id: 'ncc_portal',       // Required for Android 8+
-                    click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                    channel_id: 'ncc_portal',
                     notification_priority: 'PRIORITY_HIGH',
-                    visibility: 'PUBLIC',           // Show on lock screen
-                    tag: broadcastTag,              // Replaces existing notifications with the same tag in the drawer
+                    visibility: 'PUBLIC',
+                    tag: broadcastTag,
                 }
             },
 
-            // Web push config — for Chrome on desktop/mobile PWA
             webpush: {
-                headers: {
-                    Urgency: 'high',
-                },
+                headers: { Urgency: 'high' },
                 notification: {
                     title: subject || 'NCC Portal Update',
-                    body: message || 'You have a new update in the NCC Portal',
-                    icon: 'https://ncc-portal-redesign.vercel.app/pwa-192x192.png',
+                    body:  message || 'You have a new update in the NCC Portal',
+                    icon:  'https://ncc-portal-redesign.vercel.app/pwa-192x192.png',
                     badge: 'https://ncc-portal-redesign.vercel.app/pwa-192x192.png',
                     vibrate: [200, 100, 200],
                     requireInteraction: false,
-                    tag: broadcastTag, // Collapses duplicate notifications
-
+                    tag: broadcastTag,
                 },
                 fcmOptions: {
-                    link: targetTab ? `https://ncc-portal-redesign.vercel.app/?tab=${targetTab}` : 'https://ncc-portal-redesign.vercel.app/?tab=notifications',
+                    link: targetTab
+                        ? `https://ncc-portal-redesign.vercel.app/?tab=${targetTab}`
+                        : 'https://ncc-portal-redesign.vercel.app/?tab=notifications',
                 }
             },
 
-            // APNs config for iOS
             apns: {
-                headers: {
-                    'apns-priority': '10',
-                },
+                headers: { 'apns-priority': '10' },
                 payload: {
                     aps: {
                         alert: {
                             title: subject || 'NCC Portal Update',
-                            body: message || 'You have a new update in the NCC Portal',
+                            body:  message || 'You have a new update in the NCC Portal',
                         },
                         sound: 'default',
                         badge: 1,
@@ -131,10 +206,8 @@ export default async function handler(req, res) {
             },
         };
 
-        // sendEachForMulticast is required for firebase-admin v12+
         const response = await firebaseAdmin.messaging().sendEachForMulticast(multicastMessage);
 
-        // Log failed tokens for debugging
         if (response.failureCount > 0) {
             const failedTokens = [];
             response.responses.forEach((resp, idx) => {
@@ -147,9 +220,9 @@ export default async function handler(req, res) {
 
         console.log(`FCM Broadcast: ${response.successCount} delivered, ${response.failureCount} failed out of ${uniqueTokens.length} tokens`);
 
-        return res.status(200).json({ 
-            success: true, 
-            successCount: response.successCount, 
+        return res.status(200).json({
+            success: true,
+            successCount: response.successCount,
             failureCount: response.failureCount,
             total: uniqueTokens.length
         });

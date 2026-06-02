@@ -82,6 +82,7 @@ import { InventoryView } from './features/Inventory/InventoryView.jsx';
 import { CampsView } from './features/Camps/CampsView.jsx';
 
 import { AttendanceScanner } from './features/Attendance/AttendanceScanner.jsx';
+import { AttendanceVerification } from './features/Attendance/AttendanceVerification.jsx';
 import { AttendanceLogsView } from './features/Attendance/AttendanceLogsView.jsx';
 import { SocialServiceView } from './features/SocialService/SocialServiceView.jsx';
 import { UnitOrganogram } from './features/Ranks/UnitOrganogram.jsx';
@@ -96,6 +97,7 @@ import { CampNominationView } from './features/Camps/CampNominationView.jsx';
 import { PFTTrackerView } from './features/Training/PFTTrackerView.jsx';
 import { CareerBridgeView } from './features/Alumni/CareerBridgeView.jsx';
 import { TrainingCalendarView } from './features/Training/TrainingCalendarView.jsx';
+import { ResultsView } from './features/Training/ResultsView.jsx';
 import { NCCKnowledgeView } from './features/References/NCCKnowledgeView.jsx';
 import { FeatureShowcase } from './components/FeatureShowcase.jsx';
 import { LeaveRequestView } from './features/Cadets/LeaveRequestView.jsx';
@@ -149,7 +151,7 @@ const CertBadge = ({ cert }) => {
 import { ThemeToggle } from './components/ui/ThemeToggle.jsx';
 
 // ─── Shared Sidebar ─────────────────────────────────────────────────────
-function SidebarContent({ tabs, role, activeTab, handleTabClick, handleLogout, currentCadet, initials, tenant }) {
+function SidebarContent({ tabs, role, activeTab, handleTabClick, handleLogout, handleLogoutAllDevices, currentCadet, initials, tenant }) {
     const { isDarkMode } = useTheme();
     const [searchQuery, setSearchQuery] = React.useState('');
     const [installPrompt, setInstallPrompt] = React.useState(null);
@@ -220,8 +222,8 @@ function SidebarContent({ tabs, role, activeTab, handleTabClick, handleLogout, c
             <div className="mx-4 my-4 p-3 rounded-xl flex items-center gap-3 border border-white/10"
                 style={{ background: 'rgba(255,255,255,0.05)' }}>
                 <div className="w-10 h-10 rounded-full border-2 border-ncc-gold/50 overflow-hidden flex items-center justify-center bg-gray-100 dark:bg-ncc-navy-mid flex-shrink-0">
-                    {currentCadet?.photoUrl ? (
-                        <img src={currentCadet.photoUrl} alt="" className="w-full h-full object-cover" />
+                    {currentCadet?.photoUrl || currentCadet?.photoURL ? (
+                        <img src={currentCadet.photoUrl || currentCadet.photoURL} alt="" className="w-full h-full object-cover" />
                     ) : (
                         <span className="text-ncc-gold font-bold font-display text-sm">{initials}</span>
                     )}
@@ -331,6 +333,18 @@ function SidebarContent({ tabs, role, activeTab, handleTabClick, handleLogout, c
                 </div>
                 <span className="font-medium text-sm group-hover:text-ncc-red">Logout</span>
             </button>
+            {role === 'admin' && (
+                <button
+                    onClick={handleLogoutAllDevices}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 group mt-1 bg-red-500/10"
+                    style={{ color: 'var(--ncc-red)' }}
+                >
+                    <div className="w-7 h-7 rounded-md flex items-center justify-center">
+                        <LogOut className="w-4 h-4 text-ncc-red" />
+                    </div>
+                    <span className="font-medium text-sm text-ncc-red">Logout All Devices</span>
+                </button>
+            )}
         </div>
     </aside>
     );
@@ -399,7 +413,7 @@ function SidebarGroup({ category, tabs, activeTab, handleTabClick, isDarkMode, d
 // ─── Tab Content Logic Moved Inside Dashboard for better scope access ───
 
 
-const wideTabs = ['analytics', 'hierarchy', 'library', 'tutorials', 'exams', 'list', 'att_logs', 'honour', 'inventory', 'summary', 'events', 'discipline', 'rank_mgmt', 'staff', 'alumni', 'career', 'grievances', 'direct_chat'];
+const wideTabs = ['analytics', 'hierarchy', 'library', 'tutorials', 'exams', 'list', 'att_logs', 'honour', 'inventory', 'summary', 'events', 'discipline', 'rank_mgmt', 'staff', 'alumni', 'career', 'grievances', 'direct_chat', 'results'];
 
 export function Dashboard() {
     const { tenant } = useTenant();
@@ -413,6 +427,7 @@ export function Dashboard() {
         lastViewedNotifications,
         userDelegatedModules,
         handleLogout,
+        handleLogoutAllDevices,
         markAnnouncementsAsRead,
     } = useAuthContext();
 
@@ -579,7 +594,18 @@ export function Dashboard() {
                         autoClose: 5000, 
                         position: "top-right", 
                         icon: false,
-                        onClick: () => handleTabClick('notifications')
+                        onClick: () => {
+                            const target = payload.data?.targetTab || payload.targetTab;
+                            if (target === 'attendance') {
+                                // Banner is present on all tabs; no need to navigate.
+                                return;
+                            }
+                            if (target) {
+                                handleTabClick(target);
+                            } else if (!payload.notification.title.toLowerCase().includes('action required')) {
+                                handleTabClick('notifications');
+                            }
+                        }
                     }
                 );
             }
@@ -672,7 +698,8 @@ export function Dashboard() {
 
             // Training & Development
             { id: 'training_calendar',  name: 'Calendar',       category: 'Training', icon: Calendar },
-            { id: 'exams',              name: 'Exams',          category: 'Training', icon: FileText },
+            { id: 'exams',              name: 'Digital Exams',  category: 'Training', icon: ShieldCheck },
+            { id: 'results',            name: 'Results',        category: 'Training', icon: Award },
             { id: 'pft',                name: 'PFT',            category: 'Training', icon: Activity },
             { id: 'camps',              name: 'Camps',          category: 'Training', icon: Tent },
             { id: 'library',            name: 'Library',        category: 'Training', icon: BookOpen },
@@ -716,6 +743,7 @@ export function Dashboard() {
             // Academics & Training
             { id: 'training_calendar', name: 'Calendar',      category: 'Training', icon: Calendar },
             { id: 'exams',             name: 'Mock Exams',    category: 'Training', icon: FileText },
+            { id: 'results',           name: 'Results',       category: 'Training', icon: Award },
             { id: 'pft',               name: 'My Fitness',    category: 'Training', icon: Activity },
             { id: 'camps',             name: 'My Camps',      category: 'Training', icon: Tent },
             { id: 'library',           name: 'Digital Library', category: 'Training', icon: BookOpen },
@@ -891,6 +919,7 @@ export function Dashboard() {
                     />
                 )}
                 {renderTab === 'kit_predictor'     && <KitFitPredictor />}
+                {renderTab === 'results'           && <ResultsView />}
             </>
         );
     };
@@ -914,6 +943,8 @@ export function Dashboard() {
                         activeTab={activeTab}
                         handleTabClick={handleTabClick}
                         handleLogout={handleLogout}
+                        handleLogoutAllDevices={handleLogoutAllDevices}
+                        currentCadet={cadets.find((c) => c.enrollmentId === userEnrollmentId)}
                         tenant={tenant}
                     />
                 </div>
@@ -934,6 +965,8 @@ export function Dashboard() {
                                 activeTab={activeTab}
                                 handleTabClick={handleTabClick}
                                 handleLogout={handleLogout}
+                                handleLogoutAllDevices={handleLogoutAllDevices}
+                                currentCadet={cadets.find((c) => c.enrollmentId === userEnrollmentId)}
                                 tenant={tenant}
                             />
                         </div>
@@ -1007,7 +1040,9 @@ export function Dashboard() {
                             </div>
                         ) : (
                             <div className={`ncc-page mx-auto ${wideTabs.includes(activeTab) ? 'max-w-7xl' : 'max-w-2xl'}`}>
-                                {renderTabContent()}
+                                <div className="lg:col-span-2 space-y-6">
+                                    {renderTabContent()}
+                                </div>
                             </div>
                         )}
                     </main>
@@ -1033,7 +1068,8 @@ export function Dashboard() {
                     activeTab={activeTab}
                     handleTabClick={handleTabClick}
                     handleLogout={handleLogout}
-                    currentCadet={currentCadet}
+                    handleLogoutAllDevices={handleLogoutAllDevices}
+                    currentCadet={cadets.find((c) => c.enrollmentId === userEnrollmentId)}
                     initials={initials}
                     tenant={tenant}
                 />
@@ -1055,7 +1091,8 @@ export function Dashboard() {
                             activeTab={activeTab}
                             handleTabClick={handleTabClick}
                             handleLogout={handleLogout}
-                            currentCadet={currentCadet}
+                            handleLogoutAllDevices={handleLogoutAllDevices}
+                            currentCadet={cadets.find((c) => c.enrollmentId === userEnrollmentId)}
                             initials={initials}
                             tenant={tenant}
                         />
@@ -1111,8 +1148,8 @@ export function Dashboard() {
                                 className="w-9 h-9 rounded-full border-2 overflow-hidden flex items-center justify-center bg-ncc-navy-mid"
                                 style={{ borderColor: 'rgba(184,131,14,0.5)' }}
                             >
-                                {currentCadet?.photoUrl ? (
-                                    <img src={currentCadet.photoUrl} alt="" className="w-full h-full object-cover" />
+                                {currentCadet?.photoUrl || currentCadet?.photoURL ? (
+                                    <img src={currentCadet.photoUrl || currentCadet.photoURL} alt="" className="w-full h-full object-cover" />
                                 ) : (
                                     <span className="text-ncc-gold text-xs font-bold font-display">{initials}</span>
                                 )}
@@ -1130,6 +1167,7 @@ export function Dashboard() {
                     ) : (
                         <div className={`ncc-page mx-auto ${wideTabs.includes(activeTab) ? 'max-w-7xl' : 'max-w-2xl'}`}>
                             <AuthContext.Provider value={overriddenAuth}>
+                                <AttendanceVerification />
                                 {renderTabContent()}
                             </AuthContext.Provider>
                         </div>

@@ -159,7 +159,7 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
 
     // Photo
     const [photoFile, setPhotoFile]         = useState(null);
-    const [photoPreview, setPhotoPreview]   = useState(currentCadet?.photoUrl || '');
+    const [photoPreview, setPhotoPreview]   = useState(currentCadet?.photoUrl || currentCadet?.photoURL || '');
     const [photoFileName, setPhotoFileName] = useState('');
     const [isDragging, setIsDragging]       = useState(false);
 
@@ -206,7 +206,7 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
         }
         setLoading(true);
         try {
-            let photoUrl = currentCadet?.photoUrl || '';
+            let photoUrl = currentCadet?.photoUrl || currentCadet?.photoURL || '';
             if (photoFile) {
                 toast.info('Compressing photo…', { autoClose: false, toastId: 'photo-upload' });
                 photoUrl = await compressImageToBase64(photoFile);

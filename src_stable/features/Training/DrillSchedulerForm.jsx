@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { saveEvent } from '../../firebase/firestoreService.js';
+import { sendEventReminderPush } from '../../firebase/pushNotifications.js';
 import { toast } from 'react-toastify';
-import { Shield, Clock, MapPin, Users, X, Calendar } from '../../components/Icons.jsx';
+import { Shield, Clock, MapPin, Users, X, Calendar, Bell } from '../../components/Icons.jsx';
 
 const DRILL_TYPES = [
     { label: 'Parade', icon: '🪖', color: 'bg-ncc-navy text-white' },
@@ -33,6 +34,8 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
         dresscode: 'No. 2 Dress (Training)',
         specialInstructions: '',
         description: '',
+        reminderEnabled: true,
+        reminderMinutes: 60,
     });
 
     const handleChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
@@ -49,10 +52,24 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
                 name: formData.name,
                 date: formData.date,
                 location: formData.location,
+                time: formData.time,
+                endTime: formData.endTime,
                 description: `[${formData.type}] ${formData.description || ''} | Time: ${formData.time}-${formData.endTime} | Dress: ${formData.dresscode} | Strength: ${formData.reportingStrength || 'All'} | Priority: ${formData.priority} | Instructions: ${formData.specialInstructions || 'Nil'}`,
                 type: formData.type,
+                reminderEnabled: formData.reminderEnabled,
+                reminderMinutes: Number(formData.reminderMinutes),
             });
             toast.success('Drill scheduled successfully!');
+            // Send immediate reminder push if enabled
+            if (formData.reminderEnabled) {
+                sendEventReminderPush(
+                    formData.name,
+                    formData.time,
+                    formData.location,
+                    formData.date
+                );
+                toast.info(`📣 Reminder push sent to all cadets!`, { autoClose: 3000 });
+            }
             onClose();
         } catch (err) {
             toast.error('Failed to schedule drill.');
@@ -208,6 +225,40 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
                                     className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#0a1628] focus:bg-white dark:bg-[#050b14] outline-none font-bold text-ncc-navy dark:text-white resize-none"
                                     placeholder="What is the objective of this drill?"
                                     value={formData.description} onChange={e => handleChange('description', e.target.value)} />
+                            </div>
+
+                            {/* Reminder Notification */}
+                            <div className={`rounded-2xl border-2 p-4 transition-all ${formData.reminderEnabled ? 'border-ncc-gold/40 bg-ncc-gold/5' : 'border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-[#0a1628]'}`}>
+                                <div className="flex items-center justify-between mb-3">
+                                    <label className="flex items-center gap-2 text-xs font-black uppercase text-ncc-navy dark:text-white tracking-widest cursor-pointer">
+                                        <Bell className={`w-3.5 h-3.5 ${formData.reminderEnabled ? 'text-ncc-gold' : 'text-gray-400'}`} />
+                                        Push Reminder
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleChange('reminderEnabled', !formData.reminderEnabled)}
+                                        className={`relative w-11 h-6 rounded-full transition-all duration-300 ${formData.reminderEnabled ? 'bg-ncc-gold' : 'bg-gray-200 dark:bg-white/10'}`}
+                                    >
+                                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-300 ${formData.reminderEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                                    </button>
+                                </div>
+                                {formData.reminderEnabled && (
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 dark:text-white/50 uppercase mb-2">Notify cadets how early?</label>
+                                        <select
+                                            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white font-bold text-sm focus:outline-none focus:border-ncc-gold/50"
+                                            value={formData.reminderMinutes}
+                                            onChange={e => handleChange('reminderMinutes', e.target.value)}
+                                        >
+                                            <option value={15}>15 minutes before</option>
+                                            <option value={30}>30 minutes before</option>
+                                            <option value={60}>1 hour before</option>
+                                            <option value={120}>2 hours before</option>
+                                            <option value={1440}>1 day before</option>
+                                        </select>
+                                        <p className="text-[10px] text-gray-400 dark:text-white/40 mt-1.5">A push notification will also be sent immediately to all cadets on save.</p>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Special Instructions */}

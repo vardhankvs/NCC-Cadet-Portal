@@ -211,52 +211,82 @@ export const DisciplineView = () => {
             {/* Edit Points Modal */}
             {isEditModalOpen && (
                 <ModalOverlay onClose={() => setIsEditModalOpen(false)}>
-                    <div className="p-8 w-[500px] max-w-[90vw] relative">
-                        <button onClick={() => setIsEditModalOpen(false)} className="absolute top-0 right-0 p-2 hover:bg-gray-100 dark:bg-[#0d2137] rounded-full transition">
-                            <X className="w-5 h-5 text-gray-400 dark:text-white/80" />
-                        </button>
-                        {/* Content stays here, bg-white dark:bg-[#050b14] provided by Overlay */}
-                        <div className="mb-8 text-center">
-                            <div className="flex flex-col items-center gap-3 mb-2">
-                                <div className={`p-3 rounded-2xl ${pointType === 'merit' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-ncc-red'}`}>
-                                    {pointType === 'merit' ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
-                                </div>
-                                <h3 className="text-2xl font-display font-bold text-ncc-navy dark:text-white">Update {pointType === 'merit' ? 'Merit' : 'Discipline'}</h3>
-                            </div>
-                            <p className="text-sm text-gray-500 dark:text-white/70">Updating record for <span className="font-bold text-ncc-navy dark:text-white">{selectedCadet?.name}</span></p>
-                        </div>
+                    <div className="bg-white dark:bg-[#050b14] w-[500px] max-w-[95vw] relative rounded-b-2xl shadow-2xl overflow-hidden flex flex-col">
+                        {/* Decorative glow */}
+                        <div className={`absolute -top-32 -right-32 w-64 h-64 rounded-full blur-[80px] opacity-20 pointer-events-none ${pointType === 'merit' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                        <div className={`absolute -bottom-32 -left-32 w-64 h-64 rounded-full blur-[80px] opacity-20 pointer-events-none ${pointType === 'merit' ? 'bg-emerald-500' : 'bg-red-500'}`} />
 
-                        <form onSubmit={handleUpdate} className="space-y-6">
-                            <div>
-                                <label className="block text-[10px] font-black text-ncc-navy dark:text-white uppercase tracking-widest mb-2">New Total Points</label>
-                                <input 
-                                    type="number" required
-                                    className="ncc-input text-lg font-bold"
-                                    value={newAmount}
-                                    onChange={e => setNewAmount(parseInt(e.target.value))}
-                                />
-                                <p className="text-[10px] text-gray-400 dark:text-white/80 mt-2 italic">Previous: {pointType === 'merit' ? (selectedCadet?.meritPoints || 0) : (selectedCadet?.demeritPoints || 0)} pts</p>
-                            </div>
-
-                            <div>
-                                <label className="block text-[10px] font-black text-ncc-navy dark:text-white uppercase tracking-widest mb-2">Reason / Remark</label>
-                                <textarea 
-                                    required
-                                    className="ncc-input text-sm min-h-[100px] py-3"
-                                    placeholder="e.g. Exceptional performance in Republic Day Parade"
-                                    value={remark}
-                                    onChange={e => setRemark(e.target.value)}
-                                />
-                            </div>
-
-                            <button 
-                                type="submit"
-                                disabled={updating}
-                                className={`w-full ncc-btn justify-center py-4 text-sm shadow-xl font-black uppercase tracking-widest ${pointType === 'merit' ? 'ncc-btn-primary' : 'bg-ncc-red text-white hover:bg-red-700'}`}
-                            >
-                                {updating ? <><Loader className="animate-spin w-4 h-4 mr-2" /> Saving...</> : 'Authenticate Update'}
+                        <div className="p-8 relative z-10 flex-1 overflow-y-auto ncc-scrollbar">
+                            <button onClick={() => setIsEditModalOpen(false)} className="absolute top-4 right-4 p-2.5 bg-gray-50 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 rounded-full transition-colors group z-20">
+                                <X className="w-5 h-5 text-gray-500 dark:text-white/60 group-hover:text-gray-900 dark:group-hover:text-white transition-colors" />
                             </button>
-                        </form>
+                            
+                            <div className="mb-8 text-center pt-2">
+                                <div className="inline-flex items-center justify-center mb-5 relative">
+                                    <div className={`absolute inset-0 rounded-2xl blur-xl opacity-40 ${pointType === 'merit' ? 'bg-emerald-400' : 'bg-red-400'}`}></div>
+                                    <div className={`relative p-4 rounded-2xl shadow-lg border ${pointType === 'merit' ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-red-500 border-red-400 text-white'}`}>
+                                        {pointType === 'merit' ? <TrendingUp className="w-8 h-8" /> : <TrendingDown className="w-8 h-8" />}
+                                    </div>
+                                </div>
+                                <h3 className="text-3xl font-display font-bold text-ncc-navy dark:text-white tracking-tight mb-2">
+                                    Update {pointType === 'merit' ? 'Merit' : 'Discipline'}
+                                </h3>
+                                <p className="text-sm text-gray-500 dark:text-white/70">
+                                    Updating record for <span className="font-bold text-ncc-navy dark:text-white px-2 py-0.5 rounded-md bg-gray-100 dark:bg-white/5 ml-1">{selectedCadet?.name}</span>
+                                </p>
+                            </div>
+
+                            <form onSubmit={handleUpdate} className="space-y-6">
+                                <div className="bg-gray-50 dark:bg-[#0a1628] p-5 rounded-2xl border border-gray-200 dark:border-white/10">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <label className="text-[10px] font-black text-ncc-navy dark:text-white uppercase tracking-widest flex items-center gap-2">
+                                            {pointType === 'merit' ? <Trophy className="w-3.5 h-3.5 text-emerald-500"/> : <AlertTriangle className="w-3.5 h-3.5 text-red-500"/>}
+                                            New Total Points
+                                        </label>
+                                        <span className="text-[10px] text-gray-500 dark:text-white/50 uppercase tracking-widest font-bold">
+                                            Previous: {pointType === 'merit' ? (selectedCadet?.meritPoints || 0) : (selectedCadet?.demeritPoints || 0)} pts
+                                        </span>
+                                    </div>
+                                    <input 
+                                        type="number" required
+                                        className="w-full bg-white dark:bg-[#050b14] border-2 border-gray-200 dark:border-white/10 focus:border-ncc-gold dark:focus:border-ncc-gold rounded-xl px-5 py-4 text-3xl font-black text-ncc-navy dark:text-white transition-colors focus:outline-none text-center shadow-inner"
+                                        value={newAmount}
+                                        onChange={e => setNewAmount(parseInt(e.target.value))}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-black text-ncc-navy dark:text-white/70 uppercase tracking-widest mb-2 pl-1">Reason / Remark</label>
+                                    <textarea 
+                                        required
+                                        className="w-full bg-gray-50 dark:bg-[#0a1628] border border-gray-200 dark:border-white/10 focus:border-ncc-gold dark:focus:border-ncc-gold rounded-xl px-4 py-3 text-sm text-ncc-navy dark:text-white transition-colors focus:outline-none min-h-[100px] resize-none"
+                                        placeholder={pointType === 'merit' ? "e.g. Exceptional performance in Republic Day Parade..." : "e.g. Absent for mandatory parade without leave..."}
+                                        value={remark}
+                                        onChange={e => setRemark(e.target.value)}
+                                    />
+                                </div>
+
+                                <button 
+                                    type="submit"
+                                    disabled={updating}
+                                    className={`w-full group relative flex items-center justify-center gap-3 py-4 rounded-xl text-sm font-black uppercase tracking-widest text-white overflow-hidden transition-all shadow-xl hover:shadow-2xl ${
+                                        pointType === 'merit' 
+                                            ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20' 
+                                            : 'bg-red-600 hover:bg-red-500 shadow-red-500/20'
+                                    }`}
+                                >
+                                    <div className="absolute inset-0 w-full h-full bg-white/20 scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-300 ease-out" />
+                                    {updating ? (
+                                        <><Loader className="animate-spin w-5 h-5 relative z-10" /> <span className="relative z-10">Authenticating...</span></>
+                                    ) : (
+                                        <>
+                                            <CheckCircle className="w-5 h-5 relative z-10" /> 
+                                            <span className="relative z-10">Authenticate Update</span>
+                                        </>
+                                    )}
+                                </button>
+                            </form>
+                        </div>
                     </div>
                 </ModalOverlay>
             )}
@@ -264,33 +294,41 @@ export const DisciplineView = () => {
             {/* History Modal */}
             {viewHistoryCadet && (
                 <ModalOverlay onClose={() => setViewHistoryCadet(null)}>
-                    <div className="p-8 w-[600px] max-w-[90vw] relative max-h-[80vh] flex flex-col">
-                        <button onClick={() => setViewHistoryCadet(null)} className="absolute top-0 right-0 p-2 hover:bg-gray-100 dark:bg-[#0d2137] rounded-full transition">
-                            <X className="w-5 h-5 text-gray-400 dark:text-white/80" />
+                    <div className="bg-white dark:bg-[#050b14] w-[600px] max-w-[95vw] relative max-h-[85vh] flex flex-col rounded-b-2xl shadow-2xl overflow-hidden">
+                        <button onClick={() => setViewHistoryCadet(null)} className="absolute top-4 right-4 p-2.5 bg-gray-50 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 rounded-full transition-colors group z-20">
+                            <X className="w-5 h-5 text-gray-500 dark:text-white/60 group-hover:text-gray-900 dark:group-hover:text-white transition-colors" />
                         </button>
 
-                        <div className="mb-8 flex-shrink-0 text-center">
-                            <h3 className="text-2xl font-display font-bold text-ncc-navy dark:text-white">Performance Audit Log</h3>
-                            <p className="text-sm text-gray-500 dark:text-white/70">Historical trail for <span className="font-bold text-ncc-navy dark:text-white">{viewHistoryCadet.name}</span></p>
+                        <div className="p-8 pb-4 flex-shrink-0 text-center relative z-10 border-b border-gray-100 dark:border-white/5">
+                            <h3 className="text-3xl font-display font-bold text-ncc-navy dark:text-white tracking-tight mb-1">Performance Audit Log</h3>
+                            <p className="text-sm text-gray-500 dark:text-white/70">Historical trail for <span className="font-bold text-ncc-navy dark:text-white px-2 py-0.5 rounded-md bg-gray-100 dark:bg-white/5 ml-1">{viewHistoryCadet.name}</span></p>
                         </div>
 
-                        <div className="overflow-y-auto pr-2 ncc-scrollbar flex-1">
+                        <div className="overflow-y-auto p-8 pt-6 ncc-scrollbar flex-1">
                             {(!viewHistoryCadet.pointHistory || viewHistoryCadet.pointHistory.length === 0) ? (
-                                <div className="py-20 text-center text-gray-400 dark:text-white/80 italic">No historical logs found for this cadet.</div>
+                                <div className="py-20 text-center flex flex-col items-center">
+                                    <History className="w-12 h-12 text-gray-200 dark:text-white/10 mb-4" />
+                                    <p className="text-gray-400 dark:text-white/60 italic font-medium">No historical logs found for this cadet.</p>
+                                </div>
                             ) : (
                                 <div className="space-y-4">
                                     {viewHistoryCadet.pointHistory.slice().reverse().map((log, i) => (
-                                        <div key={i} className="bg-gray-50 dark:bg-[#0a1628] p-4 rounded-2xl border border-gray-100 dark:border-white/5 relative group">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${log.type === 'merit' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                        <div key={i} className="bg-gray-50 dark:bg-[#0a1628] p-5 rounded-2xl border border-gray-100 dark:border-white/5 relative group hover:border-ncc-gold/50 transition-colors">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest shadow-sm ${log.type === 'merit' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
                                                         {log.type}
                                                     </span>
-                                                    <span className="text-[10px] font-bold text-gray-400 dark:text-white/80">{formatDate(log.date)}</span>
+                                                    <span className="text-xs font-bold text-gray-400 dark:text-white/60 flex items-center gap-1.5">
+                                                        <History className="w-3.5 h-3.5" />
+                                                        {formatDate(log.date)}
+                                                    </span>
                                                 </div>
-                                                <span className="text-sm font-black text-ncc-navy dark:text-white">{log.amount} Pts</span>
+                                                <span className={`text-xl font-black ${log.type === 'merit' ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                    {log.type === 'merit' ? '+' : '-'}{log.amount} <span className="text-[10px] uppercase tracking-widest opacity-50">Pts</span>
+                                                </span>
                                             </div>
-                                            <p className="text-xs text-ncc-navy dark:text-white/80 font-medium leading-relaxed italic">"{log.reason}"</p>
+                                            <p className="text-sm text-ncc-navy dark:text-white/90 font-medium leading-relaxed bg-white dark:bg-[#050b14] p-3 rounded-xl border border-gray-100 dark:border-white/5">"{log.reason}"</p>
                                         </div>
                                     ))}
                                 </div>

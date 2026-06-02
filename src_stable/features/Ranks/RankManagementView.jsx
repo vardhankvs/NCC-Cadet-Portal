@@ -11,6 +11,8 @@ export const RankManagementView = () => {
     const { cadets, loading } = useDataContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [filterRank, setFilterRank] = useState('All');
+    const [filterCertificate, setFilterCertificate] = useState('All');
+    const [filterDivision, setFilterDivision] = useState('All');
     const [selectedCadet, setSelectedCadet] = useState(null);
     const [newRank, setNewRank] = useState('');
     const [reason, setReason] = useState('Merit-based promotion');
@@ -20,10 +22,25 @@ export const RankManagementView = () => {
 
     const filteredCadets = cadets.filter(c => {
         if (c.status === 'alumni') return false;
-        const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                             c.enrollmentId.toLowerCase().includes(searchTerm.toLowerCase());
+        const q = searchTerm.toLowerCase();
+        const nameMatch = (c.name || '').toLowerCase().includes(q);
+        const idMatch = (c.enrollmentId || c.regimentalNumber || '').toLowerCase().includes(q);
+        const matchesSearch = nameMatch || idMatch;
         const matchesRank = filterRank === 'All' || (c.rank || 'CDT') === filterRank;
-        return matchesSearch && matchesRank;
+        
+        let matchesCert = true;
+        if (filterCertificate !== 'All') {
+            const rawCert = c.certificate || c.B || '';
+            const cadetCert = typeof rawCert === 'string' ? rawCert.trim().toUpperCase() : String(rawCert);
+            matchesCert = cadetCert === filterCertificate.toUpperCase();
+        }
+
+        let matchesDiv = true;
+        if (filterDivision !== 'All') {
+            matchesDiv = (c.enrollmentId || c.regimentalNumber || '').toUpperCase().includes(filterDivision);
+        }
+
+        return matchesSearch && matchesRank && matchesCert && matchesDiv;
     });
 
     const handleRankUpdate = async () => {
@@ -52,33 +69,61 @@ export const RankManagementView = () => {
         <div className="space-y-6 fade-in">
             <header className="flex justify-between items-center bg-white dark:bg-[#050b14] p-6 rounded-2xl border border-[#ddd8cc] shadow-sm">
                 <div>
-                    <h2 className="text-2xl font-display font-bold text-ncc-navy dark:text-white">Rank & Promotions</h2>
-                    <p className="text-gray-500 dark:text-white/70 text-sm">Administrative control for unit appointments and hierarchy.</p>
+                    <h2 className="text-2xl font-display font-bold text-ncc-navy dark:text-white flex items-center gap-2">
+                        Rank & Promotions
+                        <span className="text-sm font-normal text-gray-400 dark:text-white/80 bg-gray-100 dark:bg-white/10 px-2 py-0.5 rounded-full">
+                            {filteredCadets.length} {filteredCadets.length === 1 ? 'Cadet' : 'Cadets'}
+                        </span>
+                    </h2>
+                    <p className="text-gray-500 dark:text-white/70 text-sm mt-1">Administrative control for unit appointments and hierarchy.</p>
                 </div>
             </header>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 {/* Search & List */}
                 <div className="lg:col-span-7 space-y-4">
-                    <div className="flex flex-col sm:flex-row gap-3">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-white/80" />
-                            <input 
-                                type="text" 
-                                placeholder="Search cadet to promote..." 
-                                className="ncc-input pl-10"
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                            />
+                    <div className="space-y-3">
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-white/80" />
+                                <input 
+                                    type="text" 
+                                    placeholder="Search cadet to promote..." 
+                                    className="ncc-input pl-10"
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                />
+                            </div>
                         </div>
-                        <select 
-                            className="ncc-input w-full sm:w-40"
-                            value={filterRank}
-                            onChange={e => setFilterRank(e.target.value)}
-                        >
-                            <option value="All">All Ranks</option>
-                            {ranks.map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <select 
+                                className="ncc-input w-full sm:flex-1"
+                                value={filterRank}
+                                onChange={e => setFilterRank(e.target.value)}
+                            >
+                                <option value="All">All Ranks</option>
+                                {ranks.map(r => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                            <select 
+                                className="ncc-input w-full sm:flex-1"
+                                value={filterDivision}
+                                onChange={e => setFilterDivision(e.target.value)}
+                            >
+                                <option value="All">All Div.</option>
+                                <option value="SD">SD</option>
+                                <option value="SW">SW</option>
+                            </select>
+                            <select 
+                                className="ncc-input w-full sm:flex-1"
+                                value={filterCertificate}
+                                onChange={e => setFilterCertificate(e.target.value)}
+                            >
+                                <option value="All">All Certs</option>
+                                <option value="B1">B1</option>
+                                <option value="B2">B2</option>
+                                <option value="C">C</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div className="ncc-card overflow-hidden">
@@ -99,7 +144,14 @@ export const RankManagementView = () => {
                                             <tr key={cadet.id} className={`hover:bg-[#f9f7f2] dark:hover:bg-white/5 transition-colors ${selectedCadet?.id === cadet.id ? 'bg-ncc-gold/5' : ''}`}>
                                                 <td className="px-6 py-4">
                                                     <p className="font-bold text-ncc-navy dark:text-white text-sm">{cadet.name}</p>
-                                                    <p className="text-[10px] text-gray-400 dark:text-white/80 font-mono italic">{cadet.enrollmentId}</p>
+                                                    <div className="flex items-center gap-2 mt-0.5">
+                                                        <p className="text-[10px] text-gray-400 dark:text-white/80 font-mono italic">{cadet.enrollmentId}</p>
+                                                        {(cadet.certificate || cadet.B) && (
+                                                            <span className="text-[9px] font-bold text-ncc-gold px-1.5 py-0.5 bg-ncc-gold/10 rounded-sm uppercase">
+                                                                {cadet.certificate || cadet.B}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-ncc-navy/5 text-ncc-navy dark:text-white text-[10px] font-black tracking-widest border border-ncc-navy/10 uppercase">

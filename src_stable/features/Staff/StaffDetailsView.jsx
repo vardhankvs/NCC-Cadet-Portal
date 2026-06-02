@@ -199,7 +199,14 @@ export const StaffDetailsView = ({ staff }) => {
     const [itemToDelete, setItemToDelete] = useState(null);
     const [error, setError] = useState(null);
 
-    const sortedStaff = useMemo(() => [...staff].sort((a, b) => { const pa = a.priority ?? 999, pb = b.priority ?? 999; return pa !== pb ? pa - pb : (a.name || '').localeCompare(b.name || ''); }), [staff]);
+    const sortedStaff = useMemo(() => {
+        // Filter out completely blank records that might have been accidentally saved
+        const validStaff = staff.filter(s => s.name && s.rank);
+        return [...validStaff].sort((a, b) => { 
+            const pa = a.priority ?? 999, pb = b.priority ?? 999; 
+            return pa !== pb ? pa - pb : (a.name || '').localeCompare(b.name || ''); 
+        });
+    }, [staff]);
 
     const handleMoveStaff = async (currentMember, direction) => {
         const currentIndex = sortedStaff.findIndex((s) => s.id === currentMember.id);

@@ -19,6 +19,7 @@ import {
     getDoc,
     increment,
     where,
+    orderBy,
 } from 'firebase/firestore';
 
 import {
@@ -27,7 +28,8 @@ import {
     getDownloadURL,
 } from 'firebase/storage';
 
-import { sendPushToUser } from './pushNotifications.js';
+import { sendPushToUser, sendPushToAll } from './pushNotifications.js';
+import { toast } from 'react-toastify';
 
 // --- MULTI-TENANCY HELPER ---
 export const getCurrentUserInstitution = async () => {
@@ -1041,10 +1043,12 @@ export const saveCamp = async (data, id = null) => {
         payload.roster = []; // Initialize empty roster
         await addDoc(ref, payload);
         
-        // Notify ALL users that a new camp is available
-        import('./pushNotifications.js').then(({ sendPushToAll }) => {
-            sendPushToAll('⛺ New Camp Announced', `A new camp "${payload.name}" has been scheduled.`);
-        }).catch(err => console.error("Failed to import push module", err));
+        // Notify ALL users
+        try {
+            sendPushToAll('⛺ New Camp Announced', `A new camp "${payload.name}" has been scheduled.`, 'announcement', false);
+        } catch (e) {
+            console.error(e);
+        }
     }
 };
 
@@ -1139,11 +1143,11 @@ export const addCadetsToCampBulk = async (campId, cadetsToAdd, status = 'Selecte
              
              // Update the cadet document
              const cadetRef = doc(getCollectionRef('cadets'), cadet.id);
-             const campHistory = cadet.campHistory || [];
+             const campHistory = [...(cadet.campHistory || [])];
              const cadetCampIndex = campHistory.findIndex(c => c.campId === campId);
              
              if (cadetCampIndex >= 0) {
-                 campHistory[cadetCampIndex].status = status || 'Selected';
+                 campHistory[cadetCampIndex] = { ...campHistory[cadetCampIndex], status: status || 'Selected' };
              } else {
                  campHistory.push({
                      campId: campId || '',
@@ -1509,9 +1513,9 @@ export const addResource = async (resourceData) => {
     });
     
     // Notify all cadets about the new study material
-    import('./pushNotifications.js').then(({ sendPushToAll }) => {
+    try {
         sendPushToAll('📚 New Study Material', `A new manual "${resourceData.title}" has been uploaded to the library.`);
-    }).catch(err => console.error("Failed to import push module", err));
+    } catch (e) { console.error("Failed to send push notification", e); }
 };
 
 export const deleteResource = async (id) => {
@@ -1563,16 +1567,52 @@ export const getExamSettings = async () => {
     return snap.exists() ? snap.data() : { timer: 15, questionLimit: 10, negativeMarking: false, examTitle: 'General Knowledge' };
 };
 
-export const addExamQuestion = async (question) => {
+// --- MULTI-TOPIC EXAM ENGINE ---
+
+export const getExams = async () => {
+    const ref = getCollectionRef('exams');
+    if (!ref) return [];
+    const snap = await getDocs(query(ref, orderBy('createdAt', 'desc')));
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+export const createExam = async (examData) => {
+    const ref = getCollectionRef('exams');
+    if (!ref) return null;
+    const docRef = await addDoc(ref, {
+        ...examData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+    });
+    return docRef.id;
+};
+
+export const updateExam = async (id, examData) => {
+    const ref = getCollectionRef('exams');
+    if (!ref) return;
+    await updateDoc(doc(ref, id), {
+        ...examData,
+        updatedAt: serverTimestamp()
+    });
+};
+
+export const deleteExam = async (id) => {
+    const ref = getCollectionRef('exams');
+    if (!ref) return;
+    await deleteDoc(doc(ref, id));
+};
+
+export const addExamQuestion = async (question, examId = null) => {
     const ref = getCollectionRef('quiz_questions');
     if (!ref) return;
     await addDoc(ref, { 
         ...question, 
+        examId: examId || 'legacy',
         createdAt: serverTimestamp() 
     });
 };
 
-export const addMultipleQuestions = async (questions) => {
+export const addMultipleQuestions = async (questions, examId = null) => {
     const ref = getCollectionRef('quiz_questions');
     if (!ref) return;
     const batch = writeBatch(db);
@@ -1580,6 +1620,7 @@ export const addMultipleQuestions = async (questions) => {
         const docRef = doc(ref);
         batch.set(docRef, {
             ...q,
+            examId: examId || 'legacy',
             createdAt: serverTimestamp()
         });
     });
@@ -1621,10 +1662,56 @@ export const updateExamQuestion = async (id, data) => {
 export const submitExamAttempt = async (attemptData) => {
     const ref = getCollectionRef('quiz_attempts');
     if (!ref) return;
-    await addDoc(ref, { 
-        ...attemptData, 
-        timestamp: serverTimestamp() 
-    });
+
+    // Clean data to prevent Firebase "Unsupported field value: undefined" errors
+    const cleanData = JSON.parse(JSON.stringify(attemptData));
+
+    try {
+        await addDoc(ref, { 
+            ...cleanData, 
+            timestamp: serverTimestamp() 
+        });
+    } catch (err) {
+        console.error("Failed to save to quiz_attempts:", err);
+        toast.error(`Database Error: ${err.message}`);
+    }
+
+    // Fallback: Also save to cadet's examHistory
+    try {
+        const cadetsRef = getCollectionRef('cadets');
+        const qry = query(cadetsRef, where("enrollmentId", "==", cleanData.cadetId));
+        const snap = await getDocs(qry);
+        if (!snap.empty) {
+            const cadetDoc = snap.docs[0];
+            await updateDoc(cadetDoc.ref, {
+                examHistory: arrayUnion({
+                    quizId: 'examEngine',
+                    title: cleanData.examTitle || 'General Knowledge',
+                    score: cleanData.score || 0,
+                    maxScore: cleanData.totalPossible || 0,
+                    date: new Date().toISOString()
+                })
+            });
+        } else {
+             // Fallback to uid match
+             const docRef = doc(cadetsRef, cleanData.cadetId);
+             const docSnap = await getDoc(docRef);
+             if (docSnap.exists()) {
+                  await updateDoc(docRef, {
+                      examHistory: arrayUnion({
+                          quizId: 'examEngine',
+                          title: cleanData.examTitle || 'General Knowledge',
+                          score: cleanData.score || 0,
+                          maxScore: cleanData.totalPossible || 0,
+                          date: new Date().toISOString()
+                      })
+                  });
+             }
+        }
+    } catch (err) {
+        console.error("Failed to update cadet examHistory:", err);
+        toast.error(`Fallback Error: ${err.message}`);
+    }
 };
 
 export const getUserExamAttempt = async (cadetId, examTitle) => {
@@ -1661,12 +1748,40 @@ export const deleteExamAttempt = async (id) => {
     await deleteDoc(doc(ref, id));
 };
 
-export const getQuizQuestions = async () => {
+export const getQuizQuestions = async (examId = null) => {
     const ref = getCollectionRef('quiz_questions');
     if (!ref) return [];
-    const snap = await getDocs(ref);
+    
+    let qry = query(ref);
+    if (examId) {
+        qry = query(ref, where("examId", "==", examId));
+    }
+    
+    const snap = await getDocs(qry);
     return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
+
+export const bulkAddQuizQuestions = async (questions) => {
+    const ref = getCollectionRef('quiz_questions');
+    if (!ref) throw new Error('Database not ready');
+    const batch = writeBatch(db);
+    let count = 0;
+    
+    questions.forEach(q => {
+        const docRef = doc(ref);
+        batch.set(docRef, {
+            ...q,
+            createdAt: serverTimestamp()
+        });
+        count++;
+    });
+
+    if (count > 0) {
+        await batch.commit();
+    }
+    return count;
+};
+
 // ------------------------------------
 // --- GRIEVANCE REDRESSAL SYSTEM ---
 // ------------------------------------
@@ -1801,9 +1916,11 @@ export const addTutorial = async (data) => {
     });
     
     // Notify all cadets about the new video tutorial
-    import('./pushNotifications.js').then(({ sendPushToAll }) => {
+    try {
         sendPushToAll('▶️ New Video Tutorial', `A new tutorial "${data.title}" is now available in the library.`);
-    }).catch(err => console.error("Failed to import push module", err));
+    } catch (e) {
+        console.error(e);
+    }
 };
 
 export const submitFeedback = async (data) => {
@@ -2088,3 +2205,52 @@ export const clearAdminOTP = async (adminUid) => {
     }
 };
 
+// --- Geofenced Attendance ---
+export const createPendingAttendance = async (cadetId, cadetName, enrollmentId, adminLocation, sessionStatus = 'Present') => {
+    const ref = getCollectionRef('pending_attendance');
+    if (!ref) throw new Error('Database not ready.');
+    return await addDoc(ref, {
+        cadetId,
+        cadetName,
+        enrollmentId,
+        adminLocation, // { latitude, longitude }
+        status: 'pending',
+        // sessionStatus: 'Present' (within window) | 'Late' (after window closed) | 'Present' (no window set)
+        sessionStatus,
+        createdAt: serverTimestamp(),
+        institutionId: await getCurrentUserInstitution()
+    });
+};
+
+export const verifyCadetAttendance = async (pendingDocId, cadetLocation) => {
+    const ref = getCollectionRef('pending_attendance');
+    const pendingDocRef = doc(ref, pendingDocId);
+    await updateDoc(pendingDocRef, {
+        cadetLocation,
+        status: 'verified',
+        verifiedAt: serverTimestamp()
+    });
+};
+
+// --- Mentorship ---
+export const submitMentorshipRequest = async (cadetId, cadetName, enrollmentId, contactInfo) => {
+    const ref = getCollectionRef('mentorship_requests');
+    if (!ref) throw new Error('Database not ready.');
+    await addDoc(ref, {
+        cadetId,
+        cadetName,
+        enrollmentId,
+        contactInfo,
+        status: 'pending', // pending, assigned, completed
+        createdAt: serverTimestamp(),
+        institutionId: await getCurrentUserInstitution()
+    });
+};
+
+export const updateMentorshipStatus = async (requestId, status, assignedMentorId = null) => {
+    const ref = getCollectionRef('mentorship_requests');
+    if (!ref) throw new Error('Database not ready.');
+    const data = { status, updatedAt: serverTimestamp() };
+    if (assignedMentorId) data.assignedMentorId = assignedMentorId;
+    await updateDoc(doc(ref, requestId), data);
+};

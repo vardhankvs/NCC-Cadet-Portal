@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'; // Force Reload 1.0
+import React, { useState, useEffect } from 'react';
 import { 
     Settings, 
     Plus, 
@@ -14,34 +14,51 @@ import {
     Shield,
     Clock,
     Award,
-    Edit3
+    Edit3,
+    ChevronLeft,
+    List
 } from '../../components/Icons.jsx';
 import { 
-    saveExamSettings, 
-    getExamSettings, 
+    getExams,
+    createExam,
+    updateExam,
+    deleteExam,
     addExamQuestion, 
     addMultipleQuestions,
     getQuizQuestions, 
-    bulkDeleteQuestions,
+    bulkDeleteQuestions, // Maybe we shouldn't use this if we need to filter by exam, or we create a new one
     deleteExamQuestion,
     deleteMultipleQuestions,
     updateExamQuestion,
     getExamAttempts,
-    deleteExamAttempt 
+    deleteExamAttempt,
+    getCollectionRef,
+    bulkAddQuizQuestions
 } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
+import { useDataContext } from '../../context/DataContext.jsx';
+import { onSnapshot, query, where } from 'firebase/firestore';
 
-export const ExamManager = ({ initialView = 'dashboard' }) => {
-    const [view, setView] = useState(initialView); // dashboard, questions, attempts, settings
-    const [config, setConfig] = useState({ timer: 15, questionLimit: 10, negativeMarking: false, examTitle: 'General Knowledge' });
+export const ExamManager = ({ initialView = 'topics' }) => {
+    const [view, setView] = useState(initialView); // topics, dashboard, questions, attempts, settings
+    const [exams, setExams] = useState([]);
+    const [selectedExam, setSelectedExam] = useState(null);
+    
+    // Settings for new/selected exam
+    const [config, setConfig] = useState({ timer: 15, questionLimit: 10, negativeMarking: false, examTitle: '' });
+    
     const [questions, setQuestions] = useState([]);
-    const [attempts, setAttempts] = useState([]);
+    const [rawAttempts, setRawAttempts] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [isCreatingTopic, setIsCreatingTopic] = useState(false);
     
     // Filters
     const [certFilter, setCertFilter] = useState('All');
     const [divFilter, setDivFilter] = useState('All');
+
+    // Pending Questions from Bulk Upload during Creation
+    const [pendingQuestions, setPendingQuestions] = useState([]);
 
     // New Question Form
     const [newQ, setNewQ] = useState({
@@ -56,58 +73,132 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
     const [editingId, setEditingId] = useState(null);
     const [selectedIds, setSelectedIds] = useState([]);
 
+    // Load Topics
     useEffect(() => {
-        loadAll();
-    }, [certFilter, divFilter]);
+        loadTopics();
+    }, []);
 
-    const loadAll = async () => {
+    const loadTopics = async () => {
         setLoading(true);
         try {
-            const [s, q, allAttempts] = await Promise.all([
-                getExamSettings(),
-                getQuizQuestions(),
-                getExamAttempts(certFilter, divFilter)
-            ]);
-            
-            const uniqueAttempts = [];
-            const seen = new Set();
-            for (const a of allAttempts) {
-                const key = `${a.cadetId}-${a.examTitle || 'General Knowledge'}`;
-                if (!seen.has(key)) {
-                    seen.add(key);
-                    uniqueAttempts.push(a);
-                }
-            }
-            
-            setConfig(s);
-            setQuestions(q);
-            setAttempts(uniqueAttempts);
-        } catch (err) {
-            console.error("Exam Load Error:", err);
+            const ex = await getExams();
+            setExams(ex);
+        } catch(e) {
+            console.error("Failed to load exams", e);
         }
         setLoading(false);
     };
 
-    const handleSaveSettings = async () => {
+    // When an exam is selected, load its questions and attempts
+    useEffect(() => {
+        if (!selectedExam) return;
+        
+        loadExamDetails(selectedExam.id);
+
+        const ref = getCollectionRef('quiz_attempts');
+        if (ref) {
+            const qry = query(ref, where('examTitle', '==', selectedExam.examTitle));
+            const unsubscribe = onSnapshot(qry, (snap) => {
+                const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                setRawAttempts(list);
+            });
+            return () => unsubscribe();
+        }
+    }, [selectedExam]);
+
+    const loadExamDetails = async (examId) => {
         try {
-            await saveExamSettings(config);
+            const q = await getQuizQuestions(examId);
+            setQuestions(q);
+        } catch (err) {
+            console.error("Exam Details Load Error:", err);
+        }
+    };
+
+    const attempts = React.useMemo(() => {
+        if (!rawAttempts) return [];
+        let list = [...rawAttempts];
+        if (certFilter !== 'All') list = list.filter(a => a.certificate === certFilter);
+        if (divFilter !== 'All') list = list.filter(a => a.division === divFilter);
+        
+        const map = new Map();
+        for (const a of list) {
+            const key = `${a.cadetId}-${a.examTitle || 'General Knowledge'}`;
+            const existing = map.get(key);
+            
+            const aDate = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp || 0);
+            const eDate = existing?.timestamp?.toDate ? existing.timestamp.toDate() : new Date(existing?.timestamp || 0);
+
+            if (!existing || a.score > existing.score || (a.score === existing.score && aDate > eDate)) {
+                map.set(key, a);
+            }
+        }
+        return Array.from(map.values()).sort((a, b) => {
+            const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp || 0);
+            const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp || 0);
+            return dateB - dateA;
+        });
+    }, [rawAttempts, certFilter, divFilter]);
+
+    const handleCreateTopic = async (e) => {
+        e.preventDefault();
+        if (!config.examTitle) return toast.error("Exam title is required");
+        try {
+            const newExamId = await createExam(config);
+            if (newExamId && pendingQuestions.length > 0) {
+                await addMultipleQuestions(pendingQuestions, newExamId);
+            }
+            toast.success(`Exam Topic Deployed${pendingQuestions.length > 0 ? ` with ${pendingQuestions.length} questions` : ''}`);
+            setIsCreatingTopic(false);
+            setConfig({ timer: 15, questionLimit: 10, negativeMarking: false, examTitle: '' });
+            setPendingQuestions([]);
+            loadTopics();
+        } catch(e) {
+            toast.error("Failed to deploy topic");
+        }
+    };
+
+    const handleSaveSettings = async () => {
+        if (!selectedExam) return;
+        try {
+            await updateExam(selectedExam.id, config);
+            
+            // update local selected exam
+            setSelectedExam({...selectedExam, ...config});
+            loadTopics();
             toast.success("Command parameters updated.");
         } catch (err) {
             toast.error("Override failed.");
         }
     };
 
+    const handleDeleteTopic = async (id) => {
+        if(!window.confirm("CRITICAL: Are you sure you want to delete this Exam Topic? This will delete the configuration. Note: existing questions/attempts should be purged separately.")) return;
+        try {
+            await deleteExam(id);
+            toast.success("Exam Topic Deleted");
+            if (selectedExam && selectedExam.id === id) {
+                setSelectedExam(null);
+                setView('topics');
+            }
+            loadTopics();
+        } catch(e) {
+            toast.error("Failed to delete topic");
+        }
+    };
+
     const handleAddQuestion = async (e) => {
         e.preventDefault();
+        if (!selectedExam) return;
         try {
             if (editingId) {
                 await updateExamQuestion(editingId, newQ);
                 toast.success("Question updated successfully.");
                 setEditingId(null);
             } else {
-                await addExamQuestion(newQ);
+                await addExamQuestion(newQ, selectedExam.id);
                 toast.success("Question encrypted and added.");
-                sendPushToAll('📝 New Exam Question', `A new question has been added to the ${config.examTitle || 'NCC'} exam bank`);
+                sendPushToAll('📝 New Exam Question', `A new question has been added to the ${selectedExam.examTitle} exam bank`);
             }
             setNewQ({
                 question: '',
@@ -118,7 +209,7 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
                 marks: 1,
                 negativeMarks: 0.25
             });
-            loadAll();
+            loadExamDetails(selectedExam.id);
         } catch (err) {
             toast.error("Transmission error.");
         }
@@ -142,7 +233,7 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
         try {
             await deleteExamQuestion(id);
             toast.success("Question purged.");
-            loadAll();
+            loadExamDetails(selectedExam.id);
         } catch (err) {
             toast.error("Purge failed.");
         }
@@ -154,7 +245,7 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
             await deleteMultipleQuestions(selectedIds);
             toast.success("Batch purge complete.");
             setSelectedIds([]);
-            loadAll();
+            loadExamDetails(selectedExam.id);
         } catch (err) {
             toast.error("Batch purge failed.");
         }
@@ -169,25 +260,27 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
         try {
             await deleteExamAttempt(id);
             toast.success("Record purged.");
-            loadAll();
+            // snap updates attempts
         } catch (err) {
             toast.error("Purge failed.");
         }
     };
 
     const handleBulkDelete = async () => {
-        if (!window.confirm("CRITICAL: Wipe entire question bank?")) return;
+        if (!window.confirm("CRITICAL: Wipe entirely selected exam's question bank?")) return;
         try {
-            await bulkDeleteQuestions();
-            toast.success("Question bank zeroed.");
-            loadAll();
+            const allIds = questions.map(q => q.id);
+            if (allIds.length > 0) {
+                await deleteMultipleQuestions(allIds);
+                toast.success("Question bank zeroed for this topic.");
+                loadExamDetails(selectedExam.id);
+            }
         } catch (err) {
             toast.error("Wipe failed.");
         }
     };
 
     const handleDownloadTemplate = () => {
-        console.log("Triggering Bulk Template Download...");
         const headers = "question,option1,option2,option3,option4,correct_ans,image_url\n";
         const row1 = "What is the motto of NCC?,Unity and Discipline,Service Before Self,Always Alert,Honour and Glory,Unity and Discipline,\n";
         const row2 = "In which year was NCC founded?,1947,1948,1950,1942,1948,\n";
@@ -216,17 +309,15 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
             
             for (const row of rows) {
                 if (!row.trim()) continue;
-                // Basic CSV parsing splitting by comma (assumes no commas in question text for simplicity)
+                // Basic CSV parsing splitting by comma
                 const cols = row.split(',');
                 if (cols.length < 6) continue;
 
                 const options = [cols[1]?.trim() || '', cols[2]?.trim() || '', cols[3]?.trim() || '', cols[4]?.trim() || ''];
                 const correctText = cols[5]?.trim() || '';
                 
-                // Intelligently find the correct option by matching the exact text
                 let correctIndex = options.findIndex(opt => opt.toLowerCase() === correctText.toLowerCase());
                 
-                // Fallback: If text doesn't match, check if they inputted an old-style index (0-3)
                 if (correctIndex === -1 && !isNaN(parseInt(correctText))) {
                     const parsedInt = parseInt(correctText);
                     if (parsedInt >= 0 && parsedInt <= 3) {
@@ -234,7 +325,6 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
                     }
                 }
                 
-                // Failsafe: Default to Option 1 if completely unmatched
                 if (correctIndex === -1) {
                     correctIndex = 0;
                 }
@@ -249,48 +339,212 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
             }
 
             if (questionsToUpload.length > 0) {
-                try {
-                    await addMultipleQuestions(questionsToUpload);
-                    toast.success(`Successfully deployed ${questionsToUpload.length} questions in a single burst.`);
-                    loadAll();
-                } catch (err) {
-                    console.error("Bulk Import Failed:", err);
-                    toast.error("Transmission error during bulk upload.");
+                if (!selectedExam) {
+                    setPendingQuestions(questionsToUpload);
+                    toast.success(`${questionsToUpload.length} questions attached to new deployment.`);
+                } else {
+                    try {
+                        await addMultipleQuestions(questionsToUpload, selectedExam.id);
+                        toast.success(`Successfully deployed ${questionsToUpload.length} questions.`);
+                        loadExamDetails(selectedExam.id);
+                    } catch (err) {
+                        console.error("Bulk Import Failed:", err);
+                        toast.error("Transmission error during bulk upload.");
+                    }
                 }
             }
         };
         reader.readAsText(file);
     };
 
-    if (loading) return <div className="p-20 text-center animate-pulse text-ncc-navy dark:text-white font-black tracking-[0.4em]">SYNCING COMMAND CENTER...</div>;
+    if (loading && !selectedExam) return <div className="p-20 text-center animate-pulse text-ncc-navy dark:text-white font-black tracking-[0.4em]">SYNCING COMMAND CENTER...</div>;
 
+    // View: Topics Dashboard
+    if (view === 'topics' || !selectedExam) {
+        return (
+            <div className="space-y-8 fade-in">
+                <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div>
+                        <h2 className="text-3xl font-display font-bold text-ncc-navy dark:text-white flex items-center gap-3">
+                            <Shield className="w-10 h-10 text-ncc-navy dark:text-white" /> Exam Management Center
+                        </h2>
+                        <p className="text-gray-500 dark:text-white/70 font-medium">Coordinate unit-wide computer-based testing and manage exam topics.</p>
+                    </div>
+                    <button 
+                        onClick={() => setIsCreatingTopic(!isCreatingTopic)}
+                        className="px-6 py-3 bg-ncc-navy text-white rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-lg flex items-center gap-2"
+                    >
+                        <Plus className="w-4 h-4" /> {isCreatingTopic ? 'Cancel' : 'Deploy New Topic'}
+                    </button>
+                </header>
+
+                {isCreatingTopic && (
+                    <div className="bg-white dark:bg-[#050b14] p-8 rounded-3xl border border-ncc-gold shadow-lg animate-in slide-in-from-top-4">
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-6">
+                            <h3 className="text-xl font-bold text-ncc-navy dark:text-white flex items-center gap-2">
+                                <Zap className="w-5 h-5 text-ncc-gold" /> Deploy New Examination Topic
+                            </h3>
+                            <div className="flex gap-3">
+                                <button 
+                                    type="button"
+                                    onClick={handleDownloadTemplate}
+                                    className="px-4 py-2 bg-white dark:bg-[#050b14] border border-ncc-navy/20 text-ncc-navy dark:text-white rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-ncc-navy/5 transition-all flex items-center gap-2 shadow-sm"
+                                >
+                                    <Upload className="w-3.5 h-3.5" /> Template
+                                </button>
+                                <label className="px-4 py-2 bg-ncc-navy text-white rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-blue-900 transition-all flex items-center gap-2 shadow-sm cursor-pointer">
+                                    <Plus className="w-3.5 h-3.5" /> Bulk Upload
+                                    <input type="file" accept=".csv" className="hidden" onChange={handleBulkUpload} />
+                                </label>
+                            </div>
+                        </div>
+                        {pendingQuestions.length > 0 && (
+                            <div className="mb-6 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center gap-3">
+                                <FileText className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                                <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                                    {pendingQuestions.length} questions ready to deploy with this topic.
+                                </span>
+                                <button type="button" onClick={() => setPendingQuestions([])} className="ml-auto text-xs font-black text-emerald-600 hover:text-emerald-800 uppercase tracking-widest">Remove</button>
+                            </div>
+                        )}
+                        <form onSubmit={handleCreateTopic} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div className="lg:col-span-4 space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest pl-1">Topic / Title</label>
+                                <input 
+                                    required
+                                    type="text"
+                                    className="w-full bg-gray-50 dark:bg-[#0a1628] border border-gray-100 dark:border-white/5 rounded-xl p-3 text-sm font-bold text-ncc-navy dark:text-white focus:ring-2 focus:ring-ncc-navy/5 focus:outline-none"
+                                    placeholder="e.g., Weapon Training, Map Reading..."
+                                    value={config.examTitle}
+                                    onChange={e => setConfig({...config, examTitle: e.target.value})}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest pl-1">Timer (Mins)</label>
+                                <input 
+                                    type="number"
+                                    className="w-full bg-gray-50 dark:bg-[#0a1628] border border-gray-100 dark:border-white/5 rounded-xl p-3 text-sm font-bold text-ncc-navy dark:text-white"
+                                    value={config.timer}
+                                    onChange={e => setConfig({...config, timer: parseInt(e.target.value)})}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest pl-1">Question Limit</label>
+                                <input 
+                                    type="number"
+                                    className="w-full bg-gray-50 dark:bg-[#0a1628] border border-gray-100 dark:border-white/5 rounded-xl p-3 text-sm font-bold text-ncc-navy dark:text-white"
+                                    value={config.questionLimit}
+                                    onChange={e => setConfig({...config, questionLimit: parseInt(e.target.value)})}
+                                />
+                            </div>
+                            <div className="lg:col-span-2 flex items-end">
+                                <label className="flex items-center gap-3 bg-gray-50 dark:bg-[#0a1628] p-3 rounded-xl border border-gray-100 dark:border-white/5 w-full cursor-pointer hover:bg-gray-100 dark:hover:bg-[#0d2137] transition-colors">
+                                    <input 
+                                        type="checkbox"
+                                        className="w-4 h-4 rounded border-gray-300 text-ncc-navy focus:ring-ncc-navy"
+                                        checked={config.negativeMarking}
+                                        onChange={e => setConfig({...config, negativeMarking: e.target.checked})}
+                                    />
+                                    <span className="text-xs font-bold text-ncc-navy dark:text-white uppercase tracking-widest">Enable Negative Marking</span>
+                                </label>
+                            </div>
+                            <div className="lg:col-span-4 mt-2">
+                                <button type="submit" className="w-full py-4 bg-ncc-gold text-ncc-navy rounded-xl font-black text-xs uppercase tracking-[0.2em] shadow-md hover:bg-yellow-400 transition-colors">
+                                    Confirm Deployment
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {exams.length === 0 ? (
+                        <div className="col-span-full p-12 text-center bg-gray-50 dark:bg-[#0a1628] rounded-3xl border border-gray-200 border-dashed">
+                            <Shield className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                            <p className="text-gray-400 font-bold uppercase tracking-widest">No Exam Topics Deployed</p>
+                            <p className="text-xs text-gray-400 mt-2">Create your first topic to begin testing cadets.</p>
+                        </div>
+                    ) : (
+                        exams.map(exam => (
+                            <div 
+                                key={exam.id}
+                                className="bg-white dark:bg-[#050b14] p-6 rounded-[2rem] border border-gray-200 dark:border-white/10 shadow-sm hover:shadow-lg hover:border-ncc-navy/30 transition-all cursor-pointer group relative flex flex-col"
+                            >
+                                <div className="absolute top-4 right-4 z-10 flex gap-2">
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteTopic(exam.id); }}
+                                        className="w-8 h-8 rounded-full bg-red-50 text-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-500 hover:text-white transition-all shadow-sm"
+                                        title="Delete Topic"
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                    </button>
+                                </div>
+
+                                <div onClick={() => { setSelectedExam(exam); setConfig({ timer: exam.timer || 15, questionLimit: exam.questionLimit || 10, negativeMarking: exam.negativeMarking || false, examTitle: exam.examTitle || ''}); setView('dashboard'); }} className="flex-1">
+                                    <div className="w-12 h-12 bg-blue-50 dark:bg-[#0a1628] text-blue-600 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                        <FileText className="w-6 h-6" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{exam.examTitle}</h3>
+                                    
+                                    <div className="flex gap-4 mt-4 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/60">
+                                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {exam.timer}m</span>
+                                        <span className="flex items-center gap-1"><List className="w-3 h-3" /> {exam.questionLimit} Qs</span>
+                                    </div>
+                                    
+                                    <div className="mt-6 pt-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-between text-ncc-navy dark:text-white text-xs font-bold uppercase tracking-wider">
+                                        Manage Topic <span className="group-hover:translate-x-1 transition-transform">→</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // View: Topic Detail
     return (
         <div className="space-y-8 fade-in">
-            <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div>
-                    <h2 className="text-3xl font-display font-bold text-ncc-navy dark:text-white flex items-center gap-3">
-                        <Shield className="w-10 h-10 text-ncc-navy dark:text-white" /> Exam Management Center
-                    </h2>
-                    <p className="text-gray-500 dark:text-white/70 font-medium">Coordinate unit-wide computer-based testing and performance tracking.</p>
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white dark:bg-[#050b14] p-4 rounded-[2rem] border border-[#ddd8cc] shadow-sm">
+                <div className="flex items-center gap-4">
+                    <button 
+                        onClick={() => { setSelectedExam(null); setView('topics'); }}
+                        className="w-10 h-10 flex items-center justify-center bg-gray-100 dark:bg-[#0a1628] hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl text-gray-600 dark:text-white transition-colors"
+                    >
+                        <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <div>
+                        <h2 className="text-xl font-bold text-ncc-navy dark:text-white flex items-center gap-2">
+                            {selectedExam.examTitle}
+                        </h2>
+                        <span className="text-[10px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest">Active Topic Management</span>
+                    </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 overflow-x-auto ncc-scrollbar pb-2 md:pb-0">
                     <button 
                         onClick={() => setView('dashboard')}
-                        className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'dashboard' ? 'bg-ncc-navy text-white shadow-lg' : 'bg-white dark:bg-[#050b14] text-gray-400 dark:text-white/80 hover:text-ncc-navy dark:text-white border border-gray-100 dark:border-white/5'}`}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${view === 'dashboard' ? 'bg-ncc-navy text-white shadow-lg' : 'bg-transparent text-gray-500 hover:bg-gray-50'}`}
                     >
-                        <BarChart className="w-4 h-4 inline mr-2" /> Overview
+                        Overview
                     </button>
                     <button 
                         onClick={() => setView('questions')}
-                        className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'questions' ? 'bg-ncc-navy text-white shadow-lg' : 'bg-white dark:bg-[#050b14] text-gray-400 dark:text-white/80 hover:text-ncc-navy dark:text-white border border-gray-100 dark:border-white/5'}`}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${view === 'questions' ? 'bg-ncc-navy text-white shadow-lg' : 'bg-transparent text-gray-500 hover:bg-gray-50'}`}
                     >
-                        <FileText className="w-4 h-4 inline mr-2" /> Questions
+                        Questions
                     </button>
                     <button 
                         onClick={() => setView('attempts')}
-                        className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'attempts' ? 'bg-ncc-navy text-white shadow-lg' : 'bg-white dark:bg-[#050b14] text-gray-400 dark:text-white/80 hover:text-ncc-navy dark:text-white border border-gray-100 dark:border-white/5'}`}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${view === 'attempts' ? 'bg-ncc-navy text-white shadow-lg' : 'bg-transparent text-gray-500 hover:bg-gray-50'}`}
                     >
-                        <User className="w-4 h-4 inline mr-2" /> Records
+                        Records
+                    </button>
+                    <button 
+                        onClick={() => setView('settings')}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${view === 'settings' ? 'bg-ncc-navy text-white shadow-lg' : 'bg-transparent text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        Parameters
                     </button>
                 </div>
             </header>
@@ -301,7 +555,7 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
                         <div className="bg-white dark:bg-[#050b14] p-8 rounded-[2.5rem] border border-[#ddd8cc] shadow-sm">
                             <p className="text-[10px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest mb-2">Live Bank</p>
                             <h4 className="text-4xl font-black text-ncc-navy dark:text-white">{questions.length}</h4>
-                            <p className="text-xs text-gray-500 dark:text-white/70 mt-2">Validated Questions</p>
+                            <p className="text-xs text-gray-500 dark:text-white/70 mt-2">Validated Questions in Topic</p>
                         </div>
                         <div className="bg-white dark:bg-[#050b14] p-8 rounded-[2.5rem] border border-[#ddd8cc] shadow-sm">
                             <p className="text-[10px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest mb-2">Total Attempts</p>
@@ -313,62 +567,64 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
                             <h4 className="text-4xl font-black text-emerald-500">
                                 {attempts.length > 0 ? Math.round(attempts.reduce((a, b) => a + (b.score || 0), 0) / attempts.length) : 0}
                             </h4>
-                            <p className="text-xs text-gray-500 dark:text-white/70 mt-2">Unit Merit Points</p>
+                            <p className="text-xs text-gray-500 dark:text-white/70 mt-2">Topic Average</p>
                         </div>
                     </div>
+                </div>
+            )}
 
-                    <div className="bg-white dark:bg-[#050b14] p-10 rounded-[3rem] border border-[#ddd8cc] shadow-sm">
-                        <h3 className="text-xl font-bold text-ncc-navy dark:text-white mb-8 flex items-center gap-3">
-                            <Settings className="w-6 h-6" /> Examination Parameters
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                            <div className="lg:col-span-4 space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest pl-1">Examination Topic / Title</label>
-                                <input 
-                                    type="text"
-                                    className="w-full bg-gray-50 dark:bg-[#0a1628] border-gray-100 dark:border-white/5 rounded-xl p-4 text-sm font-bold text-ncc-navy dark:text-white"
-                                    placeholder="e.g., Weapon Training, Map Reading..."
-                                    value={config.examTitle}
-                                    onChange={e => setConfig({...config, examTitle: e.target.value})}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest pl-1">Timer (Minutes)</label>
-                                <input 
-                                    type="number"
-                                    className="w-full bg-gray-50 dark:bg-[#0a1628] border-gray-100 dark:border-white/5 rounded-xl p-4 text-sm font-bold text-ncc-navy dark:text-white"
-                                    value={config.timer}
-                                    onChange={e => setConfig({...config, timer: parseInt(e.target.value)})}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest pl-1">Question Limit</label>
-                                <input 
-                                    type="number"
-                                    className="w-full bg-gray-50 dark:bg-[#0a1628] border-gray-100 dark:border-white/5 rounded-xl p-4 text-sm font-bold text-ncc-navy dark:text-white"
-                                    value={config.questionLimit}
-                                    onChange={e => setConfig({...config, questionLimit: parseInt(e.target.value)})}
-                                />
-                            </div>
-                            <div className="lg:col-span-2 flex items-end">
-                                <label className="flex items-center gap-4 bg-gray-50 dark:bg-[#0a1628] p-4 rounded-xl border border-gray-100 dark:border-white/5 w-full cursor-pointer hover:bg-gray-100 dark:bg-[#0d2137] transition-colors">
-                                    <input 
-                                        type="checkbox"
-                                        className="w-5 h-5 rounded border-gray-300 text-ncc-navy dark:text-white focus:ring-ncc-navy"
-                                        checked={config.negativeMarking}
-                                        onChange={e => setConfig({...config, negativeMarking: e.target.checked})}
-                                    />
-                                    <span className="text-xs font-bold text-ncc-navy dark:text-white uppercase tracking-widest">Enable Negative Marking</span>
-                                </label>
-                            </div>
+            {view === 'settings' && (
+                <div className="bg-white dark:bg-[#050b14] p-10 rounded-[3rem] border border-[#ddd8cc] shadow-sm">
+                    <h3 className="text-xl font-bold text-ncc-navy dark:text-white mb-8 flex items-center gap-3">
+                        <Settings className="w-6 h-6" /> Examination Parameters
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                        <div className="lg:col-span-4 space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest pl-1">Examination Topic / Title</label>
+                            <input 
+                                type="text"
+                                className="w-full bg-gray-50 dark:bg-[#0a1628] border-gray-100 dark:border-white/5 rounded-xl p-4 text-sm font-bold text-ncc-navy dark:text-white"
+                                placeholder="e.g., Weapon Training, Map Reading..."
+                                value={config.examTitle}
+                                onChange={e => setConfig({...config, examTitle: e.target.value})}
+                            />
                         </div>
-                        <button 
-                            onClick={handleSaveSettings}
-                            className="mt-10 px-10 py-4 bg-ncc-navy text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-ncc-navy/20"
-                        >
-                            Save Strategic Configuration
-                        </button>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest pl-1">Timer (Minutes)</label>
+                            <input 
+                                type="number"
+                                className="w-full bg-gray-50 dark:bg-[#0a1628] border-gray-100 dark:border-white/5 rounded-xl p-4 text-sm font-bold text-ncc-navy dark:text-white"
+                                value={config.timer}
+                                onChange={e => setConfig({...config, timer: parseInt(e.target.value)})}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest pl-1">Question Limit</label>
+                            <input 
+                                type="number"
+                                className="w-full bg-gray-50 dark:bg-[#0a1628] border-gray-100 dark:border-white/5 rounded-xl p-4 text-sm font-bold text-ncc-navy dark:text-white"
+                                value={config.questionLimit}
+                                onChange={e => setConfig({...config, questionLimit: parseInt(e.target.value)})}
+                            />
+                        </div>
+                        <div className="lg:col-span-2 flex items-end">
+                            <label className="flex items-center gap-4 bg-gray-50 dark:bg-[#0a1628] p-4 rounded-xl border border-gray-100 dark:border-white/5 w-full cursor-pointer hover:bg-gray-100 dark:hover:bg-[#0d2137] transition-colors">
+                                <input 
+                                    type="checkbox"
+                                    className="w-5 h-5 rounded border-gray-300 text-ncc-navy dark:text-white focus:ring-ncc-navy"
+                                    checked={config.negativeMarking}
+                                    onChange={e => setConfig({...config, negativeMarking: e.target.checked})}
+                                />
+                                <span className="text-xs font-bold text-ncc-navy dark:text-white uppercase tracking-widest">Enable Negative Marking</span>
+                            </label>
+                        </div>
                     </div>
+                    <button 
+                        onClick={handleSaveSettings}
+                        className="mt-10 px-10 py-4 bg-ncc-navy text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-ncc-navy/20"
+                    >
+                        Save Strategic Configuration
+                    </button>
                 </div>
             )}
 
@@ -383,7 +639,7 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
                                     <Plus className="w-8 h-8 text-ncc-gold" /> {editingId ? 'Edit Strategic Question' : 'Deploy New Question'}
                                 </h3>
                                 <p className="text-[10px] font-black text-ncc-gold uppercase tracking-widest mt-2 flex items-center gap-2">
-                                    <Shield className="w-3 h-3" /> Target Topic: {config.examTitle || 'General Knowledge'}
+                                    <Shield className="w-3 h-3" /> Target Topic: {selectedExam.examTitle}
                                 </p>
                             </div>
                             <div className="flex flex-wrap gap-3">
@@ -492,7 +748,7 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
                     <div className="bg-white dark:bg-[#050b14] p-12 rounded-[3rem] border border-[#ddd8cc] shadow-sm">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                             <div>
-                                <h3 className="text-xl font-bold text-ncc-navy dark:text-white">Current Question Bank</h3>
+                                <h3 className="text-xl font-bold text-ncc-navy dark:text-white">Topic Question Bank</h3>
                                 <p className="text-xs text-gray-400 dark:text-white/80 mt-1">{questions.length} Questions deployed to field</p>
                             </div>
                             <div className="flex items-center gap-4">
@@ -561,7 +817,7 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
                 <div className="bg-white dark:bg-[#050b14] rounded-[3rem] border border-[#ddd8cc] shadow-sm overflow-hidden">
                     <div className="p-8 border-b border-gray-100 dark:border-white/5 flex flex-wrap items-center justify-between gap-6">
                         <div className="flex items-center gap-6">
-                            <h3 className="text-xl font-bold text-ncc-navy dark:text-white">Performance Records</h3>
+                            <h3 className="text-xl font-bold text-ncc-navy dark:text-white">Topic Records</h3>
                             <div className="flex gap-2">
                                 <select 
                                     className="bg-gray-50 dark:bg-[#0a1628] border-gray-100 dark:border-white/5 rounded-xl text-[10px] font-black uppercase px-4 py-2"
@@ -598,7 +854,7 @@ export const ExamManager = ({ initialView = 'dashboard' }) => {
                             </thead>
                             <tbody className="divide-y divide-gray-50">
                                 {attempts.map((a, i) => (
-                                    <tr key={i} className="hover:bg-gray-50 dark:bg-[#0a1628] transition-colors">
+                                    <tr key={i} className="hover:bg-blue-50/50 dark:hover:bg-[#112a46] dark:bg-[#0a1628] transition-colors">
                                         <td className="px-8 py-5 font-bold text-ncc-navy dark:text-white">
                                             {a.cadetName === 'Unknown Cadet' ? `Cadet ${a.cadetId}` : a.cadetName}
                                         </td>
