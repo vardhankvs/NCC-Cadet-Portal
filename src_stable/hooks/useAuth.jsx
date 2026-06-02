@@ -83,6 +83,18 @@ export const useAuth = () => {
                     const userDocSnap = await getDoc(userDocRef);
                     if (userDocSnap.exists()) {
                         const userData = userDocSnap.data();
+                        
+                        // Check for global logout (Logout from all devices)
+                        if (userData.lastLogoutTime) {
+                            const logoutTime = userData.lastLogoutTime.toDate();
+                            const signInTime = new Date(currentUser.metadata.lastSignInTime);
+                            if (logoutTime > signInTime) {
+                                console.warn('Session invalidated by global logout.');
+                                await logoutUser();
+                                return;
+                            }
+                        }
+
                         let finalInstitutionId = customInstitutionId || userData.institutionId || '14a-bn-srikakulam';
 
                         if (userData.institutionId && userData.institutionId !== '14a-bn-srikakulam') {

@@ -1,5 +1,5 @@
 // src/firebase/authService.js
-import { auth, db, appId, functions } from './config.js';
+import { auth, db, appId } from './config.js';
 import {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
@@ -16,7 +16,6 @@ import {
     addDoc,
     serverTimestamp,
 } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
 import { generateAdminOTP } from './firestoreService.js';
 import emailjs from '@emailjs/browser';
 
@@ -187,12 +186,14 @@ export const logoutUser = async () => {
 };
 
 export const logoutAllDevices = async () => {
-    try {
-        const revokeTokens = httpsCallable(functions, 'logoutFromAllDevices');
-        await revokeTokens();
-    } catch (error) {
-        console.error('Error revoking tokens:', error);
-        throw error;
+    const user = auth.currentUser;
+    if (user) {
+        const usersRef = getUsersRef();
+        try {
+            await setDoc(doc(usersRef, user.uid), { lastLogoutTime: serverTimestamp() }, { merge: true });
+        } catch (error) {
+            console.error('Error setting lastLogoutTime:', error);
+        }
     }
     await signOut(auth);
 };
