@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { auth, db, appId } from '../firebase/config';
 import { onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc, collection, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, collection, updateDoc } from 'firebase/firestore';
 import {
     loginUser,
     signupUser,
@@ -79,17 +79,19 @@ export const useAuth = () => {
 
                 const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
                 const userDocRef = doc(usersRef, currentUser.uid);
+
+                // One-time fetch to bootstrap the UI
                 try {
                     const userDocSnap = await getDoc(userDocRef);
                     if (userDocSnap.exists()) {
                         const userData = userDocSnap.data();
-                        
-                        // Check for global logout (Logout from all devices)
+
+                        // Block login if a global logout was triggered after this sign-in
                         if (userData.lastLogoutTime) {
                             const logoutTime = userData.lastLogoutTime.toDate();
                             const signInTime = new Date(currentUser.metadata.lastSignInTime);
                             if (logoutTime > signInTime) {
-                                console.warn('Session invalidated by global logout.');
+                                console.warn('Session invalidated by global logout on login.');
                                 await logoutUser();
                                 return;
                             }
@@ -145,6 +147,7 @@ export const useAuth = () => {
                     setUserRole(null);
                     setUserInstitutionId(null);
                 }
+
             } else {
                 setUser(null);
                 setUserRole(null);
@@ -164,6 +167,37 @@ export const useAuth = () => {
             stopHeartbeat();
         };
     }, []);
+
+    // ── Dedicated real-time listener for "Logout from all devices" ──
+    // This is a separate useEffect that depends on [user].
+    // It is guaranteed to run fresh every time the user logs in,
+    // and is cleaned up automatically when the user logs out.
+    useEffect(() => {
+        if (!user) return;
+
+        const signInTime = new Date(user.metadata.lastSignInTime);
+        const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
+        const userDocRef = doc(usersRef, user.uid);
+
+        const unsubscribeSnapshot = onSnapshot(userDocRef, (snap) => {
+            if (!snap.exists()) return;
+            const data = snap.data();
+            if (data.lastLogoutTime) {
+                const logoutTime = data.lastLogoutTime.toDate();
+                if (logoutTime > signInTime) {
+                    console.warn('Real-time global logout detected — signing out now.');
+                    stopHeartbeat();
+                    if (sessionIdRef.current) {
+                        terminateSession(sessionIdRef.current);
+                        sessionIdRef.current = null;
+                    }
+                    logoutUser();
+                }
+            }
+        });
+
+        return () => unsubscribeSnapshot();
+    }, [user]);
 
     // ── Step 1: Admin login → trigger OTP ──────────────────────────────────
     const handleAdminLoginStep1 = async (email, password) => {
