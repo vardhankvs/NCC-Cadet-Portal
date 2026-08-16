@@ -116,7 +116,6 @@ import { AppRatingPrompt } from './features/Engagement/AppRatingPrompt.jsx';
 import { CollegesView } from './features/Administration/CollegesView.jsx';
 // CampAttendanceView is now embedded inside CampsView
 import { TimetableView } from './features/Timetable/TimetableView.jsx';
-import { MapReadingSimulator } from './features/Training/MapReadingSimulator.jsx';
 
 
 // ─── NCC Logo mark ─────────────────────────────────────────────────────────
@@ -440,7 +439,7 @@ function SidebarGroup({ category, tabs, activeTab, handleTabClick, isDarkMode, d
 // ─── Tab Content Logic Moved Inside Dashboard for better scope access ───
 
 
-const wideTabs = ['ncc_knowledge', 'analytics', 'hierarchy', 'library', 'tutorials', 'exams', 'list', 'att_logs', 'honour', 'inventory', 'summary', 'events', 'discipline', 'rank_mgmt', 'staff', 'alumni', 'career', 'career_bridge', 'feedback', 'grievances', 'direct_chat', 'results', 'colleges', 'overall_details', 'camps', 'camp_attendance', 'kit_mgmt', 'pft', 'map_simulator', 'security', 'training_calendar', 'leave_requests', 'hall_of_fame', 'blood_registry', 'timetable', 'cert_gen', 'selection_process', 'announcements', 'notifications', 'delegations'];
+const wideTabs = ['ncc_knowledge', 'analytics', 'hierarchy', 'library', 'tutorials', 'exams', 'list', 'att_logs', 'honour', 'inventory', 'summary', 'events', 'discipline', 'rank_mgmt', 'staff', 'alumni', 'career', 'career_bridge', 'feedback', 'grievances', 'direct_chat', 'results', 'colleges', 'overall_details', 'camps', 'camp_attendance', 'kit_mgmt', 'pft', 'security', 'training_calendar', 'leave_requests', 'hall_of_fame', 'blood_registry', 'timetable', 'cert_gen', 'selection_process', 'announcements', 'notifications', 'delegations'];
 const fullWidthTabs = ['delegations', 'hierarchy', 'colleges', 'overall_details', 'analytics'];
 
 export function Dashboard() {
@@ -842,7 +841,6 @@ export function Dashboard() {
                 { id: 'timetable',          name: 'Timetable',      category: 'Training', icon: Clock },
                 { id: 'results',            name: 'Results',        category: 'Training', icon: Award },
                 { id: 'pft',                name: 'PFT',            category: 'Training', icon: Activity },
-                { id: 'map_simulator',      name: 'Map Simulator',  category: 'Training', icon: Compass },
                 { id: 'camps',              name: 'Camps',          category: 'Training', icon: Tent },
                 { id: 'library',            name: 'Library',        category: 'Training', icon: BookOpen },
 
@@ -1057,7 +1055,6 @@ export function Dashboard() {
                 {renderTab === 'feedback'      && <FeedbackView />}
                 {renderTab === 'kit_mgmt'      && <KitManagementView />}
                 {renderTab === 'pft'           && <PFTTrackerView />}
-                {renderTab === 'map_simulator' && <MapReadingSimulator />}
                 {renderTab === 'camps'         && <CampsView />}
                 {renderTab === 'selection_process' && <SelectionProcessView />}
                 {renderTab === 'security'      && <SecurityDashboard />}
