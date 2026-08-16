@@ -1,22 +1,22 @@
 // src/Dashboard.jsx - v2.1.0-stable-no-notification-crash
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { auth, db } from './firebase/config.js';
 import { AuthContext, useAuthContext } from './context/AuthContext.jsx';
 import { useDataContext } from './context/DataContext.jsx';
 import { useTheme } from './context/ThemeContext.jsx';
-import { getCollectionRef, migrateInstitutionId, rescueAllData } from './firebase/firestoreService.js';
+import { getCollectionRef, migrateInstitutionId, rescueAllData, cleanupAttendanceRecords } from './firebase/firestoreService.js';
 import { useTenant } from './context/TenantContext.jsx';
-import { onSnapshot, query, orderBy, limit, doc, getDoc, addDoc, getDocs } from 'firebase/firestore';
+import { onSnapshot, query, orderBy, limit, doc, getDoc, addDoc, getDocs, where, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { LoadingIndicator } from './components/ui/LoadingIndicator.jsx';
 import { toast } from 'react-toastify';
 import { Leaderboard } from './features/Engagement/Leaderboard.jsx';
-import { BroadcastManager } from './features/Engagement/BroadcastManager.jsx';
 import { AnnouncementsView } from './features/Engagement/AnnouncementsView.jsx';
 import { FeedbackView } from './features/Engagement/FeedbackView.jsx';
 import { TrainingHub } from './features/Training/TrainingHub.jsx';
 import { UnitGallery } from './features/Gallery/UnitGallery.jsx';
 import { UnitAlerts } from './features/Engagement/UnitAlerts.jsx';
 import { requestNotificationPermission, onForegroundMessage } from './firebase/messagingService';
+import { playNccNotificationSound } from './utils/notificationSound.js';
 
 import {
     LogOut,
@@ -64,6 +64,7 @@ import {
     ShieldCheck,
     ShieldCheckIcon,
     Sparkles,
+    Compass,
     Download
 } from './components/Icons.jsx';
 
@@ -80,6 +81,8 @@ import { CertificateGenerator } from './features/Analytics/CertificateGenerator.
 import { CadetProfileView } from './features/Profile/CadetProfileView.jsx';
 import { InventoryView } from './features/Inventory/InventoryView.jsx';
 import { CampsView } from './features/Camps/CampsView.jsx';
+import { SelectionProcessView } from './features/Administration/SelectionProcessView.jsx';
+
 
 import { AttendanceScanner } from './features/Attendance/AttendanceScanner.jsx';
 import { AttendanceVerification } from './features/Attendance/AttendanceVerification.jsx';
@@ -93,7 +96,6 @@ import { DisciplineView } from './features/Ranks/DisciplineView.jsx';
 import { GrievanceView } from './features/Grievance/GrievanceView.jsx';
 import { ResourceLibraryView } from './features/Training/ResourceLibraryView.jsx';
 import { KitManagementView } from './features/Inventory/KitManagementView.jsx';
-import { CampNominationView } from './features/Camps/CampNominationView.jsx';
 import { PFTTrackerView } from './features/Training/PFTTrackerView.jsx';
 import { CareerBridgeView } from './features/Alumni/CareerBridgeView.jsx';
 import { TrainingCalendarView } from './features/Training/TrainingCalendarView.jsx';
@@ -108,8 +110,13 @@ import { KitFitPredictor } from './features/Inventory/KitFitPredictor.jsx';
 import { DirectChat } from './features/Engagement/DirectChat.jsx';
 import { SecurityDashboard } from './features/Security/SecurityDashboard.jsx';
 import { AIAssistant } from './features/Engagement/AIAssistant.jsx';
+import { AIAssistantPage } from './features/Engagement/AIAssistantPage.jsx';
 import { IDCardGenerator } from './features/Profile/IDCardGenerator.jsx';
 import { AppRatingPrompt } from './features/Engagement/AppRatingPrompt.jsx';
+import { CollegesView } from './features/Administration/CollegesView.jsx';
+// CampAttendanceView is now embedded inside CampsView
+import { TimetableView } from './features/Timetable/TimetableView.jsx';
+import { MapReadingSimulator } from './features/Training/MapReadingSimulator.jsx';
 
 
 // ─── NCC Logo mark ─────────────────────────────────────────────────────────
@@ -153,6 +160,8 @@ import { ThemeToggle } from './components/ui/ThemeToggle.jsx';
 // ─── Shared Sidebar ─────────────────────────────────────────────────────
 function SidebarContent({ tabs, role, activeTab, handleTabClick, handleLogout, handleLogoutAllDevices, currentCadet, initials, tenant }) {
     const { isDarkMode } = useTheme();
+    const { user, userRole } = useAuthContext();
+    const { staff } = useDataContext();
     const [searchQuery, setSearchQuery] = React.useState('');
     const [installPrompt, setInstallPrompt] = React.useState(null);
 
@@ -176,6 +185,12 @@ function SidebarContent({ tabs, role, activeTab, handleTabClick, handleLogout, h
             });
         }
     };
+
+    const currentStaff = React.useMemo(() => {
+        if (!user || !Array.isArray(staff)) return null;
+        return staff.find(s => (s.email || '').toLowerCase() === (user.email || '').toLowerCase());
+    }, [staff, user]);
+
     return (
     <aside
         className="flex flex-col h-full border-r"
@@ -194,6 +209,36 @@ function SidebarContent({ tabs, role, activeTab, handleTabClick, handleLogout, h
                 </div>
             </div>
             <div className="mx-4 h-px" style={{ background: 'var(--border-main)', opacity: 0.2 }} />
+
+            {/* Profile Logo & Info Header (for ANOs and Cadets) */}
+            {((userRole === 'admin' || userRole === 'officer' || userRole === 'cadet') && (userRole !== 'superadmin' && userRole !== 'battalion_admin')) && (() => {
+                const isCadet = userRole === 'cadet';
+                const profileName = isCadet ? currentCadet?.name : currentStaff?.name;
+                const profileSub = isCadet ? currentCadet?.enrollmentId : (currentStaff?.rank || 'Associate NCC Officer');
+                const profileImg = isCadet ? (currentCadet?.photoUrl || currentCadet?.photoURL) : (currentStaff?.photoUrl || currentStaff?.photoURL);
+                const profileInitials = profileName ? profileName.split(' ').map((s) => s[0] || '').join('').slice(0, 2).toUpperCase() : (isCadet ? 'C' : 'ANO');
+                
+                return (
+                    <div 
+                        onClick={() => handleTabClick('profile')}
+                        className="mx-3 mt-3 p-2.5 rounded-xl flex items-center gap-3 border border-white/10 cursor-pointer hover:bg-white/5 active:scale-98 transition-all"
+                        style={{ background: 'rgba(255,255,255,0.03)' }}
+                    >
+                        <div className="w-10 h-10 rounded-full border-2 border-ncc-gold/50 overflow-hidden flex items-center justify-center bg-gray-100 dark:bg-ncc-navy-mid flex-shrink-0">
+                            {profileImg ? (
+                                <img src={profileImg} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                                <span className="text-ncc-gold font-bold font-display text-sm">{profileInitials}</span>
+                            )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-xs truncate" style={{ color: 'var(--text-sidebar)' }}>{profileName || 'Loading Profile...'}</p>
+                            <p className="text-[10px] truncate font-mono mt-0.5" style={{ color: 'var(--text-sidebar-dim)' }}>{profileSub || ''}</p>
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* Search bar */}
             <div className="mx-3 mt-3 mb-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30 pointer-events-none" />
@@ -216,24 +261,6 @@ function SidebarContent({ tabs, role, activeTab, handleTabClick, handleLogout, h
                 )}
             </div>
         </div>
-
-        {/* Cadet identity (cadet only) */}
-        {role === 'cadet' && (
-            <div className="mx-4 my-4 p-3 rounded-xl flex items-center gap-3 border border-white/10"
-                style={{ background: 'rgba(255,255,255,0.05)' }}>
-                <div className="w-10 h-10 rounded-full border-2 border-ncc-gold/50 overflow-hidden flex items-center justify-center bg-gray-100 dark:bg-ncc-navy-mid flex-shrink-0">
-                    {currentCadet?.photoUrl || currentCadet?.photoURL ? (
-                        <img src={currentCadet.photoUrl || currentCadet.photoURL} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                        <span className="text-ncc-gold font-bold font-display text-sm">{initials}</span>
-                    )}
-                </div>
-                <div className="min-w-0">
-                    <p className="font-semibold text-sm truncate" style={{ color: 'var(--text-sidebar)' }}>{currentCadet?.name || 'Cadet'}</p>
-                    <p className="text-xs truncate font-mono" style={{ color: 'var(--text-sidebar-dim)' }}>{currentCadet?.enrollmentId || ''}</p>
-                </div>
-            </div>
-        )}
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto ncc-scrollbar px-3 py-2 space-y-0.5 pb-20">
@@ -413,7 +440,8 @@ function SidebarGroup({ category, tabs, activeTab, handleTabClick, isDarkMode, d
 // ─── Tab Content Logic Moved Inside Dashboard for better scope access ───
 
 
-const wideTabs = ['analytics', 'hierarchy', 'library', 'tutorials', 'exams', 'list', 'att_logs', 'honour', 'inventory', 'summary', 'events', 'discipline', 'rank_mgmt', 'staff', 'alumni', 'career', 'grievances', 'direct_chat', 'results'];
+const wideTabs = ['ncc_knowledge', 'analytics', 'hierarchy', 'library', 'tutorials', 'exams', 'list', 'att_logs', 'honour', 'inventory', 'summary', 'events', 'discipline', 'rank_mgmt', 'staff', 'alumni', 'career', 'career_bridge', 'feedback', 'grievances', 'direct_chat', 'results', 'colleges', 'overall_details', 'camps', 'camp_attendance', 'kit_mgmt', 'pft', 'map_simulator', 'security', 'training_calendar', 'leave_requests', 'hall_of_fame', 'blood_registry', 'timetable', 'cert_gen', 'selection_process', 'announcements', 'notifications', 'delegations'];
+const fullWidthTabs = ['delegations', 'hierarchy', 'colleges', 'overall_details', 'analytics'];
 
 export function Dashboard() {
     const { tenant } = useTenant();
@@ -448,10 +476,15 @@ export function Dashboard() {
         };
     }, []);
 
-    const { cadets, events, staff, loading, attendanceData, newAnnouncementCount, newNotificationCount } =
+    const { cadets, events, staff, loading, attendanceData, newAnnouncementCount, newNotificationCount, units, selectedCollege, setSelectedCollege } =
         useDataContext();
 
-    const defaultTab = userRole === 'admin' ? 'analytics' : 'profile';
+    const battalionStaff = useMemo(() => {
+        if (!Array.isArray(staff)) return [];
+        return staff.filter(s => s && s.name && s.rank);
+    }, [staff]);
+
+    const defaultTab = (userRole === 'admin' || userRole === 'superadmin' || userRole === 'battalion_admin') ? 'analytics' : 'profile';
 
     // ── Read initial tab from URL (supports deep-linking & page refresh) ──
     // NOTE: adminTabs/cadetTabs are not available here (defined via useMemo below),
@@ -477,6 +510,7 @@ export function Dashboard() {
     const [birthdayChecked, setBirthdayChecked] = useState(false);
     const [hierarchyFilter, setHierarchyFilter] = useState('All');
     const [hierarchyDivFilter, setHierarchyDivFilter] = useState('All');
+    const [certGenFilter, setCertGenFilter] = useState('All');
     const [showShowcase, setShowShowcase] = useState(() => {
         const hasSeen = localStorage.getItem(`ncc_showcase_${userRole}`);
         return !hasSeen;
@@ -487,54 +521,198 @@ export function Dashboard() {
         setShowShowcase(false);
     };
 
+    const handleTabClick = useCallback((tabId) => {
+        window.history.pushState({ tab: tabId }, '', `?tab=${tabId}`);
+        setActiveTab(tabId);
+        setSidebarOpen(false);
+        if (tabId === 'announcements' && userRole === 'cadet') markAnnouncementsAsRead?.();
+        if (tabId === 'notifications' && userRole === 'cadet') markNotificationsAsRead?.();
+    }, [userRole, markAnnouncementsAsRead, markNotificationsAsRead]);
 
-    // --- ONE-TIME INSTITUTION ID MIGRATION ---
+
+    // --- ONE-TIME RESTORE TO GMRIT ---
     useEffect(() => {
-        const runMigration = async () => {
-            if (userRole !== 'admin') return;
-            const key = 'ncc_migration_rescue_v4';
+        const runRestore = async () => {
+            const key = 'ncc_restore_gmrit_v6';
             if (localStorage.getItem(key)) return;
+            
+            // Only superadmin/battalion_admin (Battalion Admin) or admin (ANO) can trigger this restore
+            if (userRole !== 'superadmin' && userRole !== 'battalion_admin' && userRole !== 'admin') return;
+            
             try {
-                const total = await rescueAllData('14a-bn-srikakulam');
-                if (total > 0) {
-                    toast.success(`Data Sync Complete: ${total} records restored to unit hierarchy.`);
+                await cleanupAttendanceRecords();
+                const collectionsToRestore = [
+                    'cadets', 'events', 'announcements', 'unit_gallery',
+                    'inventory', 'camps', 'materials', 'quizzes', 'social_activities', 'grievances'
+                ];
+                
+                let totalRestored = 0;
+                for (const colName of collectionsToRestore) {
+                    const colRef = getCollectionRef(colName);
+                    if (!colRef) continue;
+                    
+                    const q = query(colRef, where('institutionId', '==', '14a-bn-srikakulam'));
+                    const snap = await getDocs(q);
+                    
+                    if (!snap.empty) {
+                        const batch = writeBatch(db);
+                        snap.docs.forEach(docSnap => {
+                            batch.update(docSnap.ref, { institutionId: 'gmrit', updatedAt: serverTimestamp() });
+                            totalRestored++;
+                        });
+                        await batch.commit();
+                    }
+                }
+                
+                if (totalRestored > 0) {
+                    toast.success(`Data Sync Complete: ${totalRestored} records restored to GMRIT portal.`);
                 }
                 localStorage.setItem(key, 'done');
-            } catch (e) {
-                console.error('Migration failed:', e);
+            } catch (err) {
+                console.error('GMRIT restoration failed:', err);
             }
         };
-        runMigration();
+        runRestore();
     }, [userRole]);
 
-    // ─── Real-time Mobile Push Notifications ──────────────────────────────
-    // ─── Real-time Mobile App Toasts & Native Notifications ──────────────────────────────
-    useEffect(() => {
-        // Disabled onSnapshot toast to prevent duplicate notifications since FCM Native Push handles this.
-        const q = query(getCollectionRef('notifications'), orderBy('timestamp', 'desc'), limit(1));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            // Simply listen to keep state updated, no toast needed.
-        });
-        return () => unsubscribe();
-    }, [userRole]);
+    // ─── Real-time Live In-App Notifications & Toasts (Firestore onSnapshot) ─────
+    // ── Native System OS Notification Helper ─────────────────────────────────
+    const triggerOsNotification = (title, body, targetTab = 'notifications', tagId = null) => {
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            try {
+                const iconUrl = `${window.location.origin}/pwa-192x192.png`;
+                const soundUrl = `${window.location.origin}/sounds/ncc_notification.mp3`;
+                const destUrl = `${window.location.origin}/?tab=${targetTab}`;
+                const tag = `ncc-os-${tagId || Date.now()}`;
 
-    // Broadcast Overdue check for Admins
-    const [isBroadcastOverdue, setIsBroadcastOverdue] = useState(false);
-    useEffect(() => {
-        if (userRole === 'admin') {
-            const q = query(getCollectionRef('notifications'), orderBy('timestamp', 'desc'), limit(1));
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                if (!snapshot.empty) {
-                    const last = snapshot.docs[0].data();
-                    const overdue = (new Date() - new Date(last.timestamp)) > (24 * 60 * 60 * 1000);
-                    setIsBroadcastOverdue(overdue);
+                if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.ready.then((reg) => {
+                        reg.showNotification(title, {
+                            body: body,
+                            icon: iconUrl,
+                            badge: iconUrl,
+                            sound: soundUrl,
+                            vibrate: [250, 100, 250, 100, 400],
+                            tag: tag,
+                            renotify: true,
+                            data: { url: destUrl }
+                        });
+                    }).catch(() => {
+                        new Notification(title, { body, icon: iconUrl, tag });
+                    });
                 } else {
-                    setIsBroadcastOverdue(true);
+                    new Notification(title, { body, icon: iconUrl, tag });
+                }
+            } catch (e) {
+                console.warn('OS Notification trigger warning:', e);
+            }
+        }
+    };
+
+    // ─── Real-time Live In-App Notifications & Toasts (Firestore onSnapshot) ─────
+    const seenNotifIdsRef = useRef(new Set());
+    const initialNotifLoadedRef = useRef(false);
+
+    useEffect(() => {
+        const notifRef = getCollectionRef('notifications');
+        if (!notifRef) return;
+        
+        const q = query(notifRef, orderBy('timestamp', 'desc'), limit(5));
+        
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            if (!initialNotifLoadedRef.current) {
+                snapshot.docs.forEach(docSnap => seenNotifIdsRef.current.add(docSnap.id));
+                initialNotifLoadedRef.current = true;
+                return;
+            }
+
+            snapshot.docs.forEach((docSnap) => {
+                if (!seenNotifIdsRef.current.has(docSnap.id)) {
+                    seenNotifIdsRef.current.add(docSnap.id);
+                    const data = docSnap.data();
+                    const title = data.title || data.subject || '📢 New NCC Update';
+                    const body = data.message || data.body || 'Tap to view details';
+                    const targetTab = data.targetTab || 'notifications';
+
+                    // 🔊 Play official energetic defence sound on ALL recipient devices
+                    playNccNotificationSound();
+
+                    // 🔔 Native OS Notification popup for Desktop & Mobile OS
+                    triggerOsNotification(title, body, targetTab, docSnap.id);
+
+                    toast.info(
+                        <div>
+                            <strong>{title}</strong>
+                            <p className="text-xs mt-1">{body}</p>
+                        </div>,
+                        {
+                            autoClose: 6000,
+                            position: "top-right",
+                            icon: false,
+                            onClick: () => {
+                                if (targetTab && targetTab !== 'attendance') {
+                                    handleTabClick(targetTab);
+                                }
+                            }
+                        }
+                    );
                 }
             });
-            return () => unsubscribe();
-        }
-    }, [userRole]);
+        }, (err) => console.warn('Real-time notifications listener notice:', err.message));
+
+        return () => unsubscribe();
+    }, [handleTabClick]);
+
+    // ─── Real-time Announcements Listener ──────────────────────────────────────
+    const seenAnnIdsRef = useRef(new Set());
+    const initialAnnLoadedRef = useRef(false);
+
+    useEffect(() => {
+        const annRef = getCollectionRef('announcements');
+        if (!annRef) return;
+        
+        const q = query(annRef, orderBy('createdAt', 'desc'), limit(5));
+        
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            if (!initialAnnLoadedRef.current) {
+                snapshot.docs.forEach(docSnap => seenAnnIdsRef.current.add(docSnap.id));
+                initialAnnLoadedRef.current = true;
+                return;
+            }
+
+            snapshot.docs.forEach((docSnap) => {
+                if (!seenAnnIdsRef.current.has(docSnap.id)) {
+                    seenAnnIdsRef.current.add(docSnap.id);
+                    const data = docSnap.data();
+                    const title = data.title || '📢 New Notice Board Update';
+                    const body = data.content || data.message || 'Tap to read full announcement.';
+
+                    // 🔊 Play official energetic defence sound on ALL recipient devices
+                    playNccNotificationSound();
+
+                    // 🔔 Native OS Notification popup for Desktop & Mobile OS
+                    triggerOsNotification(title, body, 'announcements', docSnap.id);
+
+                    toast.info(
+                        <div>
+                            <strong className="text-amber-300">📢 {title}</strong>
+                            <p className="text-xs mt-1 line-clamp-2">{body}</p>
+                        </div>,
+                        {
+                            autoClose: 7000,
+                            position: "top-right",
+                            icon: false,
+                            onClick: () => handleTabClick('announcements')
+                        }
+                    );
+                }
+            });
+        }, (err) => console.warn('Real-time announcements listener notice:', err.message));
+
+        return () => unsubscribe();
+    }, [handleTabClick]);
+
+
 
     // Birthday greeting
     useEffect(() => {
@@ -580,11 +758,22 @@ export function Dashboard() {
         return () => clearTimeout(timer);
     }, [loading, userRole, authContext.user, userEnrollmentId, cadets, staff]);
 
-    // ── Foreground Push: show toast when app is open and a push arrives ───────
+    // ── Foreground Push: show toast & OS notification when app is open ───────
     useEffect(() => {
         const unsubscribe = onForegroundMessage((payload) => {
             console.log("Foreground push received:", payload);
             if (payload?.notification) {
+                // 🔊 Play branded NCC notification sound
+                playNccNotificationSound();
+                
+                // 🔔 Native OS Notification popup for Desktop & Mobile OS
+                triggerOsNotification(
+                    payload.notification.title,
+                    payload.notification.body,
+                    payload.data?.targetTab || payload.targetTab || 'notifications',
+                    Date.now()
+                );
+
                 toast.info(
                     <div>
                         <strong>{payload.notification.title}</strong>
@@ -614,113 +803,75 @@ export function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // ── Broadcast Sentinel (Automatic Safety Net) ──
-    useEffect(() => {
-        if (userRole !== 'admin' || loading) return;
 
-        const checkSentinel = async () => {
-            try {
-                // 1. Fetch Safety Settings
-                const safetyRef = doc(getCollectionRef('settings'), 'broadcast_safety');
-                const snap = await getDoc(safetyRef);
-                
-                if (!snap.exists() || !snap.data().enabled) return;
-                const safety = snap.data();
 
-                // 2. Check if past deadline
-                const now = new Date();
-                const [hr, min] = safety.deadline.split(':').map(Number);
-                const deadline = new Date();
-                deadline.setHours(hr, min, 0, 0);
+        const adminTabs = useMemo(
+        () => {
+            const list = [
+                // Headquarters
+                { id: 'ncc_knowledge',      name: 'NCC Knowledge',  category: 'Headquarters', icon: Flag },
+                { id: 'analytics',         name: 'Analytics',      category: 'Headquarters', icon: PieChart },
+                { id: 'hierarchy',         name: 'Hierarchy',      category: 'Headquarters', icon: Users },
+                { id: 'hall_of_fame',      name: 'Unit Excellence',category: 'Headquarters', icon: Trophy },
 
-                if (now < deadline) return;
+                // Unit Administration
+                { id: 'list',               name: 'Roster',         category: 'Administration', icon: List },
+                { id: 'rank_mgmt',          name: 'Ranks',          category: 'Administration', icon: Medal },
+                { id: 'delegations',        name: 'Chain of Command',category: 'Administration', icon: Shield },
+                { id: 'discipline',         name: 'Discipline',     category: 'Administration', icon: Target },
+                { id: 'selection_process',  name: 'Selection Process', category: 'Administration', icon: UserCheck },
+                { id: 'alumni',             name: 'Alumni',         category: 'Administration', icon: GraduationCap },
 
-                // 3. Check if anything sent TODAY
-                const todayStr = now.toISOString().split('T')[0];
-                const notifsRef = getCollectionRef('notifications');
-                const q = query(notifsRef, orderBy('timestamp', 'desc'), limit(5));
-                const notifsSnap = await getDocs(q);
-                
-                const sentToday = notifsSnap.docs.some(d => d.data().timestamp.startsWith(todayStr));
-                if (sentToday) return;
+                { id: 'staff',              name: 'Staff',          category: 'Administration', icon: User },
+                { id: 'profile',            name: 'My Profile',     category: 'Administration', icon: User },
 
-                // 4. Auto-Send Fallback
-                await addDoc(getCollectionRef('notifications'), {
-                    subject: 'Unit Standing Order (Automated)',
-                    message: safety.message,
-                    target: 'All',
-                    targetCertificate: safety.targetCert || 'All',
-                    targetDivision: safety.targetDiv || 'All',
-                    sender: 'Unit Sentinel',
-                    timestamp: new Date().toISOString(),
-                    isAutomated: true
-                });
+                // Logistics & Operations
+                { id: 'inventory',          name: 'Inventory',      category: 'Logistics', icon: Package },
+                { id: 'kit_mgmt',           name: 'Kit',            category: 'Logistics', icon: Shield },
+                { id: 'fee',                name: 'Fees',           category: 'Logistics', icon: CreditCard },
+                { id: 'cert_gen',           name: 'Certificates',   category: 'Logistics', icon: Award },
 
-                toast.info("Safety Net Triggered: Automated broadcast sent to unit.");
-            } catch (err) {
-                console.error("Sentinel Error:", err);
+                // Attendance & Parades
+                { id: 'parade',             name: 'Parade',         category: 'Attendance', icon: UserCheck },
+                { id: 'summary',            name: 'Attendance',     category: 'Attendance', icon: BarChart },
+                { id: 'att_logs',           name: 'Scan Logs',      category: 'Attendance', icon: Camera },
+                { id: 'leave_requests',     name: 'Leave Requests', category: 'Attendance', icon: Clock },
+
+                // Training & Development
+                { id: 'training_calendar',  name: 'Calendar',       category: 'Training', icon: Calendar },
+                { id: 'timetable',          name: 'Timetable',      category: 'Training', icon: Clock },
+                { id: 'results',            name: 'Results',        category: 'Training', icon: Award },
+                { id: 'pft',                name: 'PFT',            category: 'Training', icon: Activity },
+                { id: 'map_simulator',      name: 'Map Simulator',  category: 'Training', icon: Compass },
+                { id: 'camps',              name: 'Camps',          category: 'Training', icon: Tent },
+                { id: 'library',            name: 'Library',        category: 'Training', icon: BookOpen },
+
+                // Engagement & Community
+                { id: 'announcements',      name: 'Notice Board',   category: 'Engagement', icon: Bell },
+                { id: 'events',             name: 'Events',         category: 'Engagement', icon: Star },
+                { id: 'gallery',            name: 'Unit Gallery',   category: 'Engagement', icon: ImageIcon },
+                { id: 'social',             name: 'Social',         category: 'Engagement', icon: Heart },
+                { id: 'blood_registry',     name: 'Blood Bank',     category: 'Engagement', icon: Droplet },
+                { id: 'career',             name: 'Careers',        category: 'Engagement', icon: Briefcase },
+                { id: 'career_bridge',      name: 'Job Board',      category: 'Engagement', icon: LinkIcon },
+                { id: 'grievances',         name: 'Grievance Cell',     category: 'Engagement', icon: LifeBuoy },
+                { id: 'feedback',           name: 'Feedback',       category: 'Engagement', icon: MessageCircle },
+                // Security & Compliance
+                { id: 'security',           name: 'Security',       category: 'Administration', icon: ShieldCheck },
+            ];
+
+            if (userRole === 'superadmin' || userRole === 'battalion_admin') {
+                // Add Overall Details right after NCC Knowledge in Headquarters
+                list.splice(1, 0, { id: 'overall_details', name: 'Overall Details', category: 'Headquarters', icon: Activity });
+                // Add Colleges right after Overall Details
+                list.splice(2, 0, { id: 'colleges', name: 'Colleges', category: 'Headquarters', icon: GraduationCap });
+                // Add Camp Attendance after Colleges
+                list.splice(3, 0, { id: 'camp_attendance', name: 'Camp Attendance', category: 'Headquarters', icon: Tent });
             }
-        };
 
-        // Run once on mount and then every 10 mins
-        checkSentinel();
-        const interval = setInterval(checkSentinel, 10 * 60 * 1000);
-        return () => clearInterval(interval);
-    }, [userRole, loading]);
-
-    const adminTabs = useMemo(
-        () => [
-            // Headquarters
-            { id: 'ncc_knowledge',      name: 'NCC Knowledge',  category: 'Headquarters', icon: Flag },
-            { id: 'analytics',         name: 'Analytics',      category: 'Headquarters', icon: PieChart },
-            { id: 'hierarchy',         name: 'Hierarchy',      category: 'Headquarters', icon: Users },
-            { id: 'hall_of_fame',      name: 'Unit Excellence',category: 'Headquarters', icon: Trophy },
-
-            // Unit Administration
-            { id: 'list',               name: 'Roster',         category: 'Administration', icon: List },
-            { id: 'rank_mgmt',          name: 'Ranks',          category: 'Administration', icon: Medal },
-            { id: 'delegations',        name: 'Chain of Command',category: 'Administration', icon: Shield },
-            { id: 'discipline',         name: 'Discipline',     category: 'Administration', icon: Target },
-            { id: 'alumni',             name: 'Alumni',         category: 'Administration', icon: GraduationCap },
-            { id: 'staff',              name: 'Staff',          category: 'Administration', icon: User },
-
-            // Logistics & Operations
-            { id: 'inventory',          name: 'Inventory',      category: 'Logistics', icon: Package },
-            { id: 'kit_mgmt',           name: 'Kit',            category: 'Logistics', icon: Shield },
-            { id: 'fee',                name: 'Fees',           category: 'Logistics', icon: CreditCard },
-            { id: 'cert_gen',           name: 'Certificates',   category: 'Logistics', icon: Award },
-
-            // Attendance & Parades
-            { id: 'parade',             name: 'Parade',         category: 'Attendance', icon: UserCheck },
-            { id: 'summary',            name: 'Attendance',     category: 'Attendance', icon: BarChart },
-            { id: 'att_logs',           name: 'Scan Logs',      category: 'Attendance', icon: Camera },
-            { id: 'leave_requests',     name: 'Leave Requests', category: 'Attendance', icon: Clock },
-
-            // Training & Development
-            { id: 'training_calendar',  name: 'Calendar',       category: 'Training', icon: Calendar },
-            { id: 'exams',              name: 'Digital Exams',  category: 'Training', icon: ShieldCheck },
-            { id: 'results',            name: 'Results',        category: 'Training', icon: Award },
-            { id: 'pft',                name: 'PFT',            category: 'Training', icon: Activity },
-            { id: 'camps',              name: 'Camps',          category: 'Training', icon: Tent },
-            { id: 'library',            name: 'Library',        category: 'Training', icon: BookOpen },
-
-            // Engagement & Community
-            { id: 'notifications',      name: 'Broadcast',      category: 'Engagement', icon: Megaphone, badge: isBroadcastOverdue ? '!' : null },
-            { id: 'announcements',      name: 'Notice Board',   category: 'Engagement', icon: Bell },
-            { id: 'direct_chat',        name: 'Messages',       category: 'Engagement', icon: MessageSquare },
-            { id: 'events',             name: 'Events',         category: 'Engagement', icon: Star },
-            { id: 'gallery',            name: 'Unit Gallery',   category: 'Engagement', icon: ImageIcon },
-            { id: 'social',             name: 'Social',         category: 'Engagement', icon: Heart },
-            { id: 'blood_registry',     name: 'Blood Bank',     category: 'Engagement', icon: Droplet },
-            { id: 'career',             name: 'Careers',        category: 'Engagement', icon: Briefcase },
-            { id: 'career_bridge',      name: 'Job Board',      category: 'Engagement', icon: LinkIcon },
-            { id: 'grievances',         name: 'Grievances',     category: 'Engagement', icon: LifeBuoy },
-            { id: 'feedback',           name: 'Feedback',       category: 'Engagement', icon: MessageCircle },
-            // Security & Compliance
-            { id: 'security',           name: 'Security',       category: 'Administration', icon: ShieldCheck },
-        ],
-
-        [isBroadcastOverdue]
+            return list;
+        },
+        [userRole]
     );
 
     const cadetTabs = useMemo(
@@ -742,6 +893,7 @@ export function Dashboard() {
 
             // Academics & Training
             { id: 'training_calendar', name: 'Calendar',      category: 'Training', icon: Calendar },
+            { id: 'timetable',         name: 'Timetable',     category: 'Training', icon: Clock },
             { id: 'exams',             name: 'Mock Exams',    category: 'Training', icon: FileText },
             { id: 'results',           name: 'Results',       category: 'Training', icon: Award },
             { id: 'pft',               name: 'My Fitness',    category: 'Training', icon: Activity },
@@ -752,6 +904,7 @@ export function Dashboard() {
             { id: 'announcements',     name: 'Notice Board',  category: 'Engagement', icon: Bell, badge: newAnnouncementCount > 0 ? newAnnouncementCount : null },
             { id: 'notifications',     name: 'Broadcasts',    category: 'Engagement', icon: Megaphone },
             { id: 'direct_chat',       name: 'Messages',      category: 'Engagement', icon: MessageSquare },
+            { id: 'grievances',        name: 'Grievance Cell', category: 'Engagement', icon: LifeBuoy },
             { id: 'events',            name: 'Events',        category: 'Engagement', icon: Star },
             { id: 'gallery',           name: 'Unit Gallery',  category: 'Engagement', icon: ImageIcon },
             { id: 'social',            name: 'Social Service', category: 'Engagement', icon: Heart },
@@ -761,16 +914,26 @@ export function Dashboard() {
             { id: 'ai_assistant',      name: 'AI Assistant',  category: 'Services', icon: Sparkles },
             { id: 'career',            name: 'Career Hub',    category: 'Services', icon: Briefcase },
             { id: 'career_bridge',     name: 'Career Bridge', category: 'Services', icon: LinkIcon },
-            { id: 'grievances',        name: 'Report Issue',  category: 'Services', icon: LifeBuoy },
             { id: 'feedback',          name: 'Feedback',      category: 'Services', icon: MessageCircle },
         ],
         [newAnnouncementCount]
     );
 
-    const isAdminRole = userRole === 'admin' || userRole === 'officer';
+    const isAdminRole = userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin' || userRole === 'battalion_admin';
 
     const baseTabs = useMemo(() => {
         let tabs = isAdminRole ? [...adminTabs] : [...cadetTabs];
+
+        if (isAdminRole && (userRole === 'superadmin' || userRole === 'battalion_admin')) {
+            // Hide local/unnecessary tabs from Battalion Admin
+            const hiddenTabIds = [
+                'parade', 'att_logs', 'leave_requests', 'kit_mgmt', 'fee', 'inventory', 'pft',
+                'hall_of_fame', 'hierarchy', 'list', 'delegations', 'discipline', 'alumni', 
+                'training_calendar', 'camps', 'events', 'gallery', 'social', 'blood_registry', 'grievances',
+                'profile', 'ai_assistant'
+            ];
+            tabs = tabs.filter(t => !hiddenTabIds.includes(t.id));
+        }
 
         // Inject Delegated Roles
         if (!isAdminRole && userDelegatedModules && userDelegatedModules.length > 0) {
@@ -781,7 +944,7 @@ export function Dashboard() {
         }
 
         return tabs;
-    }, [newAnnouncementCount, adminTabs, cadetTabs, isAdminRole, userDelegatedModules]);
+    }, [newAnnouncementCount, adminTabs, cadetTabs, isAdminRole, userDelegatedModules, userRole]);
 
     const availableTabs = baseTabs;
 
@@ -816,14 +979,6 @@ export function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userRole]);
 
-    const handleTabClick = (tabId) => {
-        // Push a new history entry so Back button works
-        window.history.pushState({ tab: tabId }, '', `?tab=${tabId}`);
-        setActiveTab(tabId);
-        setSidebarOpen(false);
-        if (tabId === 'announcements' && userRole === 'cadet') markAnnouncementsAsRead();
-        if (tabId === 'notifications' && userRole === 'cadet') markNotificationsAsRead();
-    };
 
     const currentCadet = useMemo(() => {
         if (isAdminRole) return null;
@@ -840,19 +995,31 @@ export function Dashboard() {
         const renderTab = activeTab.startsWith('admin_') ? activeTab.replace('admin_', '') : activeTab;
         return (
             <>
+                {renderTab === 'overall_details'  && <CollegesView mode="overall" />}
+                {renderTab === 'colleges'         && <CollegesView mode="directory" />}
+                {renderTab === 'camp_attendance'   && <CampsView />}
                 {renderTab === 'analytics'       && (
                     <div className="h-full">
                         <UnitAnalytics 
                             onDrillDown={(cert, div) => { 
-                                setHierarchyFilter(cert || 'All'); 
-                                setHierarchyDivFilter(div || 'All');
-                                handleTabClick('hierarchy');
+                                if (cert === 'B1' || cert === 'B2' || cert === 'C' || cert === 'A') {
+                                    setCertGenFilter(cert);
+                                    handleTabClick('cert_gen');
+                                } else {
+                                    if (isBattalionAdmin) {
+                                        handleTabClick('colleges');
+                                    } else {
+                                        setHierarchyFilter(cert || 'All'); 
+                                        setHierarchyDivFilter(div || 'All');
+                                        handleTabClick('hierarchy');
+                                    }
+                                }
                             }} 
                             onTabChange={setActiveTab} 
                         />
                     </div>
                 )}
-                {renderTab === 'cert_gen'        && <CertificateGenerator />}
+                {renderTab === 'cert_gen'        && <CertificateGenerator initialCertFilter={certGenFilter} />}
                 {renderTab === 'parade'          && <AttendanceScanner />}
                 {renderTab === 'att_logs'        && <AttendanceLogsView />}
                 {renderTab === 'list'            && <CadetRoster cadets={cadets} tenant={tenant} userInstitutionId={userInstitutionId} />}
@@ -863,7 +1030,7 @@ export function Dashboard() {
                 {renderTab === 'inventory'         && <InventoryView />}
                 {renderTab === 'fee'           && <FeeManagementView />}
                 {renderTab === 'events'        && <EventsView events={events} />}
-                {renderTab === 'staff'         && <StaffDetailsView staff={staff} />}
+                {renderTab === 'staff'         && <StaffDetailsView staff={battalionStaff} />}
                 {renderTab === 'references'    && <ReferencesView />}
                 {renderTab === 'announcements'  && <AnnouncementsView onTabChange={handleTabClick} />}
                 {renderTab === 'social'        && <SocialServiceView />}
@@ -884,14 +1051,17 @@ export function Dashboard() {
                 {renderTab === 'library'       && <ResourceLibraryView mode="library" />}
                 {renderTab === 'exams'         && <TrainingHub />}
                 {renderTab === 'honour'        && <Leaderboard />}
-                {renderTab === 'notifications' && (userRole === 'admin' ? <BroadcastManager /> : <UnitAlerts />)}
+                {renderTab === 'notifications' && <UnitAlerts />}
                 {renderTab === 'gallery'       && <UnitGallery />}
                 {renderTab === 'tutorials'     && <TutorialsHub />}
                 {renderTab === 'feedback'      && <FeedbackView />}
                 {renderTab === 'kit_mgmt'      && <KitManagementView />}
                 {renderTab === 'pft'           && <PFTTrackerView />}
+                {renderTab === 'map_simulator' && <MapReadingSimulator />}
                 {renderTab === 'camps'         && <CampsView />}
+                {renderTab === 'selection_process' && <SelectionProcessView />}
                 {renderTab === 'security'      && <SecurityDashboard />}
+
                 {renderTab === 'career_bridge' && <CareerBridgeView />}
                 {renderTab === 'training_calendar' && <TrainingCalendarView />}
                 {renderTab === 'ncc_knowledge'     && <NCCKnowledgeView />}
@@ -918,8 +1088,10 @@ export function Dashboard() {
                         }}
                     />
                 )}
+                {renderTab === 'timetable'          && <TimetableView />}
                 {renderTab === 'kit_predictor'     && <KitFitPredictor />}
                 {renderTab === 'results'           && <ResultsView />}
+                {renderTab === 'ai_assistant'      && <AIAssistantPage />}
             </>
         );
     };
@@ -1003,23 +1175,40 @@ export function Dashboard() {
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
+                                {(userRole === 'superadmin' || userRole === 'battalion_admin') && (
+                                    <div className="relative flex items-center gap-1.5 bg-gray-100 dark:bg-white/10 px-3 py-1.5 rounded-lg border border-transparent dark:border-white/15">
+                                        <GraduationCap className="w-4 h-4 text-ncc-gold" />
+                                        <select
+                                            value={selectedCollege}
+                                            onChange={(e) => setSelectedCollege(e.target.value)}
+                                            className="bg-transparent text-xs font-bold outline-none text-ncc-navy dark:text-white cursor-pointer pr-1"
+                                            style={{ colorScheme: isDarkMode ? 'dark' : 'light' }}
+                                        >
+                                            <option value="All" className="bg-white dark:bg-[#0f172a] text-black dark:text-white">All Colleges</option>
+                                            {units.filter(u => !u.isBattalion).map(u => (
+                                                <option key={u.subdomain} value={u.subdomain} className="bg-white dark:bg-[#0f172a] text-black dark:text-white">
+                                                    {u.collegeName || u.unitName}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                                 <ThemeToggle />
-                                <button 
-                                    onClick={() => handleTabClick('notifications')}
-                                    className="relative w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-ncc-gold hover:bg-gray-200 dark:hover:bg-white/20 transition-all"
-                                >
-                                    <Bell className="w-5 h-5" />
-                                    {userRole === 'admin' && isBroadcastOverdue && (
-                                        <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-ncc-red rounded-full border-2 border-white dark:border-[#0a1628]" />
-                                    )}
-                                    {userRole === 'cadet' && newNotificationCount > 0 && (
-                                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-ncc-red text-white text-[10px] font-black rounded-full border-2 border-white dark:border-[#0a1628] flex items-center justify-center">
-                                            {newNotificationCount}
-                                        </span>
-                                    )}
-                                </button>
+                                {userRole === 'cadet' && (
+                                    <button 
+                                        onClick={() => handleTabClick('notifications')}
+                                        className="relative w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-ncc-gold hover:bg-gray-200 dark:hover:bg-white/20 transition-all"
+                                    >
+                                        <Bell className="w-5 h-5" />
+                                        {newNotificationCount > 0 && (
+                                            <span className="absolute -top-1 -right-1 w-5 h-5 bg-ncc-red text-white text-[10px] font-black rounded-full border-2 border-white dark:border-[#0a1628] flex items-center justify-center">
+                                                {newNotificationCount}
+                                            </span>
+                                        )}
+                                    </button>
+                                )}
                                 <span className="hidden sm:inline-block px-2.5 py-1 rounded-md text-xs font-bold bg-ncc-navy text-ncc-gold">
-                                    OFFICER
+                                    {(userRole === 'superadmin' || userRole === 'battalion_admin') ? 'BATTALION ADMIN' : (userRole === 'officer' ? 'OFFICER' : 'ADMIN')}
                                 </span>
                                 <button
                                     onClick={handleLogout}
@@ -1039,8 +1228,8 @@ export function Dashboard() {
                                 <LoadingIndicator />
                             </div>
                         ) : (
-                            <div className={`ncc-page mx-auto ${wideTabs.includes(activeTab) ? 'max-w-7xl' : 'max-w-2xl'}`}>
-                                <div className="lg:col-span-2 space-y-6">
+                            <div className={`ncc-page mx-auto ${fullWidthTabs.includes(activeTab) || fullWidthTabs.includes(activeTab.replace('admin_', '')) ? 'w-full max-w-none px-4 sm:px-6' : wideTabs.includes(activeTab) ? 'max-w-7xl' : 'max-w-2xl'}`}>
+                                <div className="w-full space-y-6">
                                     {renderTabContent()}
                                 </div>
                             </div>
@@ -1165,7 +1354,7 @@ export function Dashboard() {
                             <LoadingIndicator />
                         </div>
                     ) : (
-                        <div className={`ncc-page mx-auto ${wideTabs.includes(activeTab) ? 'max-w-7xl' : 'max-w-2xl'}`}>
+                        <div className={`ncc-page mx-auto ${fullWidthTabs.includes(activeTab) || fullWidthTabs.includes(activeTab.replace('admin_', '')) ? 'w-full max-w-none px-4 sm:px-6' : (wideTabs.includes(activeTab) || (activeTab.startsWith('admin_') && wideTabs.includes(activeTab.replace('admin_', '')))) ? 'max-w-7xl' : 'max-w-2xl'}`}>
                             <AuthContext.Provider value={overriddenAuth}>
                                 <AttendanceVerification />
                                 {renderTabContent()}

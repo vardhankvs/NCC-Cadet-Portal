@@ -103,34 +103,63 @@ export const sendPushToAll = async (title, body, targetTab = null) => {
  */
 export const sendPushToUser = async (enrollmentId, title, body, targetTab = null) => {
     if (!enrollmentId) return;
+    const targetKey = String(enrollmentId).trim().toUpperCase();
     try {
         const tokens = [];
 
-        // Look up in cadets collection by enrollmentId
+        // 1. Look up in cadets collection by enrollmentId, doc ID, or uid
         try {
             const snap = await getDocs(getCollectionRef('cadets'));
             snap.forEach((d) => {
-                if (d.data().enrollmentId === enrollmentId) {
-                    const t = d.data().fcmTokens;
+                const data = d.data();
+                const eId = String(data.enrollmentId || '').trim().toUpperCase();
+                const docId = String(d.id || '').trim().toUpperCase();
+                const uId = String(data.uid || data.userId || '').trim().toUpperCase();
+
+                if (eId === targetKey || docId === targetKey || uId === targetKey) {
+                    const t = data.fcmTokens;
                     if (Array.isArray(t)) tokens.push(...t);
                     else if (typeof t === 'string' && t) tokens.push(t);
                 }
             });
         } catch (e) { console.warn('FCM: cadet lookup skipped', e.message); }
 
-        // Also look up in users collection (tokens saved here when they log in)
+        // 2. Look up in staff collection by staffId, doc ID, or uid
         try {
-            const snap = await getDocs(getCollectionRef('users'));
+            const snap = await getDocs(getCollectionRef('staff'));
             snap.forEach((d) => {
-                if (d.data().enrollmentId === enrollmentId) {
-                    const t = d.data().fcmTokens;
+                const data = d.data();
+                const sId = String(data.staffId || data.enrollmentId || '').trim().toUpperCase();
+                const docId = String(d.id || '').trim().toUpperCase();
+                const uId = String(data.uid || data.userId || '').trim().toUpperCase();
+
+                if (sId === targetKey || docId === targetKey || uId === targetKey) {
+                    const t = data.fcmTokens;
                     if (Array.isArray(t)) tokens.push(...t);
                     else if (typeof t === 'string' && t) tokens.push(t);
                 }
             });
-        } catch (e) { console.warn('FCM: users (officer) fetch skipped for single user', e.message); }
+        } catch (e) { console.warn('FCM: staff lookup skipped', e.message); }
 
-        await _dispatch(tokens, title, body, targetTab);
+        // 3. Look up in users collection
+        try {
+            const snap = await getDocs(getCollectionRef('users'));
+            snap.forEach((d) => {
+                const data = d.data();
+                const eId = String(data.enrollmentId || data.staffId || '').trim().toUpperCase();
+                const docId = String(d.id || '').trim().toUpperCase();
+                const uId = String(data.uid || data.userId || '').trim().toUpperCase();
+
+                if (eId === targetKey || docId === targetKey || uId === targetKey) {
+                    const t = data.fcmTokens;
+                    if (Array.isArray(t)) tokens.push(...t);
+                    else if (typeof t === 'string' && t) tokens.push(t);
+                }
+            });
+        } catch (e) { console.warn('FCM: users fetch skipped for single user', e.message); }
+
+        const uniqueTokens = Array.from(new Set(tokens.filter(Boolean)));
+        await _dispatch(uniqueTokens, title, body, targetTab);
     } catch (e) {
         console.warn('sendPushToUser failed (non-critical):', e.message);
     }
