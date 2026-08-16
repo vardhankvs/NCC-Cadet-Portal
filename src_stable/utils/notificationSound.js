@@ -65,7 +65,7 @@ if (typeof window !== 'undefined') {
             if (ctx) {
                 if (ctx.state === 'suspended') {
                     await ctx.resume();
-                    console.log('✅ [NCC Sound] AudioContext resumed by user gesture. State:', ctx.state);
+                    console.log('✅ [NCC Sound] AudioContext resumed by user gesture on mobile/desktop. State:', ctx.state);
                 }
                 preloadAudioBuffer();
             }
@@ -74,9 +74,19 @@ if (typeof window !== 'undefined') {
         }
     };
 
-    ['click', 'touchstart', 'pointerdown', 'keydown'].forEach(evt => {
+    ['click', 'touchstart', 'touchend', 'pointerdown', 'keydown', 'scroll', 'visibilitychange'].forEach(evt => {
         window.addEventListener(evt, unlockWebAudio, { passive: true });
     });
+
+    // Listen for Service Worker postMessage bridge (for background mobile push events)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'PLAY_NCC_SOUND') {
+                console.log('🔊 [NCC Sound] SW message received on mobile client — playing Jai Hind sound');
+                playNccNotificationSound();
+            }
+        });
+    }
 }
 
 /**

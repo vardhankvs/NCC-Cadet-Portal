@@ -58,8 +58,19 @@ self.addEventListener('push', (event) => {
     ];
   }
 
+  // Broadcast to all open/background client windows to trigger Web Audio "Jai Hind!" sound on mobile devices
   event.waitUntil(
-    self.registration.showNotification(notificationTitle, options)
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      clientList.forEach((client) => {
+        try {
+          client.postMessage({
+            type: 'PLAY_NCC_SOUND',
+            payload: payload
+          });
+        } catch (e) {}
+      });
+      return self.registration.showNotification(notificationTitle, options);
+    })
   );
 });
 
