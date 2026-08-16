@@ -54,6 +54,8 @@ export default async function handler(req, res) {
 
         const firebaseAdmin = getFirebaseAdmin();
 
+        const reqOrigin = req.headers.origin || (req.headers.host ? `https://${req.headers.host}` : 'https://ncc-portal-redesign.vercel.app');
+
         const rawContent = (subject || '') + (message || '');
         const contentHash = rawContent.replace(/[^a-zA-Z0-9]/g, '').substring(0, 16) || Date.now().toString();
         const broadcastTag = `ncc-${contentHash}`;
@@ -72,7 +74,7 @@ export default async function handler(req, res) {
         //   Android Chrome PWA.
         // ─────────────────────────────────────────────────────────────────────
         if (isAttendance) {
-            const attendanceDeepLink = `https://ncc-portal-redesign.vercel.app/?tab=attendance&autoVerify=${pendingDocId || ''}&adminLat=${adminLat || ''}&adminLng=${adminLng || ''}`;
+            const attendanceDeepLink = `${reqOrigin}/?tab=attendance&autoVerify=${pendingDocId || ''}&adminLat=${adminLat || ''}&adminLng=${adminLng || ''}`;
 
             const attendanceMessage = {
                 tokens: uniqueTokens,
@@ -149,6 +151,8 @@ export default async function handler(req, res) {
             tokens: uniqueTokens,
             data: {
                 targetTab: targetTab || 'notifications',
+                title: subject || 'NCC Portal Update',
+                body: message || 'You have a new update in the NCC Portal',
             },
 
             // OS-level notification — shown on lock screen, notification bar
@@ -165,7 +169,7 @@ export default async function handler(req, res) {
                     body:  message || 'You have a new update in the NCC Portal',
                     color: '#1a2a4a',
                     sound: 'default',
-                    channel_id: 'ncc_portal',
+                    channel_id: 'ncc_portal_custom_sound',
                     notification_priority: 'PRIORITY_HIGH',
                     visibility: 'PUBLIC',
                     tag: broadcastTag,
@@ -177,16 +181,17 @@ export default async function handler(req, res) {
                 notification: {
                     title: subject || 'NCC Portal Update',
                     body:  message || 'You have a new update in the NCC Portal',
-                    icon:  'https://ncc-portal-redesign.vercel.app/pwa-192x192.png',
-                    badge: 'https://ncc-portal-redesign.vercel.app/pwa-192x192.png',
-                    vibrate: [200, 100, 200],
+                    icon:  `${reqOrigin}/pwa-192x192.png`,
+                    badge: `${reqOrigin}/pwa-192x192.png`,
+                    sound: `${reqOrigin}/sounds/ncc_notification.mp3`,
+                    vibrate: [250, 100, 250, 100, 400],
                     requireInteraction: false,
                     tag: broadcastTag,
                 },
                 fcmOptions: {
                     link: targetTab
-                        ? `https://ncc-portal-redesign.vercel.app/?tab=${targetTab}`
-                        : 'https://ncc-portal-redesign.vercel.app/?tab=notifications',
+                        ? `${reqOrigin}/?tab=${targetTab}`
+                        : `${reqOrigin}/?tab=notifications`,
                 }
             },
 

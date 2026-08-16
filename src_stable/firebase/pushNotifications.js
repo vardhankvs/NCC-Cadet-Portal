@@ -13,18 +13,25 @@ const getCollectionRef = (collectionName) => {
 
 const VERCEL_ORIGIN = 'https://ncc-portal-redesign.vercel.app';
 
-/** Internal: calls the Vercel FCM API with the given tokens */
+const getApiEndpoint = () => {
+    if (typeof window !== 'undefined' && window.location && window.location.origin) {
+        return `${window.location.origin}/api/sendBroadcast`;
+    }
+    return `${VERCEL_ORIGIN}/api/sendBroadcast`;
+};
+
+/** Internal: calls the FCM API with the given tokens */
 const _dispatch = async (tokens, title, body, targetTab = null) => {
     const uniqueTokens = [...new Set(tokens.filter(Boolean))];
     if (uniqueTokens.length === 0) {
-        console.warn('FCM: No tokens found — device may not have notifications enabled');
+        console.log('FCM: Push skipped — 0 registered device tokens for target recipient(s)');
         return;
     }
     console.log(`FCM: Sending push to ${uniqueTokens.length} device(s): "${title}"`);
     try {
         const payload = { subject: title, message: body, tokens: uniqueTokens };
         if (targetTab) payload.targetTab = targetTab;
-        const resp = await fetch(`${VERCEL_ORIGIN}/api/sendBroadcast`, {
+        const resp = await fetch(getApiEndpoint(), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -140,22 +147,54 @@ export const sendPushToUser = async (enrollmentId, title, body, targetTab = null
  */
 export const sendPushToCadets = async (cadetIds, title, body, targetTab = null) => {
     if (!cadetIds || !Array.isArray(cadetIds) || cadetIds.length === 0) return;
+    const cleanIds = cadetIds.filter(Boolean).map(id => String(id).toLowerCase().trim());
+    if (cleanIds.length === 0) return;
+    
     try {
         const tokens = [];
 
-        // Look up in cadets collection by document ID
+        // 1. Look up in cadets collection
         try {
             const snap = await getDocs(getCollectionRef('cadets'));
             snap.forEach((d) => {
-                if (cadetIds.includes(d.id)) {
-                    const t = d.data().fcmTokens;
+                const data = d.data();
+                const docId = String(d.id || '').toLowerCase().trim();
+                const enrollId = String(data.enrollmentId || '').toLowerCase().trim();
+                const uid = String(data.uid || data.userId || '').toLowerCase().trim();
+
+                const isMatch = cleanIds.includes(docId) || 
+                                (enrollId && cleanIds.includes(enrollId)) || 
+                                (uid && cleanIds.includes(uid));
+
+                if (isMatch) {
+                    const t = data.fcmTokens;
                     if (Array.isArray(t)) tokens.push(...t);
                     else if (typeof t === 'string' && t) tokens.push(t);
                 }
             });
         } catch (e) { console.warn('FCM: cadet lookup skipped', e.message); }
 
-        await _dispatch(tokens, title, body, targetTab);
+        // 2. Also look up in users collection for cadet role tokens
+        try {
+            const snap = await getDocs(getCollectionRef('users'));
+            snap.forEach((d) => {
+                const data = d.data();
+                const docId = String(d.id || '').toLowerCase().trim();
+                const enrollId = String(data.enrollmentId || '').toLowerCase().trim();
+
+                const isMatch = cleanIds.includes(docId) || 
+                                (enrollId && cleanIds.includes(enrollId));
+
+                if (isMatch) {
+                    const t = data.fcmTokens;
+                    if (Array.isArray(t)) tokens.push(...t);
+                    else if (typeof t === 'string' && t) tokens.push(t);
+                }
+            });
+        } catch (e) { console.warn('FCM: user cadet lookup skipped', e.message); }
+
+        const uniqueTokens = Array.from(new Set(tokens.filter(Boolean)));
+        await _dispatch(uniqueTokens, title, body, targetTab);
     } catch (e) {
         console.warn('sendPushToCadets failed (non-critical):', e.message);
     }
@@ -246,7 +285,7 @@ export const sendAttendancePush = async (cadetIds, pendingDocId, adminLocation) 
 
         console.log(`FCM Attendance: Sending to ${uniqueTokens.length} device(s), pendingDocId=${pendingDocId}`);
 
-        const resp = await fetch(`${VERCEL_ORIGIN}/api/sendBroadcast`, {
+        const resp = await fetch(getApiEndpoint(), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -284,3 +323,44 @@ export const sendEventReminderPush = async (eventName, eventTime, eventLocation,
         console.warn('sendEventReminderPush failed (non-critical):', e.message);
     }
 };
+
+/**
+ * Sends a push notification to all admins/staff (ANOs) associated with a specific college subunit.
+ */
+export const sendPushToCollegeANO = async (subdomain, title, body, targetTab = 'announcements') => {
+    if (!subdomain) return;
+    try {
+        const tokens = [];
+
+        // Check users collection
+        try {
+            const snap = await getDocs(getCollectionRef('users'));
+            snap.forEach((d) => {
+                const data = d.data();
+                if (data.role === 'admin' && data.institutionId === subdomain) {
+                    const t = data.fcmTokens;
+                    if (Array.isArray(t)) tokens.push(...t);
+                    else if (typeof t === 'string' && t) tokens.push(t);
+                }
+            });
+        } catch (e) { console.warn('FCM: ANO users fetch skipped', e.message); }
+
+        // Check staff collection
+        try {
+            const snap = await getDocs(getCollectionRef('staff'));
+            snap.forEach((d) => {
+                const data = d.data();
+                if ((!data.role || data.role === 'admin') && data.institutionId === subdomain) {
+                    const t = data.fcmTokens;
+                    if (Array.isArray(t)) tokens.push(...t);
+                    else if (typeof t === 'string' && t) tokens.push(t);
+                }
+            });
+        } catch (e) { console.warn('FCM: ANO staff fetch skipped', e.message); }
+
+        await _dispatch(tokens, title, body, targetTab);
+    } catch (e) {
+        console.warn('sendPushToCollegeANO failed:', e.message);
+    }
+};
+
