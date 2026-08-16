@@ -14,10 +14,22 @@ const getCollectionRef = (collectionName) => {
 const VERCEL_ORIGIN = 'https://ncc-portal-redesign.vercel.app';
 
 const getApiEndpoint = () => {
-    if (typeof window !== 'undefined' && window.location && window.location.origin) {
-        return `${window.location.origin}/api/sendBroadcast`;
+    if (typeof window !== 'undefined' && window.location && window.location.hostname === 'ncc-portal-redesign.vercel.app') {
+        return '/api/sendBroadcast';
     }
+    // Static frontend hosts (Firebase Hosting: gmrit-ncc-fb1df.web.app, localhost, etc.)
+    // MUST proxy to Vercel backend serverless function
     return `${VERCEL_ORIGIN}/api/sendBroadcast`;
+};
+
+const safeJsonParse = async (resp) => {
+    const text = await resp.text();
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        console.warn('FCM API returned non-JSON response:', text.substring(0, 120));
+        return null;
+    }
 };
 
 /** Internal: calls the FCM API with the given tokens */
@@ -40,8 +52,10 @@ const _dispatch = async (tokens, title, body, targetTab = null) => {
             const err = await resp.text();
             console.warn('FCM API error:', resp.status, err);
         } else {
-            const result = await resp.json();
-            console.log(`FCM: ${result.successCount} delivered, ${result.failureCount} failed`);
+            const result = await safeJsonParse(resp);
+            if (result) {
+                console.log(`FCM: ${result.successCount} delivered, ${result.failureCount} failed`);
+            }
         }
     } catch (e) {
         console.warn('FCM dispatch failed:', e.message);
@@ -324,8 +338,10 @@ export const sendAttendancePush = async (cadetIds, pendingDocId, adminLocation) 
             const err = await resp.text();
             console.warn('FCM Attendance API error:', resp.status, err);
         } else {
-            const result = await resp.json();
-            console.log(`FCM Attendance: ${result.successCount} delivered, ${result.failureCount} failed`);
+            const result = await safeJsonParse(resp);
+            if (result) {
+                console.log(`FCM Attendance: ${result.successCount} delivered, ${result.failureCount} failed`);
+            }
         }
     } catch (e) {
         console.warn('sendAttendancePush failed (non-critical):', e.message);
