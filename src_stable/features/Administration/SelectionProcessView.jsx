@@ -231,6 +231,7 @@ export const SelectionProcessView = () => {
 
     // Open add candidate modal
     const handleOpenAdd = () => {
+        setSelectedApplicant(null);
         setFormData({
             fullName: '',
             studentId: '',
@@ -306,6 +307,27 @@ export const SelectionProcessView = () => {
                 meritScore
             };
 
+            if (userRole === 'cadet') {
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'selection_process',
+                    moduleName: 'Cadet Selection Process',
+                    actionType: selectedApplicant ? 'update' : 'create',
+                    targetDocId: selectedApplicant?.id || null,
+                    title: `${selectedApplicant ? 'Evaluate' : 'Register'} Applicant: ${formData.fullName}`,
+                    payload
+                });
+                toast.success("Candidate entry submitted for ANO verification!");
+                setIsAddModalOpen(false);
+                setIsEditModalOpen(false);
+                setSelectedApplicant(null);
+                return;
+            }
+
             await saveApplicant(payload, selectedApplicant?.id || null, driveInstitutionId);
             toast.success(selectedApplicant ? "Candidate evaluation updated!" : "Candidate registered successfully!");
             setIsAddModalOpen(false);
@@ -331,6 +353,30 @@ export const SelectionProcessView = () => {
             return toast.error("Please provide a reason for dropping out.");
         }
         try {
+            if (userRole === 'cadet') {
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'selection_process',
+                    moduleName: 'Cadet Selection Process',
+                    actionType: 'update',
+                    targetDocId: dropoutTarget.id,
+                    title: `Candidate Dropout: ${dropoutTarget.fullName}`,
+                    payload: {
+                        id: dropoutTarget.id,
+                        status: 'Dropped',
+                        dropoutReason: finalReason
+                    }
+                });
+                toast.success("Candidate dropout submitted for ANO verification!");
+                setIsDropoutModalOpen(false);
+                setDropoutTarget(null);
+                return;
+            }
+
             await dropoutApplicant(dropoutTarget.id, finalReason);
             toast.success(`${dropoutTarget.fullName} marked as Dropped.`);
             setIsDropoutModalOpen(false);

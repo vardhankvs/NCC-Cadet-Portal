@@ -28,7 +28,10 @@ import {
     saveInventoryItem,
     updateKitSizes,
     saveMaterial,
-    deleteItem
+    deleteItem,
+    recordAttendance,
+    submitPFTScores,
+    saveApplicant
 } from './firestoreService.js';
 import { sendPushToUser, sendPushToAll } from './pushNotifications.js';
 import { toast } from 'react-toastify';
@@ -41,7 +44,7 @@ export const getDelegatedSubmissionsRef = () => {
 };
 
 /**
- * Human-readable module names map
+ * Human-readable module names map for all delegable admin tabs
  */
 export const MODULE_NAMES = {
     announcements: 'Notice Board',
@@ -49,18 +52,22 @@ export const MODULE_NAMES = {
     camps: 'Camps & Deployments',
     rank_mgmt: 'Ranks & Promotions',
     discipline: 'Discipline & Merits',
-    kit_mgmt: 'Kit & Equipment',
-    inventory: 'Quartermaster Stock',
-    social: 'Social Activities',
+    inventory: 'Quartermaster Inventory',
+    social: 'Social Service Activities',
     training_calendar: 'Training Calendar',
-    leave_requests: 'Leave Requests',
-    hall_of_fame: 'Unit Excellence',
+    leave_requests: 'Cadet Leave Requests',
+    hall_of_fame: 'Unit Excellence & Awards',
     library: 'Resource Library',
-    list: 'Cadet Roster',
-    blood_registry: 'Blood Bank',
-    career: 'Careers & Guidance',
-    career_bridge: 'Job Board',
-    grievances: 'Grievances'
+    kit_mgmt: 'Kit & Uniform Sizing',
+    attendance: 'Parade & Attendance',
+    summary: 'Attendance Summary',
+    parade: 'Parade Attendance',
+    att_logs: 'Attendance Logs',
+    pft: 'Physical Fitness Test (PFT)',
+    selection_process: 'Cadet Selection Process',
+    blood_registry: 'Blood Bank Registry',
+    grievances: 'Grievance Cell',
+    references: 'Reference Materials'
 };
 
 /**
@@ -263,22 +270,112 @@ export const executeLiveTaskAction = async (moduleId, actionType, payload, targe
 
         case 'hall_of_fame': {
             if (payload.cadetId && payload.award) {
+                // Update in both users and cadets collections for consistency
+                const userRef = doc(getCollectionRef('users'), payload.cadetId);
+                await updateDoc(userRef, {
+                    awards: arrayUnion({
+                        ...payload.award,
+                        awardedAt: new Date().toISOString()
+                    })
+                }).catch(() => {});
+
                 const cadetsRef = getCollectionRef('cadets');
                 await updateDoc(doc(cadetsRef, payload.cadetId), {
                     awards: arrayUnion({
                         ...payload.award,
                         awardedAt: new Date().toISOString()
                     })
-                });
+                }).catch(() => {});
             }
             break;
         }
 
         case 'library': {
+            const colRef = getCollectionRef('resources');
             if (actionType === 'delete' && targetDocId) {
-                await deleteItem('materials', targetDocId);
+                await deleteDoc(doc(colRef, targetDocId)).catch(() => deleteItem('materials', targetDocId));
+            } else if (targetDocId || payload.id) {
+                const docId = targetDocId || payload.id;
+                await updateDoc(doc(colRef, docId), {
+                    ...payload,
+                    updatedAt: new Date().toISOString()
+                }).catch(() => saveMaterial(payload, docId));
             } else {
-                await saveMaterial(payload, targetDocId || payload.id || null);
+                await addDoc(colRef, {
+                    ...payload,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                }).catch(() => saveMaterial(payload, null));
+            }
+            break;
+        }
+
+        case 'attendance':
+        case 'summary':
+        case 'parade':
+        case 'att_logs': {
+            if (payload.cadetId && payload.date && payload.status) {
+                await recordAttendance(payload.cadetId, payload.date, payload.status, 'ANO Verified Delegation', institutionId);
+            }
+            break;
+        }
+
+        case 'pft': {
+            if (payload.cadetId && payload.scores) {
+                await submitPFTScores(payload.cadetId, payload.scores);
+            }
+            break;
+        }
+
+        case 'selection_process': {
+            await saveApplicant(payload, targetDocId || payload.id || null, institutionId);
+            break;
+        }
+
+        case 'blood_registry': {
+            const colRef = getCollectionRef('blood_requests');
+            if (actionType === 'delete' && targetDocId) {
+                await deleteDoc(doc(colRef, targetDocId));
+            } else if (targetDocId || payload.id) {
+                await updateDoc(doc(colRef, targetDocId || payload.id), {
+                    ...payload,
+                    updatedAt: serverTimestamp()
+                });
+            } else {
+                await addDoc(colRef, {
+                    ...payload,
+                    institutionId: institutionId || '14a-bn-srikakulam',
+                    timestamp: serverTimestamp()
+                });
+            }
+            break;
+        }
+
+        case 'grievances': {
+            const colRef = getCollectionRef('grievances');
+            if (targetDocId) {
+                await updateDoc(doc(colRef, targetDocId), {
+                    ...payload,
+                    updatedAt: serverTimestamp()
+                });
+            }
+            break;
+        }
+
+        case 'references': {
+            const colRef = getCollectionRef('references');
+            if (actionType === 'delete' && targetDocId) {
+                await deleteDoc(doc(colRef, targetDocId));
+            } else if (targetDocId || payload.id) {
+                await updateDoc(doc(colRef, targetDocId || payload.id), {
+                    ...payload,
+                    updatedAt: serverTimestamp()
+                });
+            } else {
+                await addDoc(colRef, {
+                    ...payload,
+                    createdAt: serverTimestamp()
+                });
             }
             break;
         }

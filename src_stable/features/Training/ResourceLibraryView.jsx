@@ -18,7 +18,7 @@ import { formatDate } from '../../utils/dateUtils.js';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const ResourceLibraryView = ({ mode = 'library' }) => {
-    const { user: currentUser, userRole, userEnrollmentId } = useAuthContext();
+    const { user: currentUser, userRole, userEnrollmentId, userName, userInstitutionId } = useAuthContext();
     const isAdmin = Boolean(userRole && userRole.toLowerCase() !== 'cadet');
     const { materials, quizzes, cadets } = useDataContext();
     const [userProfile, setUserProfile] = useState(null);
@@ -117,6 +117,30 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
                 updatedAt: new Date().toISOString()
             };
 
+            if (!isAdmin) {
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: currentUser?.uid,
+                    moduleId: 'library',
+                    moduleName: 'Resource Library',
+                    actionType: editingResourceId ? 'update' : 'create',
+                    targetDocId: editingResourceId,
+                    title: `${editingResourceId ? 'Update' : 'Upload'} Study Material: ${newTitle}`,
+                    payload: resourceData
+                });
+                toast.success("Study material submitted for ANO verification!");
+                setIsUploadModalOpen(false);
+                setEditingResourceId(null);
+                setNewTitle('');
+                setNewLink('');
+                setNewDescription('');
+                setAdding(false);
+                return;
+            }
+
             if (editingResourceId) {
                 await updateDoc(doc(getCollectionRef('resources'), editingResourceId), resourceData);
                 toast.success("Resource updated successfully!");
@@ -166,8 +190,25 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
         }
     };
 
-    const handleDelete = async (id) => {
+    const handleDelete = async (id, title = '') => {
         if (!window.confirm("Are you sure?")) return;
+        if (!isAdmin) {
+            const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+            await submitDelegatedTask({
+                institutionId: userInstitutionId,
+                cadetEnrollmentId: userEnrollmentId,
+                cadetName: userName,
+                cadetUid: currentUser?.uid,
+                moduleId: 'library',
+                moduleName: 'Resource Library',
+                actionType: 'delete',
+                targetDocId: id,
+                title: `Delete Resource: ${title || id}`,
+                payload: { id, title }
+            });
+            toast.success("Deletion request submitted for ANO verification!");
+            return;
+        }
         try { await deleteResource(id); toast.success("Deleted."); } catch (e) { toast.error("Failed."); }
     };
 

@@ -7,6 +7,7 @@ import { ErrorDisplay } from '../../components/ui/ErrorDisplay.jsx';
 import { Calendar } from '../../components/Icons.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
 import { sendPushToAll, sendPushToCadets } from '../../firebase/pushNotifications.js';
+import { toast } from 'react-toastify';
 
 
 const getTodayDateString = () => new Date().toISOString().split('T')[0];
@@ -20,7 +21,7 @@ const formatHistoryDate = (dateString) => {
 };
 
 export const AttendanceTracker = ({ cadets }) => {
-    const { userRole, userEnrollmentId, userInstitutionId } = useAuthContext();
+    const { userRole, userEnrollmentId, userInstitutionId, userName, user } = useAuthContext();
     const { attendanceData } = useDataContext();
     const [selectedDate, setSelectedDate] = useState(getTodayDateString());
     const [selectedCertificate, setSelectedCertificate] = useState('All');
@@ -30,29 +31,67 @@ export const AttendanceTracker = ({ cadets }) => {
     const [error, setError] = useState(null);
     const today = getTodayDateString();
 
+    const isAno = userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin';
+
     const relevantCadets = useMemo(() => {
         const activeCadets = cadets.filter(c => c.status !== 'alumni');
         let list = [];
-        if (userRole === 'admin') {
+        if (isAno) {
             list = selectedCertificate === 'All' ? [...activeCadets] : activeCadets.filter((c) => c.certificate === selectedCertificate);
             if (selectedCategory !== 'All') list = list.filter((c) => (c.enrollmentId || '').toUpperCase().includes(selectedCategory));
             if (searchQuery.trim()) {
                 const q = searchQuery.toLowerCase();
                 list = list.filter((c) => c.name.toLowerCase().includes(q) || c.enrollmentId.toLowerCase().includes(q));
             }
-        } else if (userRole === 'cadet' && userEnrollmentId) {
-            list = cadets.filter((c) => c.enrollmentId === userEnrollmentId); // Keep all for self view
+        } else if (userRole === 'cadet') {
+            // If viewing administrative grid as delegated cadet or self view
+            list = selectedCertificate === 'All' ? [...activeCadets] : activeCadets.filter((c) => c.certificate === selectedCertificate);
+            if (selectedCategory !== 'All') list = list.filter((c) => (c.enrollmentId || '').toUpperCase().includes(selectedCategory));
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase();
+                list = list.filter((c) => c.name.toLowerCase().includes(q) || c.enrollmentId.toLowerCase().includes(q));
+            }
         }
         return list;
-    }, [cadets, selectedCertificate, selectedCategory, searchQuery, userRole, userEnrollmentId]);
+    }, [cadets, selectedCertificate, selectedCategory, searchQuery, userRole, userEnrollmentId, isAno]);
 
     const getStatus = useCallback((cadet) => cadet.attendance?.[selectedDate] || 'Absent', [selectedDate]);
 
     const toggleStatus = async (cadetId) => {
-        if (userRole !== 'admin') return;
         const cadet = cadets.find((c) => c.id === cadetId);
         if (!cadet) return;
         const newStatus = getStatus(cadet) === 'Present' ? 'Absent' : 'Present';
+        setError(null);
+
+        // If cadet has delegated access, submit for ANO verification
+        if (userRole === 'cadet') {
+            try {
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'attendance',
+                    moduleName: 'Parade & Attendance',
+                    actionType: 'update',
+                    targetDocId: cadetId,
+                    title: `Mark ${cadet.name} (${cadet.enrollmentId}) as ${newStatus} for ${selectedDate}`,
+                    payload: {
+                        cadetId,
+                        cadetName: cadet.name,
+                        enrollmentId: cadet.enrollmentId,
+                        date: selectedDate,
+                        status: newStatus
+                    }
+                });
+                toast.success(`Attendance mark (${newStatus}) submitted for ANO verification!`);
+                return;
+            } catch (err) {
+                toast.error(`Failed to submit attendance: ${err.message}`);
+                return;
+            }
+        }
         setError(null);
         try { 
             await recordAttendance(cadetId, selectedDate, newStatus, 'ANO (Manual Grid)', userInstitutionId);

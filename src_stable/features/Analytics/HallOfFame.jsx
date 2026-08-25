@@ -277,7 +277,9 @@ const CadetPointsModal = ({ cadet, onClose }) => {
 
 export const HallOfFame = () => {
     const { attendanceData, cadets } = useDataContext();
-    const { userRole } = useAuthContext();
+    const { userRole, userEnrollmentId, userName, user, userInstitutionId } = useAuthContext();
+    const isAno = userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin' || userRole === 'battalion_admin';
+    const isDelegatedCadet = userRole === 'cadet';
     
     const [isAwardModalOpen, setIsAwardModalOpen] = useState(false);
     const [awardForm, setAwardForm] = useState({ cadetId: '', title: 'Best Cadet Award', description: '', date: new Date().toISOString().split('T')[0] });
@@ -339,6 +341,36 @@ export const HallOfFame = () => {
         try {
             const targetCadet = cadets.find(c => c.enrollmentId === awardForm.cadetId);
             if (!targetCadet || !targetCadet.id) throw new Error("Cadet not found");
+
+            if (isDelegatedCadet) {
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'hall_of_fame',
+                    moduleName: 'Unit Excellence',
+                    actionType: 'create',
+                    targetDocId: targetCadet.id,
+                    title: `Award ${awardForm.title} to ${targetCadet.name} (${targetCadet.enrollmentId})`,
+                    payload: {
+                        cadetId: targetCadet.id,
+                        cadetName: targetCadet.name,
+                        enrollmentId: targetCadet.enrollmentId,
+                        award: {
+                            title: awardForm.title,
+                            description: awardForm.description,
+                            date: awardForm.date
+                        }
+                    }
+                });
+                toast.success("Award recommendation submitted for ANO verification!");
+                setIsAwardModalOpen(false);
+                setAwardForm({ cadetId: '', title: 'Best Cadet Award', description: '', date: new Date().toISOString().split('T')[0] });
+                setSearchQuery('');
+                return;
+            }
 
             const docRef = doc(getCollectionRef('users'), targetCadet.id);
             await updateDoc(docRef, {
