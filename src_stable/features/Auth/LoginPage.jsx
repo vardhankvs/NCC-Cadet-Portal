@@ -23,6 +23,7 @@ export const LoginPage = ({
     otpEmail = null,
     otpLoading = false,
     onOtpVerify,
+    onOtpResend,
     onOtpCancel,
     // ANO Fingerprint Biometric props
     fingerprintPending = false,
@@ -143,10 +144,9 @@ export const LoginPage = ({
     if (otpPending) {
         const minutes = String(Math.floor(otpTimer / 60)).padStart(2, '0');
         const seconds = String(otpTimer % 60).padStart(2, '0');
-        const expired = otpTimer === 0;
+        const expired = otpTimer <= 0;
         return (
-            <div className="min-h-screen flex items-center justify-center font-body relative overflow-hidden"
-                style={{ background: 'linear-gradient(135deg, #0A1628 0%, #1B3A6B 50%, #0A1628 100%)' }}>
+            <div className="min-h-screen flex items-center justify-center p-4 relative" style={{ background: 'var(--bg-main, #050C1A)' }}>
                 <div className="absolute inset-0 ncc-stripe opacity-40 pointer-events-none" />
                 <div className="absolute top-6 right-6 z-[100]"><ThemeToggle className="shadow-2xl" /></div>
                 <div className="relative w-full max-w-md mx-4">
@@ -164,7 +164,7 @@ export const LoginPage = ({
                                     <h2 className="text-xl font-bold" style={{ color: 'var(--text-main)' }}>Two-Factor Authentication</h2>
                                     <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Enter the 6-digit code sent to</p>
                                     <p className="text-sm font-semibold text-ncc-gold mt-0.5 flex items-center justify-center gap-1.5">
-                                        <Mail className="w-3.5 h-3.5" />{otpEmail}
+                                        <Mail className="w-3.5 h-3.5" />{otpEmail || 'your registered email'}
                                     </p>
                                 </div>
                             </div>
@@ -197,8 +197,8 @@ export const LoginPage = ({
                                 </div>
                             </div>
 
-                            {/* Timer */}
-                            <div className="flex items-center justify-center gap-2">
+                            {/* Timer & Resend */}
+                            <div className="flex flex-col items-center justify-center gap-2">
                                 {expired ? (
                                     <span className="text-red-500 text-sm font-semibold flex items-center gap-1">
                                         <XCircle className="w-4 h-4" /> Code expired
@@ -207,6 +207,20 @@ export const LoginPage = ({
                                     <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
                                         Expires in <span className="font-bold text-ncc-gold">{minutes}:{seconds}</span>
                                     </span>
+                                )}
+
+                                {onOtpResend && (
+                                    <button
+                                        type="button"
+                                        disabled={otpLoading}
+                                        onClick={() => {
+                                            onOtpResend();
+                                            setOtpTimer(600);
+                                        }}
+                                        className="text-xs font-bold text-ncc-gold hover:underline disabled:opacity-50 transition"
+                                    >
+                                        {otpLoading ? 'Sending new code...' : "Didn't receive a code? Resend Code"}
+                                    </button>
                                 )}
                             </div>
 
@@ -231,7 +245,7 @@ export const LoginPage = ({
                             </div>
 
                             <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
-                                Didn't receive a code? Check your spam folder or contact your administrator.
+                                Check your spam/junk folder if the code does not appear in your inbox within 1 minute.
                             </p>
                         </div>
                     </div>

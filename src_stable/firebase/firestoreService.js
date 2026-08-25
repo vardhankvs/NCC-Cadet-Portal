@@ -2779,14 +2779,16 @@ export const generateUserOTP = async (userUid, email) => {
 
     try {
         const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', userUid);
-        await updateDoc(userRef, {
+        await setDoc(userRef, {
+            email: email,
             otpCode: otp,
-            otpExpiresAt: expiresAt.toISOString()
-        });
+            otpExpiresAt: expiresAt.toISOString(),
+            updatedAt: serverTimestamp()
+        }, { merge: true });
         return otp;
     } catch (error) {
         console.error("OTP Generation Error:", error);
-        throw new Error("Failed to generate OTP. Check Firestore rules for the users collection.");
+        throw new Error("Failed to generate OTP: " + error.message);
     }
 };
 
@@ -2803,11 +2805,11 @@ export const verifyUserOTP = async (userUid, inputOtp) => {
         }
 
         if (new Date(data.otpExpiresAt) < new Date()) {
-            throw new Error("OTP has expired.");
+            throw new Error("OTP code has expired. Please request a new code.");
         }
 
-        if (data.otpCode !== inputOtp.trim()) {
-            throw new Error("Incorrect OTP.");
+        if (String(data.otpCode).trim() !== String(inputOtp).trim()) {
+            throw new Error("Incorrect 6-digit OTP code. Please check and try again.");
         }
 
         return true;

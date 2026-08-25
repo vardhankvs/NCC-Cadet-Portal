@@ -83,10 +83,15 @@ export const loginUserWithOTP = async (emailOrEnrollId, password, activeTab) => 
 
     } else {
         // Admin / Staff Login
-        if (!authEmail) throw new Error('Email is required for login.');
-        const credential = await signInWithEmailAndPassword(auth, authEmail, password);
+        if (!authEmail) throw new Error('Email address is required for login.');
+        const cleanEmail = authEmail.trim().toLowerCase();
+        const credential = await signInWithEmailAndPassword(auth, cleanEmail, password);
         uid = credential.user.uid;
-        targetOtpEmail = credential.user.email;
+        targetOtpEmail = (credential.user.email || cleanEmail).trim().toLowerCase();
+    }
+
+    if (!targetOtpEmail) {
+        targetOtpEmail = authEmail.trim().toLowerCase();
     }
 
     // Generate & store OTP in Firestore while signed in
@@ -100,18 +105,25 @@ export const loginUserWithOTP = async (emailOrEnrollId, password, activeTab) => 
             'template_5a7vqzw',
             {
                 email: targetOtpEmail,
+                to_email: targetOtpEmail,
+                user_email: targetOtpEmail,
+                recipient: targetOtpEmail,
+                reply_to: targetOtpEmail,
+                to_name: targetOtpEmail.split('@')[0],
                 passcode: otp,
+                otp_code: otp,
+                otp: otp,
                 time: expiresTime
             },
             'iCSap5JY6cLaHx2wc'
         );
-        console.log(`2FA OTP Email sent to ${targetOtpEmail} via EmailJS`);
+        console.log(`2FA OTP Email successfully sent to ${targetOtpEmail} via EmailJS`);
     } catch (e) {
         console.error('EmailJS Error:', e);
-        console.warn(`[DEV OTP] Target ${targetOtpEmail}: ${otp}`);
+        console.warn(`[OTP Backup] Target ${targetOtpEmail}: ${otp}`);
     }
 
-    // Sign out immediately until OTP verification
+    // Sign out temporary session until OTP verification
     await signOut(auth);
 
     return { uid, email: targetOtpEmail, authEmail };

@@ -32,6 +32,7 @@ export function App() {
         otpEmail,
         otpLoading,
         handleAdminLoginStep2,
+        handleResendOtp,
         cancelOtp,
         handleDemoLogin,
     } = useAuthContext();
@@ -167,6 +168,7 @@ export function App() {
                         otpEmail={otpEmail}
                         otpLoading={otpLoading}
                         onOtpVerify={handleAdminLoginStep2}
+                        onOtpResend={handleResendOtp}
                         onOtpCancel={cancelOtp}
                     />
                     <ToastContainer theme="colored" />

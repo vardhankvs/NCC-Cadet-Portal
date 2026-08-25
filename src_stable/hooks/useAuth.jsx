@@ -335,16 +335,24 @@ export const useAuth = () => {
     const handleUserOtpStep1 = async (identifier, password, tab) => {
         setAuthLoading(true);
         setAuthError(null);
-        setOtpPending(true);
+
+        const initialEmail = (identifier && identifier.includes('@')) ? identifier.trim().toLowerCase() : '';
+        if (initialEmail) {
+            setOtpEmail(initialEmail);
+        }
+
         try {
             const { uid, email, authEmail } = await loginUserWithOTP(identifier, password, tab);
-            pendingCredRef.current = { authEmail, password, tab };
+            pendingCredRef.current = { authEmail, password, tab, identifier };
             setOtpUid(uid);
-            setOtpEmail(email);
+            setOtpEmail(email || authEmail || initialEmail);
+            setOtpPending(true);
             setAuthLoading(false);
             return true;
         } catch (e) {
             setOtpPending(false);
+            setOtpEmail(null);
+            pendingCredRef.current = null;
             if (e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
                 setAuthError(tab === 'cadet' ? 'Invalid credentials. Please check your Regimental ID and password.' : 'Invalid credentials. Please check your email and password.');
             } else {
@@ -352,6 +360,23 @@ export const useAuth = () => {
             }
             setAuthLoading(false);
             return false;
+        }
+    };
+
+    const handleResendOtp = async () => {
+        if (!pendingCredRef.current) return;
+        const { identifier, password, tab, authEmail } = pendingCredRef.current;
+        setOtpLoading(true);
+        setAuthError(null);
+        try {
+            const { uid, email } = await loginUserWithOTP(identifier || authEmail, password, tab);
+            setOtpUid(uid);
+            setOtpEmail(email || authEmail);
+            toast.info(`A new 6-digit OTP code has been sent to ${email || authEmail}.`);
+        } catch (err) {
+            setAuthError(err.message || 'Failed to resend OTP code.');
+        } finally {
+            setOtpLoading(false);
         }
     };
 
@@ -577,6 +602,7 @@ export const useAuth = () => {
         otpEmail,
         otpLoading,
         handleAdminLoginStep2,
+        handleResendOtp,
         cancelOtp,
         fingerprintPending,
         fingerprintEmail,
