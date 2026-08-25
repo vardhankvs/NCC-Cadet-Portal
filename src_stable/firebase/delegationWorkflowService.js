@@ -319,6 +319,38 @@ export const approveDelegatedTask = async (submission, modifiedPayload = null, a
         updatedAt: serverTimestamp()
     });
 
+    // 2b. Auto-resolve any previous changes_requested submissions for the same target/cadet
+    try {
+        const { getDocs } = await import('firebase/firestore');
+        const otherDocsSnap = await getDocs(colRef);
+        const toArchive = otherDocsSnap.docs.filter(d => {
+            if (d.id === submission.id) return false;
+            const data = d.data();
+            if (data.status !== 'changes_requested') return false;
+            if (data.moduleId !== submission.moduleId) return false;
+            if (submission.cadetEnrollmentId && data.cadetEnrollmentId === submission.cadetEnrollmentId) {
+                // If it was for the same cadet, same targetDocId, or related promotion
+                if (submission.targetDocId && data.targetDocId === submission.targetDocId) return true;
+                if (data.payload?.cadetId && submission.payload?.cadetId && data.payload.cadetId === submission.payload.cadetId) return true;
+                if (data.payload?.enrollmentId && submission.payload?.enrollmentId && data.payload.enrollmentId === submission.payload.enrollmentId) return true;
+                return true;
+            }
+            return false;
+        });
+
+        for (const oldDoc of toArchive) {
+            await updateDoc(doc(colRef, oldDoc.id), {
+                status: 'approved',
+                remarks: `Resolved via approval of latest submission (${submission.title})`,
+                reviewedBy: anoName,
+                reviewedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+        }
+    } catch (e) {
+        console.warn('Auto-resolving older submissions notice:', e);
+    }
+
     // 3. Send notification to the submitting cadet
     if (submission.cadetEnrollmentId) {
         sendPushToUser(
@@ -328,6 +360,15 @@ export const approveDelegatedTask = async (submission, modifiedPayload = null, a
             'notifications'
         );
     }
+};
+
+/**
+ * Delete or dismiss a delegated task submission
+ */
+export const deleteDelegatedTask = async (submissionId) => {
+    const colRef = getDelegatedSubmissionsRef();
+    if (!colRef) throw new Error('Database not ready.');
+    await deleteDoc(doc(colRef, submissionId));
 };
 
 /**

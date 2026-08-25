@@ -1,7 +1,9 @@
 // src/components/delegation/CadetSubmissionsDrawer.jsx
 import React, { useState, useMemo } from 'react';
-import { X, Clock, AlertTriangle, CheckCircle, XCircle, Search, Edit2, Shield, Calendar, RefreshCcw } from '../Icons.jsx';
+import { X, Clock, AlertTriangle, CheckCircle, XCircle, Search, Edit2, Shield, Calendar, RefreshCcw, Trash2, Check, Sparkles } from '../Icons.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
+import { deleteDelegatedTask, submitDelegatedTask } from '../../firebase/delegationWorkflowService.js';
+import { toast } from 'react-toastify';
 
 export const CadetSubmissionsDrawer = ({
     isOpen,
@@ -13,6 +15,9 @@ export const CadetSubmissionsDrawer = ({
 }) => {
     const [filterStatus, setFilterStatus] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
+    const [editingSub, setEditingSub] = useState(null);
+    const [editPayload, setEditPayload] = useState({});
+    const [isSaving, setIsSaving] = useState(false);
 
     const filteredSubmissions = useMemo(() => {
         return submissions.filter((sub) => {
@@ -28,6 +33,65 @@ export const CadetSubmissionsDrawer = ({
             return matchesStatus && matchesSearch;
         });
     }, [submissions, filterStatus, searchQuery]);
+
+    const handleStartEdit = (sub) => {
+        setEditingSub(sub);
+        setEditPayload({ ...(sub.payload || {}) });
+    };
+
+    const handleFieldChange = (key, value) => {
+        setEditPayload(prev => ({
+            ...prev,
+            [key]: value
+        }));
+    };
+
+    const handleSaveAndResubmit = async () => {
+        if (!editingSub) return;
+        setIsSaving(true);
+        try {
+            // Determine dynamic title if rank or notice changed
+            let dynamicTitle = editingSub.title;
+            if (editingSub.moduleId === 'rank_mgmt' && editPayload.newRank) {
+                dynamicTitle = `Promote ${editPayload.cadetName || editPayload.name || 'Cadet'} to ${editPayload.newRank}`;
+            } else if (editingSub.moduleId === 'announcements' && editPayload.title) {
+                dynamicTitle = editPayload.title;
+            }
+
+            await submitDelegatedTask({
+                institutionId: editingSub.institutionId,
+                cadetEnrollmentId: editingSub.cadetEnrollmentId,
+                cadetName: editingSub.cadetName,
+                cadetUid: editingSub.cadetUid,
+                moduleId: editingSub.moduleId,
+                moduleName: editingSub.moduleName,
+                actionType: editingSub.actionType,
+                targetDocId: editingSub.targetDocId,
+                title: dynamicTitle,
+                payload: editPayload,
+                submissionId: editingSub.id // In-place update to reset status to pending
+            });
+
+            toast.success("Changes saved! Resubmitted to ANO for verification.");
+            setEditingSub(null);
+        } catch (err) {
+            console.error("Resubmit error:", err);
+            toast.error(`Failed to resubmit: ${err.message}`);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDeleteSubmission = async (sub) => {
+        if (!window.confirm(`Are you sure you want to dismiss / remove "${sub.title}"?`)) return;
+        try {
+            await deleteDelegatedTask(sub.id);
+            toast.success("Submission removed.");
+        } catch (err) {
+            console.error("Delete submission error:", err);
+            toast.error("Failed to remove submission.");
+        }
+    };
 
     if (!isOpen) return null;
 
@@ -153,27 +217,36 @@ export const CadetSubmissionsDrawer = ({
                                                 </h4>
                                             </div>
 
-                                            {/* Status Badge */}
-                                            {isPending && (
-                                                <span className="shrink-0 flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30">
-                                                    <Clock className="w-3.5 h-3.5" /> Pending Review
-                                                </span>
-                                            )}
-                                            {isChangesReq && (
-                                                <span className="shrink-0 flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/40 animate-pulse">
-                                                    <AlertTriangle className="w-3.5 h-3.5" /> Changes Requested
-                                                </span>
-                                            )}
-                                            {isApproved && (
-                                                <span className="shrink-0 flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30">
-                                                    <CheckCircle className="w-3.5 h-3.5" /> Approved & Live
-                                                </span>
-                                            )}
-                                            {isRejected && (
-                                                <span className="shrink-0 flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30">
-                                                    <XCircle className="w-3.5 h-3.5" /> Rejected
-                                                </span>
-                                            )}
+                                            {/* Status Badge & Actions */}
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                {isPending && (
+                                                    <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30">
+                                                        <Clock className="w-3.5 h-3.5" /> Pending Review
+                                                    </span>
+                                                )}
+                                                {isChangesReq && (
+                                                    <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/40 animate-pulse">
+                                                        <AlertTriangle className="w-3.5 h-3.5" /> Changes Requested
+                                                    </span>
+                                                )}
+                                                {isApproved && (
+                                                    <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30">
+                                                        <CheckCircle className="w-3.5 h-3.5" /> Approved & Live
+                                                    </span>
+                                                )}
+                                                {isRejected && (
+                                                    <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30">
+                                                        <XCircle className="w-3.5 h-3.5" /> Rejected
+                                                    </span>
+                                                )}
+                                                <button
+                                                    onClick={() => handleDeleteSubmission(sub)}
+                                                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                                                    title="Dismiss or delete this submission"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
                                         </div>
 
                                         {/* ANO Feedback Section if Changes Requested */}
@@ -204,14 +277,24 @@ export const CadetSubmissionsDrawer = ({
                                             </span>
 
                                             {/* Action button if actionable */}
-                                            {(isChangesReq || isPending) && onResubmitTask && (
-                                                <button
-                                                    onClick={() => onResubmitTask(sub)}
-                                                    className="bg-ncc-navy text-white hover:bg-ncc-navy-mid font-bold text-xs px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-sm"
-                                                >
-                                                    <Edit2 className="w-3.5 h-3.5 text-ncc-gold" />
-                                                    {isChangesReq ? 'Modify & Resubmit' : 'Edit Submission'}
-                                                </button>
+                                            {(isChangesReq || isPending) && (
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => handleStartEdit(sub)}
+                                                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-sm"
+                                                    >
+                                                        <Edit2 className="w-3.5 h-3.5 text-white" />
+                                                        {isChangesReq ? 'Quick Edit & Resubmit' : 'Edit Submission'}
+                                                    </button>
+                                                    {onResubmitTask && (
+                                                        <button
+                                                            onClick={() => onResubmitTask(sub)}
+                                                            className="text-ncc-navy dark:text-white hover:underline text-xs font-bold"
+                                                        >
+                                                            Open Full Tab
+                                                        </button>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
                                     </div>
@@ -222,6 +305,118 @@ export const CadetSubmissionsDrawer = ({
 
                 </div>
             </div>
+
+            {/* Quick Edit & Resubmit Modal */}
+            {editingSub && (
+                <div className="fixed inset-0 z-[60] overflow-y-auto flex items-center justify-center p-4 sm:p-6 bg-black/75 backdrop-blur-sm fade-in">
+                    <div className="relative w-full max-w-lg bg-white dark:bg-[#0a1628] rounded-3xl shadow-2xl border border-gray-200 dark:border-white/10 overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="p-5 border-b border-gray-200 dark:border-white/10 flex items-center justify-between bg-gray-50 dark:bg-white/5">
+                            <div>
+                                <h4 className="font-black text-sm text-ncc-navy dark:text-white flex items-center gap-2">
+                                    <Sparkles className="w-4 h-4 text-ncc-gold" />
+                                    Modify & Resubmit Task
+                                </h4>
+                                <p className="text-xs text-gray-500 dark:text-white/60">
+                                    {editingSub.title} ({editingSub.moduleName})
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setEditingSub(null)}
+                                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-lg"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* ANO Feedback Banner */}
+                        {editingSub.remarks && (
+                            <div className="m-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-500/40 text-xs text-amber-900 dark:text-amber-200">
+                                <span className="font-bold block text-[11px] uppercase tracking-wider text-amber-800 dark:text-amber-300 mb-1">
+                                    ANO's Modification Instructions:
+                                </span>
+                                <p className="italic">"{editingSub.remarks}"</p>
+                            </div>
+                        )}
+
+                        {/* Form Fields */}
+                        <div className="p-5 space-y-4 overflow-y-auto max-h-[50vh]">
+                            {/* Special Rank field for Rank Management */}
+                            {editingSub.moduleId === 'rank_mgmt' && (
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-black uppercase text-gray-600 dark:text-white/70">
+                                        Target Rank:
+                                    </label>
+                                    <select
+                                        value={editPayload.newRank || ''}
+                                        onChange={(e) => handleFieldChange('newRank', e.target.value)}
+                                        className="w-full text-xs font-bold p-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white"
+                                    >
+                                        <option value="">Select Rank</option>
+                                        {['CDT', 'LCPL', 'CPL', 'SGT', 'CQMS', 'CSM', 'JUO', 'SUO'].map(r => (
+                                            <option key={r} value={r}>{r}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {Object.entries(editPayload).map(([key, val]) => {
+                                if (['id', 'cadetId', 'enrollmentId', 'action', 'campId'].includes(key)) return null;
+                                if (editingSub.moduleId === 'rank_mgmt' && key === 'newRank') return null;
+
+                                const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+
+                                if (typeof val === 'string' && val.length > 80) {
+                                    return (
+                                        <div key={key} className="space-y-1">
+                                            <label className="text-[11px] font-black uppercase text-gray-600 dark:text-white/70">
+                                                {label}
+                                            </label>
+                                            <textarea
+                                                rows={3}
+                                                value={val || ''}
+                                                onChange={(e) => handleFieldChange(key, e.target.value)}
+                                                className="w-full text-xs p-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white"
+                                            />
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div key={key} className="space-y-1">
+                                        <label className="text-[11px] font-black uppercase text-gray-600 dark:text-white/70">
+                                            {label}
+                                        </label>
+                                        <input
+                                            type={typeof val === 'number' ? 'number' : 'text'}
+                                            value={val !== undefined && val !== null ? val : ''}
+                                            onChange={(e) => handleFieldChange(key, typeof val === 'number' ? Number(e.target.value) : e.target.value)}
+                                            className="w-full text-xs p-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white"
+                                        />
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-4 border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 flex items-center justify-end gap-2">
+                            <button
+                                onClick={() => setEditingSub(null)}
+                                className="px-4 py-2 text-xs font-bold text-gray-600 dark:text-white/70 hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSaveAndResubmit}
+                                disabled={isSaving}
+                                className="px-5 py-2 text-xs font-bold bg-ncc-navy text-white hover:bg-ncc-navy-mid rounded-xl flex items-center gap-2 shadow-lg disabled:opacity-50"
+                            >
+                                <Check className="w-4 h-4 text-ncc-gold" />
+                                {isSaving ? 'Submitting...' : 'Resubmit to ANO'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
