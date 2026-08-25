@@ -7,7 +7,7 @@ import { useDataContext } from '../../context/DataContext.jsx';
 import { sendAttendancePush } from '../../firebase/pushNotifications.js';
 import {
     ShieldCheck, UserCheck, Clock, X, Camera,
-    History, MapPin, Target, AlertTriangle
+    History, MapPin, Target, AlertTriangle, Shield, CheckCircle
 } from '../../components/Icons.jsx';
 import { toast } from 'react-toastify';
 
@@ -392,7 +392,7 @@ const LiveMapPanel = ({ adminLocation, scannedCadets }) => {
 // Main AttendanceScanner Component
 // ══════════════════════════════════════════════════════════════════════════════
 export const AttendanceScanner = () => {
-    const { userProfile } = useAuthContext();
+    const { userProfile, userRole, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
     const { cadets }      = useDataContext();
 
     const [isScanning,      setIsScanning]      = useState(false);
@@ -401,6 +401,8 @@ export const AttendanceScanner = () => {
     const [gpsStatus,       setGpsStatus]       = useState('idle');
     const [showConsentModal,setShowConsentModal]= useState(false);
     const [scannedMapCadets,setScannedMapCadets]= useState([]);
+    const [delegatedScans,  setDelegatedScans]  = useState([]);
+    const [isSubmittingBatch, setIsSubmittingBatch] = useState(false);
 
     // ── Time-Window state ──────────────────────────────────────────────────────
     const [sessionStart, setSessionStart] = useState('');
@@ -605,6 +607,45 @@ export const AttendanceScanner = () => {
             return;
         }
 
+        // 🛡️ If user is a delegated cadet, stage scan in local batch for ANO verification instead of directly modifying live records
+        if (userRole === 'cadet') {
+            if (delegatedScans.some(s => s.id === cadet.id)) {
+                toast.warning(`${cadet.name} is already in the current scan batch.`);
+                isProcessingRef.current = false;
+                return;
+            }
+
+            const newScan = {
+                id: cadet.id,
+                name: cadet.name,
+                enrollmentId: cadet.enrollmentId,
+                time: new Date().toLocaleTimeString(),
+                status: scanStatus
+            };
+
+            setDelegatedScans(prev => [...prev, newScan]);
+            setRecentLogs(prev => [{
+                name: cadet.name,
+                time: new Date().toLocaleTimeString(),
+                id: cadet.enrollmentId,
+                status: scanStatus
+            }, ...prev].slice(0, 15));
+
+            // Add cadet dot near admin on map
+            const angle  = Math.random() * 2 * Math.PI;
+            const radius = Math.random() * 0.0014;
+            setScannedMapCadets(prev => [...prev, {
+                name: cadet.name,
+                lat:  loc.latitude  + radius * Math.sin(angle),
+                lng:  loc.longitude + radius * Math.cos(angle),
+            }]);
+
+            toast.success(`✅ Scanned ${cadet.name} (${cadet.enrollmentId}) — Staged in Batch`);
+            if (window.navigator.vibrate) window.navigator.vibrate(150);
+            isProcessingRef.current = false;
+            return;
+        }
+
         try {
             const attRef = getCollectionRef('attendance');
             if (!attRef) throw new Error('Database not ready');
@@ -650,6 +691,42 @@ export const AttendanceScanner = () => {
             toast.error('Database error. Please try again.');
         } finally {
             isProcessingRef.current = false;
+        }
+    };
+
+    const handleSubmitScanBatchToAno = async () => {
+        if (delegatedScans.length === 0) return toast.warning("No cadets scanned in this session yet.");
+        setIsSubmittingBatch(true);
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            const cadetIds = delegatedScans.map(s => s.id);
+            const cadetNames = delegatedScans.map(s => `${s.name} (${s.enrollmentId})`);
+            const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+            await submitDelegatedTask({
+                institutionId: userInstitutionId,
+                cadetEnrollmentId: userEnrollmentId,
+                cadetName: userName,
+                cadetUid: user?.uid,
+                moduleId: 'att_logs',
+                moduleName: 'Parade Attendance Scanner',
+                actionType: 'create',
+                title: `Parade Scan: ${delegatedScans.length} Cadet(s) Scanned on ${today}`,
+                payload: {
+                    action: 'bulk_mark_present',
+                    date: today,
+                    cadetIds: cadetIds,
+                    cadetNames: cadetNames,
+                    status: 'Present',
+                    scannedCount: delegatedScans.length
+                }
+            });
+            toast.success(`Parade scan batch of ${delegatedScans.length} cadets submitted to ANO for verification & sanctioning!`);
+            setDelegatedScans([]);
+        } catch (err) {
+            console.error("Batch submission error:", err);
+            toast.error(`Failed to submit scan batch: ${err.message}`);
+        } finally {
+            setIsSubmittingBatch(false);
         }
     };
 
@@ -761,6 +838,32 @@ export const AttendanceScanner = () => {
                             timeLeft={timeLeft}
                             isScanning={isScanning}
                         />
+
+                        {/* 🛡️ Delegated Parade Scan Batch Card for Cadets */}
+                        {userRole === 'cadet' && (
+                            <div className="ncc-card p-5 border-amber-300 dark:border-amber-500/40 bg-amber-500/10 dark:bg-amber-950/20 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-xs font-black uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                                        <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                                        Delegated Parade Scan Batch
+                                    </h4>
+                                    <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-amber-200 dark:bg-amber-800/80 text-amber-950 dark:text-white border border-amber-300 dark:border-amber-700">
+                                        {delegatedScans.length} Staged
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-amber-900/80 dark:text-amber-200/80 leading-relaxed">
+                                    Cadets scanned during this duty are staged in this verification batch. Submit the batch to your ANO for final verification and sanctioning.
+                                </p>
+                                <button
+                                    onClick={handleSubmitScanBatchToAno}
+                                    disabled={isSubmittingBatch || delegatedScans.length === 0}
+                                    className="w-full py-3 px-4 rounded-xl bg-ncc-navy hover:bg-ncc-navy-mid text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                >
+                                    <CheckCircle className="w-4 h-4 text-ncc-gold" />
+                                    {isSubmittingBatch ? 'Submitting to ANO...' : `Submit ${delegatedScans.length} Scanned Cadet(s) to ANO`}
+                                </button>
+                            </div>
+                        )}
 
                         {/* Recent Scans */}
                         <div className="ncc-card">
