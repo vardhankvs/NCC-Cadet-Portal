@@ -450,6 +450,8 @@ export function Dashboard() {
     const { tenant } = useTenant();
     const { isDarkMode, setIsDarkMode } = useTheme();
     const {
+        user,
+        userName,
         userRole,
         userEnrollmentId,
         userInstitutionId,
@@ -1419,7 +1421,7 @@ export function Dashboard() {
                                     <DelegatedCommandBanner
                                         moduleId={activeTab.replace('admin_', '')}
                                         moduleName={availableTabs.find(t => t.id === activeTab)?.name || 'Admin Module'}
-                                        cadetName={userName}
+                                        cadetName={userName || user?.displayName || 'Cadet'}
                                         pendingCount={cadetDelegatedPendingCount}
                                         changesRequestedCount={cadetDelegatedChangesCount}
                                         onOpenSubmissions={() => setShowCadetSubmissionsDrawer(true)}
