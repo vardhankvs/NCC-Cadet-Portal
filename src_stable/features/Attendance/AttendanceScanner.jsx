@@ -392,7 +392,8 @@ const LiveMapPanel = ({ adminLocation, scannedCadets }) => {
 // Main AttendanceScanner Component
 // ══════════════════════════════════════════════════════════════════════════════
 export const AttendanceScanner = () => {
-    const { userProfile, userRole, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const { userProfile, userRole, actualRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const { cadets }      = useDataContext();
 
     const [isScanning,      setIsScanning]      = useState(false);
@@ -608,7 +609,7 @@ export const AttendanceScanner = () => {
         }
 
         // 🛡️ If user is a delegated cadet, stage scan in local batch for ANO verification instead of directly modifying live records
-        if (userRole === 'cadet') {
+        if (isCadetUser) {
             if (delegatedScans.some(s => s.id === cadet.id)) {
                 toast.warning(`${cadet.name} is already in the current scan batch.`);
                 isProcessingRef.current = false;
@@ -840,7 +841,7 @@ export const AttendanceScanner = () => {
                         />
 
                         {/* 🛡️ Delegated Parade Scan Batch Card for Cadets */}
-                        {userRole === 'cadet' && (
+                        {isCadetUser && (
                             <div className="ncc-card p-5 border-amber-300 dark:border-amber-500/40 bg-amber-500/10 dark:bg-amber-950/20 space-y-3">
                                 <div className="flex items-center justify-between">
                                     <h4 className="text-xs font-black uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-2">

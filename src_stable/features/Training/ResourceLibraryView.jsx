@@ -18,8 +18,9 @@ import { formatDate } from '../../utils/dateUtils.js';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const ResourceLibraryView = ({ mode = 'library' }) => {
-    const { user: currentUser, userRole, userEnrollmentId, userName, userInstitutionId } = useAuthContext();
-    const isAdmin = Boolean(userRole && userRole.toLowerCase() !== 'cadet');
+    const { user: currentUser, userRole, actualRole, isDelegatedCadet, userEnrollmentId, userName, userInstitutionId } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
+    const isAdmin = !isCadetUser && Boolean(userRole && (userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin' || userRole === 'battalion_admin'));
     const { materials, quizzes, cadets } = useDataContext();
     const [userProfile, setUserProfile] = useState(null);
     

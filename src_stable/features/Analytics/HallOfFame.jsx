@@ -277,9 +277,9 @@ const CadetPointsModal = ({ cadet, onClose }) => {
 
 export const HallOfFame = () => {
     const { attendanceData, cadets } = useDataContext();
-    const { userRole, userEnrollmentId, userName, user, userInstitutionId } = useAuthContext();
-    const isAno = userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin' || userRole === 'battalion_admin';
-    const isDelegatedCadet = userRole === 'cadet';
+    const { userRole, actualRole, isDelegatedCadet: isDelCadet, userEnrollmentId, userName, user, userInstitutionId } = useAuthContext();
+    const isDelegatedCadet = isDelCadet || userRole === 'cadet' || actualRole === 'cadet';
+    const isAno = !isDelegatedCadet && (userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin' || userRole === 'battalion_admin');
     
     const [isAwardModalOpen, setIsAwardModalOpen] = useState(false);
     const [awardForm, setAwardForm] = useState({ cadetId: '', title: 'Best Cadet Award', description: '', date: new Date().toISOString().split('T')[0] });

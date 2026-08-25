@@ -38,7 +38,8 @@ import { toast } from 'react-toastify';
 import { formatDate } from '../../utils/dateUtils.js';
 
 export const SelectionProcessView = () => {
-    const { userRole, userInstitutionId } = useAuthContext();
+    const { userRole, actualRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const { units = [], cadets = [] } = useDataContext();
 
     // Check role types
@@ -307,7 +308,7 @@ export const SelectionProcessView = () => {
                 meritScore
             };
 
-            if (userRole === 'cadet') {
+            if (isCadetUser) {
                 const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
                 await submitDelegatedTask({
                     institutionId: userInstitutionId,
@@ -353,7 +354,7 @@ export const SelectionProcessView = () => {
             return toast.error("Please provide a reason for dropping out.");
         }
         try {
-            if (userRole === 'cadet') {
+            if (isCadetUser) {
                 const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
                 await submitDelegatedTask({
                     institutionId: userInstitutionId,

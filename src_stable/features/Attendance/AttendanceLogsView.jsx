@@ -13,7 +13,8 @@ import { sendPushToCadets } from '../../firebase/pushNotifications.js';
 
 export const AttendanceLogsView = () => {
     const { cadets, allCadets } = useDataContext();
-    const { userRole, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const { userRole, actualRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const cadetRoster = (allCadets && allCadets.length > 0) ? allCadets : (cadets || []);
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -130,7 +131,7 @@ export const AttendanceLogsView = () => {
         setMarking(true);
 
         // If performing action under delegated cadet access, route to ANO verification
-        if (userRole === 'cadet') {
+        if (isCadetUser) {
             try {
                 const selectedNames = selectedCadetIds.map(id => {
                     const c = cadets.find(x => x.id === id);
@@ -260,7 +261,7 @@ export const AttendanceLogsView = () => {
         if (!logToDelete) return;
 
         // If performing deletion under delegated cadet access, route to ANO verification
-        if (userRole === 'cadet') {
+        if (isCadetUser) {
             try {
                 const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
                 await submitDelegatedTask({
@@ -368,7 +369,7 @@ export const AttendanceLogsView = () => {
         setLoading(true);
 
         // If performing bulk deletion under delegated cadet access, route to ANO verification
-        if (userRole === 'cadet') {
+        if (isCadetUser) {
             try {
                 const selectedLogs = logs.filter(l => selectedHistoryIds.includes(l.id));
                 const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');

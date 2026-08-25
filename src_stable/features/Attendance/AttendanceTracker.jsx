@@ -21,7 +21,8 @@ const formatHistoryDate = (dateString) => {
 };
 
 export const AttendanceTracker = ({ cadets }) => {
-    const { userRole, userEnrollmentId, userInstitutionId, userName, user } = useAuthContext();
+    const { userRole, actualRole, isDelegatedCadet, userEnrollmentId, userInstitutionId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const { attendanceData } = useDataContext();
     const [selectedDate, setSelectedDate] = useState(getTodayDateString());
     const [selectedCertificate, setSelectedCertificate] = useState('All');
@@ -31,29 +32,29 @@ export const AttendanceTracker = ({ cadets }) => {
     const [error, setError] = useState(null);
     const today = getTodayDateString();
 
-    const isAno = userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin';
+    const isAno = (userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin') && !isDelegatedCadet;
 
     const relevantCadets = useMemo(() => {
         const activeCadets = cadets.filter(c => c.status !== 'alumni');
         let list = [];
-        if (isAno) {
+        if (isAno || isDelegatedCadet) {
             list = selectedCertificate === 'All' ? [...activeCadets] : activeCadets.filter((c) => c.certificate === selectedCertificate);
-            if (selectedCategory !== 'All') list = list.filter((c) => (c.enrollmentId || '').toUpperCase().includes(selectedCategory));
-            if (searchQuery.trim()) {
-                const q = searchQuery.toLowerCase();
-                list = list.filter((c) => c.name.toLowerCase().includes(q) || c.enrollmentId.toLowerCase().includes(q));
-            }
-        } else if (userRole === 'cadet') {
-            // If viewing administrative grid as delegated cadet or self view
-            list = selectedCertificate === 'All' ? [...activeCadets] : activeCadets.filter((c) => c.certificate === selectedCertificate);
-            if (selectedCategory !== 'All') list = list.filter((c) => (c.enrollmentId || '').toUpperCase().includes(selectedCategory));
+        } else {
+            list = activeCadets.filter((c) => c.enrollmentId === userEnrollmentId);
+        }
+
+        if (selectedCategory !== 'All') {
+            list = list.filter((c) => (c.enrollmentId || '').toUpperCase().includes(selectedCategory));
+        }
+
+        if (isAno || isDelegatedCadet) {
             if (searchQuery.trim()) {
                 const q = searchQuery.toLowerCase();
                 list = list.filter((c) => c.name.toLowerCase().includes(q) || c.enrollmentId.toLowerCase().includes(q));
             }
         }
         return list;
-    }, [cadets, selectedCertificate, selectedCategory, searchQuery, userRole, userEnrollmentId, isAno]);
+    }, [cadets, selectedCertificate, selectedCategory, searchQuery, userRole, userEnrollmentId, isAno, isDelegatedCadet]);
 
     const getStatus = useCallback((cadet) => cadet.attendance?.[selectedDate] || 'Absent', [selectedDate]);
 
@@ -64,7 +65,7 @@ export const AttendanceTracker = ({ cadets }) => {
         setError(null);
 
         // If cadet has delegated access, submit for ANO verification
-        if (userRole === 'cadet') {
+        if (isCadetUser) {
             try {
                 const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
                 await submitDelegatedTask({
