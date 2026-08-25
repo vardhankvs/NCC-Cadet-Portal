@@ -11,7 +11,8 @@ import { sendPushToAll } from '../../firebase/pushNotifications.js';
 import { ImageIcon, List } from '../../components/Icons.jsx';
 
 export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGallery, onManageRoster }) => {
-    const { isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const { userRole, actualRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const [formData, setFormData] = useState({
         name: currentEvent?.name || '',
         date: currentEvent?.date
@@ -36,7 +37,7 @@ export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGalle
             return;
         }
 
-        if (isDelegatedCadet) {
+        if (isCadetUser) {
             setLoading(true);
             try {
                 await submitDelegatedTask({

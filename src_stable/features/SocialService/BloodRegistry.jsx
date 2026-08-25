@@ -209,7 +209,8 @@ const ActiveRequestCard = ({ request, userEnrollmentId, userRole, cadets, userIn
 
 export const BloodRegistry = ({ onChat }) => {
     const { cadets } = useDataContext();
-    const { userRole, userEnrollmentId, userInstitutionId } = useAuthContext();
+    const { userRole, actualRole, isDelegatedCadet, userEnrollmentId, userInstitutionId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const [search, setSearch] = useState('');
     const [selectedGroup, setSelectedGroup] = useState('ALL');
     const [showRequestModal, setShowRequestModal] = useState(false);
@@ -274,6 +275,35 @@ export const BloodRegistry = ({ onChat }) => {
         }
 
         try {
+            if (isCadetUser) {
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId || '14a-bn-srikakulam',
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'blood_registry',
+                    moduleName: 'Blood Bank Registry',
+                    actionType: editingRequestId ? 'update' : 'create',
+                    targetDocId: editingRequestId || null,
+                    title: `Emergency Blood Request (${formData.bloodGroup}) for ${formData.patientName}`,
+                    payload: {
+                        ...formData,
+                        id: editingRequestId || null,
+                        hospital: formData.hospital,
+                        bloodGroup: formData.bloodGroup,
+                        patientName: formData.patientName,
+                        patientPhone: formData.patientPhone,
+                        details: formData.details
+                    }
+                });
+                toast.success("Emergency Blood Request submitted for ANO verification!");
+                setShowRequestModal(false);
+                setEditingRequestId(null);
+                setFormData({ patientName: '', patientPhone: '', hospital: '', bloodGroup: '', details: '' });
+                return;
+            }
+
             if (editingRequestId) {
                 const reqRef = doc(getCollectionRef('blood_requests'), editingRequestId);
                 await updateDoc(reqRef, {
@@ -327,6 +357,24 @@ export const BloodRegistry = ({ onChat }) => {
     const handleDeleteRequest = async (id) => {
         if (!window.confirm("Are you sure you want to delete this emergency request?")) return;
         try {
+            if (isCadetUser) {
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId || '14a-bn-srikakulam',
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'blood_registry',
+                    moduleName: 'Blood Bank Registry',
+                    actionType: 'delete',
+                    targetDocId: id,
+                    title: `Delete Blood Request ID: ${id}`,
+                    payload: { id }
+                });
+                toast.success("Blood request deletion submitted for ANO verification!");
+                return;
+            }
+
             await deleteDoc(doc(getCollectionRef('blood_requests'), id));
             toast.success("Request deleted.");
         } catch (e) {

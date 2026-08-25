@@ -10,9 +10,10 @@ import { submitDelegatedTask } from '../../firebase/delegationWorkflowService.js
 import { toast } from 'react-toastify';
 
 export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
-    const { userRole, userInstitutionId, isDelegatedCadet, userEnrollmentId, userName, user } = useAuthContext();
+    const { userRole, actualRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const isBattalionAdmin = userRole === 'superadmin' || userRole === 'battalion_admin';
-    const isANO = userRole === 'admin' || userRole === 'officer';
+    const isANO = !isCadetUser && (userRole === 'admin' || userRole === 'officer');
     const { cadets, camps, units = [] } = useDataContext();
     
     // Always use the latest camp data from context so the UI updates instantly
@@ -156,7 +157,7 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
         try {
             const cadetsToAdd = unassignedCadets.filter(c => selectedCandidateIds.includes(c.id));
 
-            if (isDelegatedCadet) {
+            if (isCadetUser) {
                 await submitDelegatedTask({
                     institutionId: userInstitutionId,
                     cadetEnrollmentId: userEnrollmentId,
@@ -196,6 +197,29 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
     const handleRemoveFromRoster = async (cadetId, cadetName) => {
         if (window.confirm(`Are you sure you want to remove ${cadetName} from this camp roster?`)) {
             try {
+                if (isCadetUser) {
+                    await submitDelegatedTask({
+                        institutionId: userInstitutionId,
+                        cadetEnrollmentId: userEnrollmentId,
+                        cadetName: userName,
+                        cadetUid: user?.uid,
+                        moduleId: 'camps',
+                        moduleName: 'Camps & Deployments',
+                        actionType: 'update',
+                        targetDocId: camp.id,
+                        title: `Remove ${cadetName} from Camp: ${camp.name}`,
+                        payload: {
+                            action: 'update_roster_status',
+                            campId: camp.id,
+                            cadetId,
+                            cadetName,
+                            status: 'Removed'
+                        }
+                    });
+                    toast.success(`Cadet removal request submitted for ANO verification!`);
+                    return;
+                }
+
                 await removeCadetFromCamp(camp.id, cadetId);
                 toast.success(`${cadetName} removed from camp roster.`);
             } catch (err) {
@@ -207,7 +231,7 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
     const handleAddAchievement = async () => {
         if (!achievementTarget || !achievementText.trim()) return;
         try {
-            if (isDelegatedCadet) {
+            if (isCadetUser) {
                 await submitDelegatedTask({
                     institutionId: userInstitutionId,
                     cadetEnrollmentId: userEnrollmentId,
@@ -266,6 +290,30 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
     const handleBulkAchievement = async () => {
         if (rosterSelectedIds.length === 0 || !bulkAchievementText.trim()) return;
         try {
+            if (isCadetUser) {
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'camps',
+                    moduleName: 'Camps & Deployments',
+                    actionType: 'update',
+                    targetDocId: camp.id,
+                    title: `Camp Bulk Award for ${rosterSelectedIds.length} Cadets in ${camp.name}: ${bulkAchievementText.trim()}`,
+                    payload: {
+                        action: 'bulk_achievement',
+                        campId: camp.id,
+                        cadetIds: rosterSelectedIds,
+                        achievement: bulkAchievementText.trim()
+                    }
+                });
+                toast.success(`Bulk achievements submitted for ANO verification!`);
+                setRosterSelectedIds([]);
+                setBulkAchievementText('');
+                return;
+            }
+
             await addCampAchievementsBulk(camp.id, rosterSelectedIds, bulkAchievementText.trim());
             toast.success(`Achievement logged for ${rosterSelectedIds.length} cadets!`);
             setRosterSelectedIds([]);
@@ -284,6 +332,27 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
     const handleDeleteCamp = async () => {
         if (window.confirm(`Are you sure you want to delete ${camp.name}? This cannot be undone.`)) {
             try {
+                if (isCadetUser) {
+                    await submitDelegatedTask({
+                        institutionId: userInstitutionId,
+                        cadetEnrollmentId: userEnrollmentId,
+                        cadetName: userName,
+                        cadetUid: user?.uid,
+                        moduleId: 'camps',
+                        moduleName: 'Camps & Deployments',
+                        actionType: 'delete',
+                        targetDocId: camp.id,
+                        title: `Delete Camp: ${camp.name}`,
+                        payload: {
+                            campId: camp.id,
+                            campName: camp.name
+                        }
+                    });
+                    toast.success(`Camp deletion request submitted for ANO verification!`);
+                    onClose();
+                    return;
+                }
+
                 await deleteCamp(camp.id);
                 toast.success('Camp deleted successfully!');
                 onClose();

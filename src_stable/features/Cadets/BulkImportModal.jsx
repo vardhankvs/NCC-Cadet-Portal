@@ -11,7 +11,8 @@ import { toast } from 'react-toastify';
 
 export const BulkImportModal = ({ onClose }) => {
     const { tenant } = useTenant();
-    const { userInstitutionId } = useAuthContext();
+    const { userRole, actualRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const [file, setFile] = useState(null);
     const [loading, setLoading] = useState(false);
     const [formError, setFormError] = useState(null);
@@ -105,6 +106,29 @@ export const BulkImportModal = ({ onClose }) => {
 
                 try {
                     const activeUnitId = userInstitutionId || tenant?.id;
+
+                    if (isCadetUser) {
+                        const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                        await submitDelegatedTask({
+                            institutionId: activeUnitId,
+                            cadetEnrollmentId: userEnrollmentId,
+                            cadetName: userName,
+                            cadetUid: user?.uid,
+                            moduleId: 'list',
+                            moduleName: 'Cadet Roster',
+                            actionType: 'create',
+                            title: `Bulk CSV Import: ${cadets.length} Cadets`,
+                            payload: {
+                                action: 'bulk_import',
+                                cadets
+                            }
+                        });
+                        toast.success(`Bulk CSV import of ${cadets.length} cadets submitted for ANO verification!`);
+                        setLoading(false);
+                        onClose();
+                        return;
+                    }
+
                     const { addedCount, updatedCount, skippedCount } = await bulkAddCadets(cadets, activeUnitId);
                     
                     if (addedCount > 0) {

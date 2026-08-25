@@ -10,7 +10,8 @@ import { sendPushToAll } from '../../firebase/pushNotifications.js';
 const CAMP_TYPES = ['ATC', 'CATC', 'EBSB', 'RDC', 'TSC', 'NSC', 'VSC', 'SNIC', 'ALC', 'BLC', 'Trekking', 'Other'];
 
 export const CampForm = ({ onClose, initialData = null }) => {
-    const { isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const { userRole, actualRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const { units = [] } = useDataContext();
     const colleges = useMemo(() => units.filter(u => !u.isBattalion), [units]);
 
@@ -71,7 +72,7 @@ export const CampForm = ({ onClose, initialData = null }) => {
                 }
             });
 
-            if (isDelegatedCadet) {
+            if (isCadetUser) {
                 await submitDelegatedTask({
                     institutionId: userInstitutionId,
                     cadetEnrollmentId: userEnrollmentId,

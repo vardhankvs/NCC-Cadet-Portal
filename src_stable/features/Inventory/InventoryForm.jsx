@@ -6,7 +6,8 @@ import { useAuthContext } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
 
 export const InventoryForm = ({ item, onClose }) => {
-    const { isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const { userRole, actualRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const [formData, setFormData] = useState({
         name: '',
         category: 'Clothing',
@@ -30,7 +31,7 @@ export const InventoryForm = ({ item, onClose }) => {
 
         setIsSubmitting(true);
         try {
-            if (isDelegatedCadet) {
+            if (isCadetUser) {
                 await submitDelegatedTask({
                     institutionId: userInstitutionId,
                     cadetEnrollmentId: userEnrollmentId,

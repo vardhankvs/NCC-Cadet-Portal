@@ -4,9 +4,12 @@ import { Package, Plus, AlertCircle, Edit, Trash2 } from '../../components/Icons
 import { InventoryForm } from './InventoryForm.jsx';
 import { IssueReturnModal } from './IssueReturnModal.jsx';
 import { deleteItem } from '../../firebase/firestoreService.js';
+import { useAuthContext } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
 
 export const InventoryView = () => {
+    const { userRole, actualRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const { inventory = [], inventoryLogs = [] } = useDataContext();
     const [showForm, setShowForm] = useState(false);
     const [showIssueModal, setShowIssueModal] = useState(false);
@@ -18,9 +21,30 @@ export const InventoryView = () => {
         setShowForm(true);
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm("Are you sure you want to delete this specific stock item entirely?")) {
+    const handleDelete = async (id, itemName = 'Stock Item') => {
+        if (window.confirm(`Are you sure you want to delete "${itemName}" entirely?`)) {
             try {
+                if (isCadetUser) {
+                    const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                    await submitDelegatedTask({
+                        institutionId: userInstitutionId,
+                        cadetEnrollmentId: userEnrollmentId,
+                        cadetName: userName,
+                        cadetUid: user?.uid,
+                        moduleId: 'inventory',
+                        moduleName: 'Quartermaster Stock',
+                        actionType: 'delete',
+                        targetDocId: id,
+                        title: `Delete Stock Item: ${itemName}`,
+                        payload: {
+                            id,
+                            name: itemName
+                        }
+                    });
+                    toast.success('Inventory item deletion submitted for ANO verification!');
+                    return;
+                }
+
                 await deleteItem('inventory', id);
                 toast.success('Deleted successfully');
             } catch (err) {
@@ -123,7 +147,7 @@ export const InventoryView = () => {
                                                     <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition" title="Edit">
                                                         <Edit className="w-4 h-4" />
                                                     </button>
-                                                    <button onClick={() => handleDelete(item.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition" title="Delete">
+                                                    <button onClick={() => handleDelete(item.id, item.name)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition" title="Delete">
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
                                                 </div>

@@ -44,7 +44,9 @@ const formatDateForInput = (dateStr) => {
 };
 
 export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
-    const { userRole, userEnrollmentId } = useAuthContext();
+    const { userRole, actualRole, isDelegatedCadet, userEnrollmentId, userName, user, userInstitutionId: authInstId } = useAuthContext();
+    const effectiveInstId = userInstitutionId || authInstId;
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const [selectedCertificate, setSelectedCertificate] = useState('All');
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [searchTerm, setSearchTerm] = useState('');
@@ -115,6 +117,28 @@ export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
         if (!confirmed) return;
         setIsPromoting(true); setError(null);
         try {
+            if (isCadetUser) {
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: effectiveInstId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'list',
+                    moduleName: 'Cadet Roster',
+                    actionType: 'update',
+                    title: `Batch Session Promotion: ${from} → ${to}`,
+                    payload: {
+                        action: 'promote_session',
+                        from,
+                        to
+                    }
+                });
+                toast.success(`Session promotion (${from} → ${to}) submitted for ANO verification!`);
+                setPromotionOption('');
+                return;
+            }
+
             const count = await promoteSpecificCadets(from, to);
             toast.success(`Success! Updated ${count} cadets from ${from} to ${to}.`);
             setPromotionOption('');
@@ -309,6 +333,31 @@ export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
         setError(null);
         if (!itemToDelete) return;
         try {
+            if (isCadetUser) {
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                const isBulk = itemToDelete.isBulk;
+                await submitDelegatedTask({
+                    institutionId: effectiveInstId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'list',
+                    moduleName: 'Cadet Roster',
+                    actionType: 'delete',
+                    targetDocId: isBulk ? null : itemToDelete.id,
+                    title: `Delete Cadet${isBulk ? 's' : ''}: ${itemToDelete.name}`,
+                    payload: {
+                        isBulk,
+                        cadetIds: isBulk ? itemToDelete.id : [itemToDelete.id],
+                        name: itemToDelete.name
+                    }
+                });
+                toast.success(`Cadet deletion request submitted for ANO verification!`);
+                setSelectedIds([]);
+                handleModalClose();
+                return;
+            }
+
             if (itemToDelete.isBulk) { await Promise.all(itemToDelete.id.map((id) => deleteItem(itemToDelete.type, id))); setSelectedIds([]); }
             else { await deleteItem(itemToDelete.type, itemToDelete.id); setSelectedIds((prev) => prev.filter((id) => id !== itemToDelete.id)); }
             handleModalClose();

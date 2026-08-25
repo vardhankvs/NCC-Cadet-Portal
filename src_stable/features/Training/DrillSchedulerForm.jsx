@@ -22,7 +22,8 @@ const PRIORITY_LEVELS = [
 ];
 
 export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
-    const { isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const { userRole, actualRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
@@ -51,7 +52,7 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
         }
         setLoading(true);
         try {
-            if (isDelegatedCadet) {
+            if (isCadetUser) {
                 await submitDelegatedTask({
                     institutionId: userInstitutionId,
                     cadetEnrollmentId: userEnrollmentId,

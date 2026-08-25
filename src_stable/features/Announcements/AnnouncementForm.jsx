@@ -11,7 +11,8 @@ import { toast } from 'react-toastify';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const AnnouncementForm = ({ onClose, initialData = null }) => {
-    const { userRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const { userRole, actualRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const { units = [] } = useDataContext();
 
     const isBattalionAdmin = userRole === 'superadmin' || userRole === 'battalion_admin';
@@ -62,7 +63,7 @@ export const AnnouncementForm = ({ onClose, initialData = null }) => {
         }
 
         // Delegated Cadet workflow: Submit for ANO Verification
-        if (isDelegatedCadet) {
+        if (isCadetUser) {
             setLoading(true);
             try {
                 await submitDelegatedTask({

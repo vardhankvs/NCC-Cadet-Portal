@@ -6,6 +6,7 @@ import {
     Upload, CheckCircle,
 } from '../../components/Icons.jsx';
 import { saveCadet } from '../../firebase/firestoreService.js';
+import { useAuthContext } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
@@ -130,6 +131,8 @@ const TABS = [
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
+    const { userRole, actualRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
+    const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
     const isEditMode = !!currentCadet;
     const fileInputRef = useRef(null);
     const [activeTab, setActiveTab] = useState('identity');
@@ -212,6 +215,31 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
                 photoUrl = await compressImageToBase64(photoFile);
                 toast.dismiss('photo-upload');
             }
+
+            // 🛡️ Route through ANO verification for delegated cadets
+            if (isCadetUser) {
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'list',
+                    moduleName: 'Cadet Roster',
+                    actionType: isEditMode ? 'update' : 'create',
+                    targetDocId: currentCadet?.id || null,
+                    title: `${isEditMode ? 'Update' : 'Add'} Cadet: ${formData.name} (${formData.enrollmentId || 'New'})`,
+                    payload: {
+                        ...formData,
+                        photoUrl,
+                        id: currentCadet?.id || null
+                    }
+                });
+                toast.success(`Cadet ${isEditMode ? 'update' : 'registration'} submitted for ANO verification!`);
+                setTimeout(() => onSaveSuccess(), 600);
+                return;
+            }
+
             await saveCadet({ ...formData, photoUrl }, currentCadet?.id);
             setSaved(true);
             toast.success(isEditMode ? 'Cadet updated!' : 'Cadet added!');

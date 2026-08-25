@@ -31,7 +31,10 @@ import {
     deleteItem,
     recordAttendance,
     submitPFTScores,
-    saveApplicant
+    saveApplicant,
+    saveCadet,
+    promoteSpecificCadets,
+    bulkAddCadets
 } from './firestoreService.js';
 import { sendPushToUser, sendPushToAll } from './pushNotifications.js';
 import { toast } from 'react-toastify';
@@ -344,6 +347,25 @@ export const executeLiveTaskAction = async (moduleId, actionType, payload, targe
         case 'pft': {
             if (payload.cadetId && payload.scores) {
                 await submitPFTScores(payload.cadetId, payload.scores);
+            }
+            break;
+        }
+
+        case 'list': {
+            if (actionType === 'delete') {
+                if (payload.isBulk && Array.isArray(payload.cadetIds)) {
+                    for (const cid of payload.cadetIds) {
+                        await deleteItem('cadets', cid);
+                    }
+                } else if (targetDocId) {
+                    await deleteItem('cadets', targetDocId);
+                }
+            } else if (payload.action === 'promote_session' && payload.from && payload.to) {
+                await promoteSpecificCadets(payload.from, payload.to);
+            } else if (payload.action === 'bulk_import' && Array.isArray(payload.cadets)) {
+                await bulkAddCadets(payload.cadets, institutionId || '14a-bn-srikakulam');
+            } else {
+                await saveCadet(payload, targetDocId || payload.id || null);
             }
             break;
         }
