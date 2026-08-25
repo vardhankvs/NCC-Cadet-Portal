@@ -4,85 +4,101 @@
 
 let cachedBuffer = null;
 let audioCtx = null;
-let isPreloading = false;
+let rawAudioArrayBuffer = null;
+let isFetchingRaw = false;
 
+const SOUND_URLS = [
+    '/sounds/ncc_notification.mp3',
+    '/sounds/ncc_notification.wav',
+    '/sounds/ncc_notification.ogg',
+    '/sounds/ncc_notification.webm'
+];
+
+// Lazily get or create AudioContext ONLY when allowed
 const getAudioCtx = () => {
+    if (typeof window === 'undefined') return null;
     if (!audioCtx || audioCtx.state === 'closed') {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (!AudioContextClass) return null;
         audioCtx = new AudioContextClass();
     }
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume().catch(() => {});
-    }
     return audioCtx;
 };
 
-// Pre-fetch and decode the uploaded audio file into Web Audio API memory
-const preloadAudioBuffer = async () => {
-    if (cachedBuffer || isPreloading) return;
-    isPreloading = true;
+// Pre-fetch the raw audio file into memory over HTTP without touching AudioContext
+const fetchRawAudio = async () => {
+    if (rawAudioArrayBuffer || isFetchingRaw) return;
+    isFetchingRaw = true;
 
     try {
-        const ctx = getAudioCtx();
-        if (!ctx) return;
-
-        // Fetch sound from public directory (try mp3, wav, ogg, webm)
-        const soundUrls = [
-            '/sounds/ncc_notification.mp3',
-            '/sounds/ncc_notification.wav',
-            '/sounds/ncc_notification.ogg',
-            '/sounds/ncc_notification.webm'
-        ];
-
-        for (const url of soundUrls) {
+        for (const url of SOUND_URLS) {
             try {
                 const res = await fetch(url);
                 if (res.ok) {
-                    const arrayBuf = await res.arrayBuffer();
-                    cachedBuffer = await ctx.decodeAudioData(arrayBuf);
-                    console.log('✅ [NCC Sound] Preloaded official defence notification sound into Web Audio buffer.');
+                    rawAudioArrayBuffer = await res.arrayBuffer();
                     break;
                 }
             } catch (err) {
-                // try next format
+                // Try next URL format
             }
         }
     } catch (e) {
-        console.warn('⚠️ [NCC Sound] Preload warning:', e);
+        // Silent catch
     } finally {
-        isPreloading = false;
+        isFetchingRaw = false;
     }
 };
 
-// Auto-preload on load & unlock Web Audio API on first user gesture
-if (typeof window !== 'undefined') {
-    preloadAudioBuffer();
+// Decode raw bytes into Web Audio Buffer once AudioContext is initialized
+const decodeIntoBuffer = async () => {
+    if (cachedBuffer) return cachedBuffer;
+    if (!rawAudioArrayBuffer) {
+        await fetchRawAudio();
+    }
+    if (!rawAudioArrayBuffer) return null;
 
-    const unlockWebAudio = async () => {
+    try {
+        const ctx = getAudioCtx();
+        if (!ctx) return null;
+        cachedBuffer = await ctx.decodeAudioData(rawAudioArrayBuffer.slice(0));
+        return cachedBuffer;
+    } catch (e) {
+        return null;
+    }
+};
+
+// Unlock Web Audio API strictly upon a valid user gesture
+if (typeof window !== 'undefined') {
+    // Silently pre-fetch network asset
+    fetchRawAudio();
+
+    const handleUserGesture = async () => {
         try {
             const ctx = getAudioCtx();
-            if (ctx) {
-                if (ctx.state === 'suspended') {
-                    await ctx.resume();
-                    console.log('✅ [NCC Sound] AudioContext resumed by user gesture on mobile/desktop. State:', ctx.state);
-                }
-                preloadAudioBuffer();
+            if (ctx && ctx.state === 'suspended') {
+                await ctx.resume().catch(() => {});
             }
+            await decodeIntoBuffer().catch(() => {});
         } catch (e) {
-            console.warn('[NCC Sound] Unlock error:', e);
+            // Ignore gesture resume errors
         }
     };
 
-    ['click', 'touchstart', 'touchend', 'pointerdown', 'keydown', 'scroll', 'visibilitychange'].forEach(evt => {
-        window.addEventListener(evt, unlockWebAudio, { passive: true });
+    const GESTURE_EVENTS = ['click', 'touchstart', 'touchend', 'pointerdown', 'keydown'];
+    const onGesture = () => {
+        handleUserGesture();
+        // Remove gesture listeners once unlocked
+        GESTURE_EVENTS.forEach(evt => window.removeEventListener(evt, onGesture));
+    };
+
+    GESTURE_EVENTS.forEach(evt => {
+        window.addEventListener(evt, onGesture, { passive: true, once: false });
     });
 
     // Listen for Service Worker postMessage bridge (for background mobile push events)
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'PLAY_NCC_SOUND') {
-                console.log('🔊 [NCC Sound] SW message received on mobile client — playing Jai Hind sound');
                 playNccNotificationSound();
             }
         });
@@ -101,13 +117,14 @@ export const playNccNotificationSound = async () => {
                 await ctx.resume().catch(() => {});
             }
 
-            if (!cachedBuffer && !isPreloading) {
-                await preloadAudioBuffer();
+            let buffer = cachedBuffer;
+            if (!buffer) {
+                buffer = await decodeIntoBuffer();
             }
 
-            if (cachedBuffer) {
+            if (buffer) {
                 const source = ctx.createBufferSource();
-                source.buffer = cachedBuffer;
+                source.buffer = buffer;
                 source.connect(ctx.destination);
                 source.start(0);
                 return;
@@ -115,8 +132,7 @@ export const playNccNotificationSound = async () => {
         }
 
         // Fallback: HTML5 Audio
-        const soundUrls = ['/sounds/ncc_notification.mp3', '/sounds/ncc_notification.wav', '/sounds/ncc_notification.webm'];
-        for (const url of soundUrls) {
+        for (const url of SOUND_URLS) {
             try {
                 const audio = new Audio(url);
                 audio.volume = 1.0;
@@ -126,10 +142,10 @@ export const playNccNotificationSound = async () => {
                     return;
                 }
             } catch (err) {
-                // try next format
+                // Try next format
             }
         }
     } catch (err) {
-        console.warn('⚠️ [NCC Sound] Playback error:', err);
+        // Fallback silently
     }
 };

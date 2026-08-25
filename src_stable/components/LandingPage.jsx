@@ -28,7 +28,6 @@ import {
 } from './Icons.jsx';
 
 import { ThemeToggle } from './ui/ThemeToggle';
-import { AIAssistant } from '../features/Engagement/AIAssistant.jsx';
 import { useTheme } from '../context/ThemeContext';
 import { useTenant } from '../context/TenantContext';
 import { useInView } from 'react-intersection-observer';
@@ -1635,9 +1634,6 @@ export const LandingPage = ({ onGetStarted, user }) => {
                     </motion.div>
                 </div>
             )}
-
-            {/* Floating Vanguard AI Assistant Widget */}
-            <AIAssistant />
 
             <style dangerouslySetInnerHTML={{ __html: `
                 .dark {
