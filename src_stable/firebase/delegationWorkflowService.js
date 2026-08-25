@@ -319,17 +319,17 @@ export const approveDelegatedTask = async (submission, modifiedPayload = null, a
         updatedAt: serverTimestamp()
     });
 
-    // 2b. Auto-resolve any previous changes_requested submissions for the same target/cadet
+    // 2b. Automatically DELETE any previous changes_requested submissions for the same target/cadet
     try {
         const { getDocs } = await import('firebase/firestore');
         const otherDocsSnap = await getDocs(colRef);
-        const toArchive = otherDocsSnap.docs.filter(d => {
+        const toDelete = otherDocsSnap.docs.filter(d => {
             if (d.id === submission.id) return false;
             const data = d.data();
             if (data.status !== 'changes_requested') return false;
             if (data.moduleId !== submission.moduleId) return false;
             if (submission.cadetEnrollmentId && data.cadetEnrollmentId === submission.cadetEnrollmentId) {
-                // If it was for the same cadet, same targetDocId, or related promotion
+                // If it was for the same cadet, same targetDocId, or same module action
                 if (submission.targetDocId && data.targetDocId === submission.targetDocId) return true;
                 if (data.payload?.cadetId && submission.payload?.cadetId && data.payload.cadetId === submission.payload.cadetId) return true;
                 if (data.payload?.enrollmentId && submission.payload?.enrollmentId && data.payload.enrollmentId === submission.payload.enrollmentId) return true;
@@ -338,17 +338,11 @@ export const approveDelegatedTask = async (submission, modifiedPayload = null, a
             return false;
         });
 
-        for (const oldDoc of toArchive) {
-            await updateDoc(doc(colRef, oldDoc.id), {
-                status: 'approved',
-                remarks: `Resolved via approval of latest submission (${submission.title})`,
-                reviewedBy: anoName,
-                reviewedAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
+        for (const oldDoc of toDelete) {
+            await deleteDoc(doc(colRef, oldDoc.id));
         }
     } catch (e) {
-        console.warn('Auto-resolving older submissions notice:', e);
+        console.warn('Auto-deleting older submissions notice:', e);
     }
 
     // 3. Send notification to the submitting cadet

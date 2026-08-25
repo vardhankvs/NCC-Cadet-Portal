@@ -1,6 +1,6 @@
 // src/components/delegation/CadetSubmissionsDrawer.jsx
 import React, { useState, useMemo } from 'react';
-import { X, Clock, AlertTriangle, CheckCircle, XCircle, Search, Edit2, Shield, Calendar, RefreshCcw, Trash2, Check, Sparkles } from '../Icons.jsx';
+import { X, Clock, AlertTriangle, CheckCircle, XCircle, Search, Edit2, Shield, Calendar, RefreshCcw, Check, Sparkles } from '../Icons.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
 import { deleteDelegatedTask, submitDelegatedTask } from '../../firebase/delegationWorkflowService.js';
 import { toast } from 'react-toastify';
@@ -19,8 +19,29 @@ export const CadetSubmissionsDrawer = ({
     const [editPayload, setEditPayload] = useState({});
     const [isSaving, setIsSaving] = useState(false);
 
-    const filteredSubmissions = useMemo(() => {
+    // Filter out superseded Changes Requested items if an Approved item exists for the same target/module
+    const activeSubmissions = useMemo(() => {
+        const approvedKeys = new Set(
+            submissions
+                .filter(s => s.status === 'approved')
+                .map(s => `${s.moduleId}_${s.targetDocId || s.payload?.cadetId || s.payload?.enrollmentId || s.cadetEnrollmentId}`)
+        );
+
         return submissions.filter((sub) => {
+            if (sub.status === 'changes_requested') {
+                const key = `${sub.moduleId}_${sub.targetDocId || sub.payload?.cadetId || sub.payload?.enrollmentId || sub.cadetEnrollmentId}`;
+                if (approvedKeys.has(key)) {
+                    // Auto-delete from Firestore in background
+                    deleteDelegatedTask(sub.id).catch(() => {});
+                    return false;
+                }
+            }
+            return true;
+        });
+    }, [submissions]);
+
+    const filteredSubmissions = useMemo(() => {
+        return activeSubmissions.filter((sub) => {
             const matchesStatus =
                 filterStatus === 'All' || sub.status === filterStatus;
             
@@ -32,7 +53,7 @@ export const CadetSubmissionsDrawer = ({
 
             return matchesStatus && matchesSearch;
         });
-    }, [submissions, filterStatus, searchQuery]);
+    }, [activeSubmissions, filterStatus, searchQuery]);
 
     const handleStartEdit = (sub) => {
         setEditingSub(sub);
@@ -79,17 +100,6 @@ export const CadetSubmissionsDrawer = ({
             toast.error(`Failed to resubmit: ${err.message}`);
         } finally {
             setIsSaving(false);
-        }
-    };
-
-    const handleDeleteSubmission = async (sub) => {
-        if (!window.confirm(`Are you sure you want to dismiss / remove "${sub.title}"?`)) return;
-        try {
-            await deleteDelegatedTask(sub.id);
-            toast.success("Submission removed.");
-        } catch (err) {
-            console.error("Delete submission error:", err);
-            toast.error("Failed to remove submission.");
         }
     };
 
@@ -217,7 +227,7 @@ export const CadetSubmissionsDrawer = ({
                                                 </h4>
                                             </div>
 
-                                            {/* Status Badge & Actions */}
+                                            {/* Status Badge */}
                                             <div className="flex items-center gap-1.5 shrink-0">
                                                 {isPending && (
                                                     <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30">
@@ -239,13 +249,6 @@ export const CadetSubmissionsDrawer = ({
                                                         <XCircle className="w-3.5 h-3.5" /> Rejected
                                                     </span>
                                                 )}
-                                                <button
-                                                    onClick={() => handleDeleteSubmission(sub)}
-                                                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-                                                    title="Dismiss or delete this submission"
-                                                >
-                                                    <Trash2 className="w-3.5 h-3.5" />
-                                                </button>
                                             </div>
                                         </div>
 
