@@ -395,19 +395,17 @@ export const useDelegatedSubmissions = (institutionId, cadetEnrollmentId = null)
             // Cadet-specific queries (shows their own submissions)
             q = query(
                 colRef,
-                where('cadetEnrollmentId', '==', cadetEnrollmentId),
-                orderBy('updatedAt', 'desc')
+                where('cadetEnrollmentId', '==', cadetEnrollmentId)
             );
         } else if (institutionId && institutionId !== '14a-bn-srikakulam') {
             // Institution ANO queries
             q = query(
                 colRef,
-                where('institutionId', '==', institutionId),
-                orderBy('updatedAt', 'desc')
+                where('institutionId', '==', institutionId)
             );
         } else {
             // General query
-            q = query(colRef, orderBy('updatedAt', 'desc'));
+            q = colRef;
         }
 
         const unsubscribe = onSnapshot(
@@ -417,27 +415,18 @@ export const useDelegatedSubmissions = (institutionId, cadetEnrollmentId = null)
                     id: docSnap.id,
                     ...docSnap.data()
                 }));
+                // Client-side sort by updatedAt descending (avoids composite index requirement)
+                list.sort((a, b) => {
+                    const tA = a.updatedAt?.toMillis?.() || (a.updatedAt ? new Date(a.updatedAt).getTime() : 0);
+                    const tB = b.updatedAt?.toMillis?.() || (b.updatedAt ? new Date(b.updatedAt).getTime() : 0);
+                    return tB - tA;
+                });
                 setSubmissions(list);
                 setLoading(false);
             },
             (err) => {
-                console.warn('Subscription error for delegated submissions (falling back without sort):', err);
-                // Fallback in case composite index is still propagating
-                const fallbackQ = cadetEnrollmentId 
-                    ? query(colRef, where('cadetEnrollmentId', '==', cadetEnrollmentId))
-                    : (institutionId ? query(colRef, where('institutionId', '==', institutionId)) : colRef);
-
-                onSnapshot(fallbackQ, (snap) => {
-                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    // Client-side sort
-                    list.sort((a, b) => {
-                        const tA = a.updatedAt?.toMillis?.() || (a.updatedAt ? new Date(a.updatedAt).getTime() : 0);
-                        const tB = b.updatedAt?.toMillis?.() || (b.updatedAt ? new Date(b.updatedAt).getTime() : 0);
-                        return tB - tA;
-                    });
-                    setSubmissions(list);
-                    setLoading(false);
-                });
+                console.error('Subscription error for delegated submissions:', err);
+                setLoading(false);
             }
         );
 

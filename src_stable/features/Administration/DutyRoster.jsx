@@ -181,7 +181,7 @@ export const DutyRoster = ({ initialSubTab = null }) => {
                                     : 'text-gray-600 dark:text-white/70 hover:bg-gray-200 dark:hover:bg-white/10'
                             }`}
                         >
-                            <CheckSquare className="w-4 h-4 text-ncc-gold" />
+                            <CheckCircle className="w-4 h-4 text-ncc-gold" />
                             <span>2. Task Verifications</span>
                             {pendingCount > 0 && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-ncc-red text-white animate-pulse">
