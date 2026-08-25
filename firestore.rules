@@ -52,7 +52,7 @@ service cloud.firestore {
       allow update: if (request.auth != null && (
         (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'enrollmentId', 'delegatedModules'])) ||
         get(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid)).data.role == 'admin'
-      )) || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['otpCode', 'otpExpiresAt', 'biometricChallenge', 'biometricExpiresAt']);
+      )) || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['otpCode', 'otpExpiresAt', 'biometricChallenge', 'biometricExpiresAt', 'updatedAt', 'email']);
       allow delete: if false;
     }
 

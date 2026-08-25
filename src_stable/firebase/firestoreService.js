@@ -2773,12 +2773,13 @@ export const getAllSessions = async (limitCount = 50) => {
 // Using the users collection for OTP / Biometric session storage because security rules
 // allow user writes to their own user profile document.
 
-export const generateUserOTP = async (userUid, email) => {
+export const generateUserOTP = async (userUid, email, targetDb = null) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
 
     try {
-        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', userUid);
+        const firestoreInstance = targetDb || db;
+        const userRef = doc(firestoreInstance, 'artifacts', appId, 'public', 'data', 'users', userUid);
         await setDoc(userRef, {
             email: email,
             otpCode: otp,
@@ -2792,9 +2793,10 @@ export const generateUserOTP = async (userUid, email) => {
     }
 };
 
-export const verifyUserOTP = async (userUid, inputOtp) => {
+export const verifyUserOTP = async (userUid, inputOtp, targetDb = null) => {
     try {
-        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', userUid);
+        const firestoreInstance = targetDb || db;
+        const userRef = doc(firestoreInstance, 'artifacts', appId, 'public', 'data', 'users', userUid);
         const snap = await getDoc(userRef);
 
         if (!snap.exists()) throw new Error("Invalid login session.");

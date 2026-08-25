@@ -18,6 +18,7 @@ import {
     getDoc,
     addDoc,
     serverTimestamp,
+    getFirestore,
 } from 'firebase/firestore';
 import { generateUserOTP, generateAnoBiometricSession } from './firestoreService.js';
 import emailjs from '@emailjs/browser';
@@ -25,11 +26,11 @@ import emailjs from '@emailjs/browser';
 const getUsersRef = () =>
     collection(db, 'artifacts', appId, 'public', 'data', 'users');
 
-// Isolated Auth instance for Step 1 credential validation so main onAuthStateChanged does not fire prematurely
+// Isolated Auth & Firestore instance for Step 1 credential validation
 const getTempAuth = () => {
     const tempAppName = 'tempAuth2FAApp';
     const app = getApps().find(a => a.name === tempAppName) || initializeApp(firebaseConfig, tempAppName);
-    return getAuth(app);
+    return { auth: getAuth(app), db: getFirestore(app) };
 };
 
 /**
@@ -43,7 +44,7 @@ export const loginUserWithOTP = async (emailOrEnrollId, password, activeTab) => 
     let authEmail = emailOrEnrollId ? emailOrEnrollId.trim() : '';
     let targetOtpEmail = authEmail;
     let uid = null;
-    const tempAuth = getTempAuth();
+    const { auth: tempAuth, db: tempDb } = getTempAuth();
 
     if (activeTab === 'cadet') {
         if (!emailOrEnrollId) throw new Error('Regimental / Enrollment ID is required for Cadet login.');
@@ -103,8 +104,8 @@ export const loginUserWithOTP = async (emailOrEnrollId, password, activeTab) => 
         targetOtpEmail = authEmail.trim().toLowerCase();
     }
 
-    // Generate & store OTP in Firestore
-    const otp = await generateUserOTP(uid, targetOtpEmail);
+    // Generate & store OTP in Firestore using authenticated tempDb
+    const otp = await generateUserOTP(uid, targetOtpEmail, tempDb);
 
     // Dispatch OTP via EmailJS
     try {
