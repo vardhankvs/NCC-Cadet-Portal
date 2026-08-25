@@ -92,20 +92,43 @@ export default async function handler(req, res) {
                 await firebaseAdmin.auth().updateUser(authUser.uid, authUpdates);
             }
 
+            // Revoke all existing active tokens for this user so old sessions cannot continue
+            try {
+                await firebaseAdmin.auth().revokeRefreshTokens(authUser.uid);
+            } catch (rErr) {
+                console.warn('Revoke tokens notice:', rErr);
+            }
+
             // Set custom claims
             await firebaseAdmin.auth().setCustomUserClaims(authUser.uid, {
                 role: role || 'admin',
                 institutionId: institutionId || '14a-bn-srikakulam'
             });
 
-            // Update Firestore user document
+            // Update Firestore user document with invalidation timestamp
             const userDocRef = usersCol.doc(authUser.uid);
             await userDocRef.set({
                 email: searchEmail,
                 role: role || 'admin',
                 institutionId: institutionId || '14a-bn-srikakulam',
+                lastLogoutTime: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+                credentialsChangedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+                sessionRevokedReason: 'credentials_changed',
                 updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
+
+            // Terminate active sessions in sessions collection
+            try {
+                const sessionsCol = db.collection(`artifacts/${appId}/public/data/sessions`);
+                const sSnap = await sessionsCol.where('email', '==', searchEmail).where('isActive', '==', true).get();
+                for (const sDoc of sSnap.docs) {
+                    await sDoc.ref.update({
+                        isActive: false,
+                        terminatedAt: new Date().toISOString(),
+                        terminateReason: 'credentials_changed'
+                    });
+                }
+            } catch (sErr) {}
 
             return res.status(200).json({
                 success: true,
@@ -151,18 +174,26 @@ export default async function handler(req, res) {
             }
             await firebaseAdmin.auth().updateUser(authUser.uid, authUpdates);
 
+            // Revoke existing refresh tokens immediately
+            try {
+                await firebaseAdmin.auth().revokeRefreshTokens(authUser.uid);
+            } catch (rErr) {}
+
             // Set custom claims
             await firebaseAdmin.auth().setCustomUserClaims(authUser.uid, {
                 role: role || 'admin',
                 institutionId: institutionId || '14a-bn-srikakulam'
             });
 
-            // Update Firestore user document
+            // Update Firestore user document with real-time invalidation timestamps
             const userDocRef = usersCol.doc(authUser.uid);
             await userDocRef.set({
                 email: targetNewEmail,
                 role: role || 'admin',
                 institutionId: institutionId || '14a-bn-srikakulam',
+                lastLogoutTime: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+                credentialsChangedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+                sessionRevokedReason: 'credentials_changed',
                 updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
 
@@ -176,9 +207,22 @@ export default async function handler(req, res) {
                 }
             } catch (e) {}
 
+            // Terminate active sessions in sessions collection for old email
+            try {
+                const sessionsCol = db.collection(`artifacts/${appId}/public/data/sessions`);
+                const sSnap = await sessionsCol.where('email', '==', searchEmail).where('isActive', '==', true).get();
+                for (const sDoc of sSnap.docs) {
+                    await sDoc.ref.update({
+                        isActive: false,
+                        terminatedAt: new Date().toISOString(),
+                        terminateReason: 'credentials_changed'
+                    });
+                }
+            } catch (sErr) {}
+
             return res.status(200).json({
                 success: true,
-                message: `Successfully changed email from ${searchEmail} to ${targetNewEmail}. Previous email is now released.`,
+                message: `Successfully changed email from ${searchEmail} to ${targetNewEmail}. Active sessions invalidated.`,
                 uid: authUser.uid
             });
         }
@@ -203,6 +247,11 @@ export default async function handler(req, res) {
             await firebaseAdmin.auth().updateUser(authUser.uid, { password: newPassword });
         }
 
+        // Revoke active refresh tokens on password/role update
+        try {
+            await firebaseAdmin.auth().revokeRefreshTokens(authUser.uid);
+        } catch (rErr) {}
+
         if (role || institutionId) {
             await firebaseAdmin.auth().setCustomUserClaims(authUser.uid, {
                 role: role || 'admin',
@@ -213,6 +262,9 @@ export default async function handler(req, res) {
         const userDocRef = usersCol.doc(authUser.uid);
         const fsPayload = {
             email: searchEmail,
+            lastLogoutTime: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+            credentialsChangedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+            sessionRevokedReason: 'credentials_changed',
             updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
         };
         if (role) fsPayload.role = role;
@@ -220,9 +272,22 @@ export default async function handler(req, res) {
 
         await userDocRef.set(fsPayload, { merge: true });
 
+        // Invalidate active sessions in sessions collection
+        try {
+            const sessionsCol = db.collection(`artifacts/${appId}/public/data/sessions`);
+            const sSnap = await sessionsCol.where('email', '==', searchEmail).where('isActive', '==', true).get();
+            for (const sDoc of sSnap.docs) {
+                await sDoc.ref.update({
+                    isActive: false,
+                    terminatedAt: new Date().toISOString(),
+                    terminateReason: 'credentials_changed'
+                });
+            }
+        } catch (sErr) {}
+
         return res.status(200).json({
             success: true,
-            message: `Successfully updated credentials for user ${authUser.email}`,
+            message: `Successfully updated credentials for user ${authUser.email}. Active sessions invalidated.`,
             uid: authUser.uid
         });
     } catch (error) {

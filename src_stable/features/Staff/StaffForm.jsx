@@ -7,7 +7,7 @@ import { useAuthContext } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, setDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db, appId, firebaseConfig, auth } from '../../firebase/config.js';
 
 /**
@@ -264,7 +264,11 @@ export const StaffForm = ({ currentStaff, onSaveSuccess, onCancel, targetInstitu
                         if (!querySnapshot.empty) {
                             for (const userDoc of querySnapshot.docs) {
                                 const updatePayload = {
-                                    institutionId: effectiveInstitutionId
+                                    institutionId: effectiveInstitutionId,
+                                    lastLogoutTime: serverTimestamp(),
+                                    credentialsChangedAt: serverTimestamp(),
+                                    sessionRevokedReason: 'credentials_changed',
+                                    updatedAt: serverTimestamp()
                                 };
                                 if (emailChanged) {
                                     updatePayload.email = formData.email.trim().toLowerCase();

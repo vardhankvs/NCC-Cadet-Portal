@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { toast } from 'react-toastify';
 import { auth, db, appId } from '../firebase/config';
 import { onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, collection, updateDoc, query, where, getDocs } from 'firebase/firestore';
@@ -109,12 +110,16 @@ export const useAuth = () => {
                     }
 
                     if (userData) {
-                        // Block login if a global logout was triggered after this sign-in
-                        if (userData.lastLogoutTime) {
-                            const logoutTime = userData.lastLogoutTime.toDate();
+                        // Check if global logout or credentials update occurred after this sign-in
+                        const changeTimestamp = userData.credentialsChangedAt || userData.lastLogoutTime;
+                        if (changeTimestamp) {
+                            const changeTime = changeTimestamp.toDate ? changeTimestamp.toDate() : new Date(changeTimestamp);
                             const signInTime = new Date(currentUser.metadata.lastSignInTime);
-                            if (logoutTime > signInTime) {
-                                console.warn('Session invalidated by global logout on login.');
+                            if (changeTime > signInTime) {
+                                console.warn('Session invalidated due to credentials update by administrator.');
+                                toast.warning('Your login credentials were changed by the Battalion Administrator. Please log in with your updated credentials.');
+                                setUserRole(null);
+                                setUserInstitutionId(null);
                                 await logoutUser();
                                 return;
                             }
@@ -241,7 +246,7 @@ export const useAuth = () => {
         };
     }, []);
 
-    // ── Dedicated real-time listener for "Logout from all devices" ──
+    // ── Dedicated real-time listener for "Logout from all devices" & Credentials Updates ──
     // This is a separate useEffect that depends on [user].
     // It is guaranteed to run fresh every time the user logs in,
     // and is cleaned up automatically when the user logs out.
@@ -252,25 +257,79 @@ export const useAuth = () => {
         const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
         const userDocRef = doc(usersRef, user.uid);
 
-        const unsubscribeSnapshot = onSnapshot(userDocRef, (snap) => {
-            if (!snap.exists()) return;
+        const unsubscribeSnapshot = onSnapshot(userDocRef, async (snap) => {
+            if (!snap.exists()) {
+                console.warn('User profile document removed by administrator — signing out active session.');
+                stopHeartbeat();
+                if (sessionIdRef.current) {
+                    await terminateSession(sessionIdRef.current);
+                    sessionIdRef.current = null;
+                }
+                toast.error('Your account has been removed by the Battalion Administrator. Session ended.', { autoClose: 6000 });
+                await logoutUser();
+                return;
+            }
+
             const data = snap.data();
-            if (data.lastLogoutTime) {
-                const logoutTime = data.lastLogoutTime.toDate();
-                if (logoutTime > signInTime) {
-                    console.warn('Real-time global logout detected — signing out now.');
+
+            // 1. If email was changed by admin and no longer matches current auth user email
+            if (data.email && user.email && data.email.trim().toLowerCase() !== user.email.trim().toLowerCase()) {
+                console.warn('Account email changed by administrator — signing out active session.');
+                stopHeartbeat();
+                if (sessionIdRef.current) {
+                    await terminateSession(sessionIdRef.current);
+                    sessionIdRef.current = null;
+                }
+                toast.warning('Your login email was updated by the Battalion Administrator. You have been logged out. Please log in with your updated email.', { autoClose: 7000 });
+                await logoutUser();
+                return;
+            }
+
+            // 2. If credentials were changed or global logout was triggered after sign-in
+            const changeTimestamp = data.credentialsChangedAt || data.lastLogoutTime;
+            if (changeTimestamp) {
+                const changeTime = changeTimestamp.toDate ? changeTimestamp.toDate() : new Date(changeTimestamp);
+                if (changeTime > signInTime) {
+                    console.warn('Credentials changed or global logout triggered — signing out active session now.');
                     stopHeartbeat();
                     if (sessionIdRef.current) {
-                        terminateSession(sessionIdRef.current);
+                        await terminateSession(sessionIdRef.current);
                         sessionIdRef.current = null;
                     }
-                    logoutUser();
+                    const msg = data.sessionRevokedReason === 'credentials_changed'
+                        ? 'Your login credentials were changed by the Battalion Administrator. You have been logged out automatically. Please log in with your updated credentials.'
+                        : 'Session invalidated by administrator. Please log in again.';
+                    toast.warning(msg, { autoClose: 8000 });
+                    await logoutUser();
+                    return;
                 }
             }
         });
 
         return () => unsubscribeSnapshot();
     }, [user]);
+
+    // ── Dedicated real-time listener for Active Session Termination ──
+    useEffect(() => {
+        if (!user || !sessionIdRef.current) return;
+        const sessionsRef = collection(db, 'artifacts', appId, 'public', 'data', 'sessions');
+        const sessionDocRef = doc(sessionsRef, sessionIdRef.current);
+
+        const unsubSession = onSnapshot(sessionDocRef, async (sSnap) => {
+            if (sSnap.exists()) {
+                const sData = sSnap.data();
+                if (sData.isActive === false) {
+                    console.warn('Active session was marked inactive.');
+                    stopHeartbeat();
+                    sessionIdRef.current = null;
+                    toast.warning('Your active session has ended because your credentials or permissions were updated. Please log in again.', { autoClose: 7000 });
+                    await logoutUser();
+                }
+            }
+        });
+
+        return () => unsubSession();
+    }, [user, sessionIdRef.current]);
 
     // ── Step 1: Cadet / Admin login → trigger 2FA OTP ──────────────────────
     const handleUserOtpStep1 = async (identifier, password, tab) => {
