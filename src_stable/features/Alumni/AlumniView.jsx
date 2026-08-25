@@ -9,8 +9,26 @@ import { toast } from 'react-toastify';
 import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
 
 export const AlumniView = () => {
-    const { cadets, loading, alumni } = useDataContext();
-    const { userRole, userProfile } = useAuthContext();
+    const { cadets, loading, alumni, staff } = useDataContext();
+    const { userRole, userProfile: authProfile, userEnrollmentId, userName, user } = useAuthContext();
+
+    const userProfile = useMemo(() => {
+        if (userRole === 'cadet') {
+            const found = cadets.find(c => (c.enrollmentId || '').toLowerCase() === (userEnrollmentId || '').toLowerCase() || c.id === user?.uid);
+            if (found) return found;
+        }
+        const staffFound = staff?.find(s => (s.staffId || '').toLowerCase() === (userEnrollmentId || '').toLowerCase() || (s.email || '').toLowerCase() === (user?.email || '').toLowerCase());
+        if (staffFound) return staffFound;
+
+        return authProfile || {
+            id: user?.uid || 'user_unknown',
+            name: userName || user?.displayName || user?.email || (userRole === 'admin' ? 'ANO / Admin' : 'User'),
+            enrollmentId: userEnrollmentId || 'N/A',
+            phonePersonal: user?.phoneNumber || '',
+            phone: user?.phoneNumber || '',
+            personalEmail: user?.email || ''
+        };
+    }, [cadets, staff, userRole, userEnrollmentId, userName, user, authProfile]);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterYear, setFilterYear] = useState('All');
     const [showTransitionTool, setShowTransitionTool] = useState(false);
@@ -20,6 +38,8 @@ export const AlumniView = () => {
     const [careerNotices, setCareerNotices] = useState([]);
     const [showMentorshipModal, setShowMentorshipModal] = useState(false);
     const [mentorshipStep, setMentorshipStep] = useState(1); // 1: Info, 2: Success
+    const [selectedMentorInModal, setSelectedMentorInModal] = useState(null);
+    const [mentorshipTopic, setMentorshipTopic] = useState('');
     const [hallOfFameModal, setHallOfFameModal] = useState(null);
     const [mentorshipRequests, setMentorshipRequests] = useState([]);
 
@@ -49,6 +69,7 @@ export const AlumniView = () => {
     });
 
     const hallOfFameAlumni = useMemo(() => alumni.filter(c => c.isHallOfFame), [alumni]);
+    const appointedMentors = useMemo(() => alumni.filter(c => c.isMentor), [alumni]);
 
     const years = useMemo(() => {
         const y = new Set(alumni.map(a => a.year).filter(Boolean));
@@ -196,7 +217,7 @@ export const AlumniView = () => {
                                 activeTab === 'mentorshipRequests' ? 'border-b-2 border-ncc-gold text-ncc-gold' : 'text-gray-400 dark:text-white/60 hover:text-ncc-navy dark:hover:text-white'
                             }`}
                         >
-                            <Users className="w-4 h-4" /> Mentorship Requests
+                            <Users className="w-4 h-4" /> Mentorship Requests {appointedMentors.length > 0 && <span className="bg-ncc-gold text-ncc-navy text-[10px] px-2 py-0.5 rounded-full font-extrabold ml-1">{appointedMentors.length}</span>}
                         </button>
                     )}
                 </div>
@@ -397,10 +418,19 @@ export const AlumniView = () => {
                                                 </a>
                                             )}
                                         </div>
-                                        <div className="flex gap-2">
-                                            <button className="text-[10px] font-black text-ncc-gold uppercase tracking-widest hover:underline">
-                                                View Profile
-                                            </button>
+                                        <div className="flex flex-wrap gap-2 items-center">
+                                            {alumnus.isMentor && (
+                                                <button 
+                                                    onClick={() => {
+                                                        setSelectedMentorInModal(alumnus);
+                                                        setShowMentorshipModal(true);
+                                                        setMentorshipStep(1);
+                                                    }}
+                                                    className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest hover:underline"
+                                                >
+                                                    Request Guidance
+                                                </button>
+                                            )}
                                             {userRole === 'admin' && (
                                                 <>
                                                     <button 
@@ -475,36 +505,112 @@ export const AlumniView = () => {
                     )}
                 </div>
             ) : activeTab === 'mentorshipRequests' && userRole === 'admin' ? (
-                <div className="space-y-4">
-                    {mentorshipRequests.length === 0 ? (
-                        <div className="py-20 text-center text-gray-400 dark:text-white/80 italic bg-white dark:bg-[#050b14] rounded-3xl border-2 border-dashed border-[#ddd8cc]">
-                            No pending mentorship requests.
-                        </div>
-                    ) : (
-                        mentorshipRequests.map(req => (
-                            <div key={req.id} className="bg-white dark:bg-[#050b14] p-6 rounded-2xl border border-[#ddd8cc] shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                                <div>
-                                    <h4 className="font-bold text-ncc-navy dark:text-white">{req.cadetName}</h4>
-                                    <p className="text-xs text-gray-500 font-mono mb-2">{req.enrollmentId}</p>
-                                    <p className="text-sm text-gray-600 dark:text-white/80">Contact: {req.contactInfo}</p>
-                                    <span className={`inline-block mt-2 px-2 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg ${req.status === 'pending' ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                                        Status: {req.status}
-                                    </span>
-                                </div>
-                                {req.status === 'pending' && (
-                                    <button 
-                                        onClick={() => {
-                                            updateMentorshipStatus(req.id, 'assigned');
-                                            toast.success("Marked as Assigned");
-                                        }}
-                                        className="ncc-btn ncc-btn-primary text-xs px-4 py-2"
-                                    >
-                                        Mark Assigned
-                                    </button>
-                                )}
+                <div className="space-y-8">
+                    {/* Appointed Alumni Mentors Section */}
+                    <div className="bg-white dark:bg-[#050b14] p-6 rounded-2xl border border-[#ddd8cc] dark:border-white/10 shadow-sm space-y-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-gray-100 dark:border-white/5 pb-4">
+                            <div>
+                                <h3 className="text-lg font-display font-bold text-ncc-navy dark:text-white flex items-center gap-2">
+                                    <GraduationCap className="w-5 h-5 text-ncc-gold" /> Appointed Alumni Mentors ({appointedMentors.length})
+                                </h3>
+                                <p className="text-xs text-gray-500 dark:text-white/60">Alumni ex-cadets appointed as mentors for cadet career & SSB guidance.</p>
                             </div>
-                        ))
-                    )}
+                        </div>
+
+                        {appointedMentors.length === 0 ? (
+                            <div className="py-12 text-center text-gray-400 dark:text-white/60 italic bg-gray-50 dark:bg-[#0a1628] rounded-2xl border-2 border-dashed border-[#ddd8cc] dark:border-white/10">
+                                No alumni mentors appointed yet. Click "Make Mentor" on any alumnus card in the Directory tab to add them here.
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {appointedMentors.map(mentor => (
+                                    <div key={mentor.id} className="p-4 rounded-2xl border border-ncc-gold/30 bg-ncc-gold/5 dark:bg-ncc-gold/5 flex flex-col justify-between space-y-4">
+                                        <div className="flex items-start gap-3">
+                                            <div className="w-12 h-12 bg-ncc-navy text-ncc-gold rounded-xl flex items-center justify-center font-bold text-base border border-ncc-gold/40 shadow-sm flex-shrink-0">
+                                                {mentor.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <h4 className="font-bold text-ncc-navy dark:text-white text-sm truncate">{mentor.name}</h4>
+                                                <p className="text-[10px] text-gray-400 dark:text-white/70 font-mono italic mb-1.5">{mentor.enrollmentId}</p>
+                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-ncc-navy/10 dark:bg-white/10 text-ncc-navy dark:text-white text-[9px] font-black tracking-widest uppercase">
+                                                        {mentor.rank || 'CDT'} • BATCH {mentor.year || 'N/A'}
+                                                    </span>
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-ncc-gold text-ncc-navy text-[9px] font-black tracking-widest uppercase shadow-xs">
+                                                        Mentor
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="pt-3 border-t border-ncc-gold/20 flex justify-between items-center">
+                                            <div className="flex gap-1.5">
+                                                {mentor.personalEmail && (
+                                                    <a href={`mailto:${mentor.personalEmail}`} className="p-1.5 bg-white dark:bg-[#0a1628] rounded-lg text-ncc-navy dark:text-white hover:bg-ncc-navy hover:text-white transition-all">
+                                                        <Mail className="w-3.5 h-3.5" />
+                                                    </a>
+                                                )}
+                                                {mentor.phonePersonal && (
+                                                    <a href={`tel:${mentor.phonePersonal}`} className="p-1.5 bg-white dark:bg-[#0a1628] rounded-lg text-ncc-navy dark:text-white hover:bg-ncc-navy hover:text-white transition-all">
+                                                        <Phone className="w-3.5 h-3.5" />
+                                                    </a>
+                                                )}
+                                            </div>
+                                            <button 
+                                                onClick={() => handleToggleMentor(mentor.id, true)}
+                                                className="text-[10px] font-black text-red-500 hover:text-red-700 uppercase tracking-widest hover:underline"
+                                            >
+                                                Remove Mentor
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Cadet Mentorship Requests Section */}
+                    <div className="bg-white dark:bg-[#050b14] p-6 rounded-2xl border border-[#ddd8cc] dark:border-white/10 shadow-sm space-y-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-gray-100 dark:border-white/5 pb-4">
+                            <div>
+                                <h3 className="text-lg font-display font-bold text-ncc-navy dark:text-white flex items-center gap-2">
+                                    <Users className="w-5 h-5 text-ncc-gold" /> Cadet Mentorship Requests ({mentorshipRequests.length})
+                                </h3>
+                                <p className="text-xs text-gray-500 dark:text-white/60">Incoming requests for guidance submitted by active cadets.</p>
+                            </div>
+                        </div>
+
+                        {mentorshipRequests.length === 0 ? (
+                            <div className="py-12 text-center text-gray-400 dark:text-white/60 italic bg-gray-50 dark:bg-[#0a1628] rounded-2xl border-2 border-dashed border-[#ddd8cc] dark:border-white/10">
+                                No pending mentorship requests.
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {mentorshipRequests.map(req => (
+                                    <div key={req.id} className="bg-gray-50 dark:bg-[#0a1628] p-5 rounded-xl border border-gray-100 dark:border-white/5 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                        <div>
+                                            <h4 className="font-bold text-ncc-navy dark:text-white text-base">{req.cadetName}</h4>
+                                            <p className="text-xs text-gray-500 font-mono mb-1">{req.enrollmentId}</p>
+                                            <p className="text-xs text-gray-600 dark:text-white/80">Contact Info: <span className="font-semibold text-ncc-navy dark:text-white">{req.contactInfo}</span></p>
+                                            <span className={`inline-block mt-2 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest rounded-full ${req.status === 'pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'}`}>
+                                                Status: {req.status}
+                                            </span>
+                                        </div>
+                                        {req.status === 'pending' && (
+                                            <button 
+                                                onClick={() => {
+                                                    updateMentorshipStatus(req.id, 'assigned');
+                                                    toast.success("Marked as Assigned");
+                                                }}
+                                                className="ncc-btn ncc-btn-primary text-xs px-4 py-2"
+                                            >
+                                                Mark Assigned
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             ) : null}
             {hallOfFameModal && (
@@ -569,32 +675,83 @@ export const AlumniView = () => {
 
             {showMentorshipModal && (
                 <ModalOverlay>
-                    <div className="bg-white dark:bg-[#050b14] p-8 rounded-3xl max-w-md w-full shadow-2xl animate-in zoom-in-95">
+                    <div className="bg-white dark:bg-[#050b14] p-8 rounded-3xl max-w-md w-full shadow-2xl animate-in zoom-in-95 border border-[#ddd8cc] dark:border-white/10">
                         {mentorshipStep === 1 ? (
                             <>
-                                <div className="w-16 h-16 bg-ncc-navy/5 rounded-2xl flex items-center justify-center mb-6">
-                                    <Users className="w-8 h-8 text-ncc-navy dark:text-white" />
+                                <div className="w-14 h-14 bg-ncc-gold/10 text-ncc-gold rounded-2xl flex items-center justify-center mb-4">
+                                    <Users className="w-7 h-7" />
                                 </div>
-                                <h3 className="text-2xl font-display font-bold text-ncc-navy dark:text-white mb-2">Request Mentorship</h3>
-                                <p className="text-sm text-gray-500 dark:text-white/70 mb-6 leading-relaxed">
-                                    Our alumni network provides one-on-one guidance for SSB, technical entries, and corporate careers.
+                                <h3 className="text-2xl font-display font-bold text-ncc-navy dark:text-white mb-1">Request Mentorship</h3>
+                                <p className="text-xs text-gray-500 dark:text-white/70 mb-6">
+                                    Connect with an ex-cadet mentor for SSB interview guidance, career coaching, or technical advice.
                                 </p>
-                                <div className="space-y-4 mb-8">
-                                    <div className="p-4 bg-gray-50 dark:bg-[#0a1628] rounded-xl border border-gray-100 dark:border-white/5">
-                                        <p className="text-[10px] font-black text-ncc-navy dark:text-white uppercase tracking-widest mb-1">How it works</p>
-                                        <p className="text-xs text-gray-600 dark:text-white/80">We will match you with a senior based on your career interests and share your contact details with them.</p>
+                                <div className="space-y-4 mb-6 text-left">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-ncc-navy dark:text-white uppercase tracking-widest mb-1">Select Mentor</label>
+                                        <select 
+                                            className="ncc-input text-xs"
+                                            value={selectedMentorInModal?.id || ''}
+                                            onChange={e => {
+                                                const m = appointedMentors.find(a => a.id === e.target.value);
+                                                setSelectedMentorInModal(m || null);
+                                            }}
+                                        >
+                                            <option value="">Any Available Mentor (Auto-Match)</option>
+                                            {appointedMentors.map(m => (
+                                                <option key={m.id} value={m.id}>
+                                                    {m.name} ({m.rank || 'CDT'} - Batch {m.year || 'N/A'})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-ncc-navy dark:text-white uppercase tracking-widest mb-1">Guidance Topic / Note</label>
+                                        <textarea 
+                                            placeholder="e.g. Seeking guidance for SSB interview preparation and physical fitness tips..." 
+                                            className="ncc-input text-xs min-h-[70px]"
+                                            value={mentorshipTopic}
+                                            onChange={e => setMentorshipTopic(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="p-3 bg-gray-50 dark:bg-[#0a1628] rounded-xl border border-gray-100 dark:border-white/5 text-xs text-gray-600 dark:text-white/80">
+                                        <p className="font-bold text-ncc-navy dark:text-white text-[10px] uppercase tracking-widest mb-0.5">How it works</p>
+                                        <p className="text-[11px] leading-relaxed">Your contact info will be sent directly to {selectedMentorInModal ? <strong>{selectedMentorInModal.name}</strong> : 'the appointed mentors'} and unit command.</p>
                                     </div>
                                 </div>
                                 <div className="flex gap-3">
-                                    <button onClick={() => setShowMentorshipModal(false)} className="flex-1 px-6 py-3 text-xs font-black text-gray-400 dark:text-white/80 uppercase tracking-widest">Cancel</button>
+                                    <button 
+                                        onClick={() => { setShowMentorshipModal(false); setSelectedMentorInModal(null); setMentorshipTopic(''); }} 
+                                        className="flex-1 px-4 py-3 text-xs font-black text-gray-400 dark:text-white/80 uppercase tracking-widest"
+                                    >
+                                        Cancel
+                                    </button>
                                     <button 
                                         onClick={async () => {
                                             try {
-                                                await submitMentorshipRequest(userProfile.id, userProfile.name, userProfile.enrollmentId, userProfile.phonePersonal || userProfile.phone || userProfile.personalEmail);
+                                                const cadetId = userProfile?.id || user?.uid || 'unknown';
+                                                const name = userProfile?.name || userName || user?.displayName || user?.email || 'User';
+                                                const enrollId = userProfile?.enrollmentId || userProfile?.staffId || userEnrollmentId || 'N/A';
+                                                const contact = userProfile?.phonePersonal || userProfile?.phone || userProfile?.personalEmail || userProfile?.email || user?.email || 'No contact provided';
+
+                                                const targetMentor = selectedMentorInModal;
+                                                const targetMentorId = targetMentor?.id || null;
+                                                const targetMentorName = targetMentor?.name || 'Any Available Mentor';
+                                                const targetMentorEmail = targetMentor?.personalEmail || targetMentor?.email || null;
+
+                                                await submitMentorshipRequest(
+                                                    cadetId,
+                                                    name,
+                                                    enrollId,
+                                                    contact,
+                                                    mentorshipTopic,
+                                                    targetMentorId,
+                                                    targetMentorName,
+                                                    targetMentorEmail
+                                                );
                                                 setMentorshipStep(2);
                                             } catch (err) {
-                                                toast.error("Failed to submit request.");
-                                                console.error(err);
+                                                toast.error("Failed to submit request: " + (err.message || err));
+                                                console.error("Mentorship submission error:", err);
                                             }
                                         }}
                                         className="flex-1 ncc-btn ncc-btn-primary py-3"
@@ -605,15 +762,15 @@ export const AlumniView = () => {
                             </>
                         ) : (
                             <div className="text-center py-6">
-                                <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mb-6 mx-auto">
+                                <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-500/10 rounded-full flex items-center justify-center mb-6 mx-auto">
                                     <ShieldCheck className="w-8 h-8 text-emerald-500" />
                                 </div>
                                 <h3 className="text-2xl font-display font-bold text-ncc-navy dark:text-white mb-2">Request Sent!</h3>
-                                <p className="text-sm text-gray-500 dark:text-white/70 mb-8 px-4">
-                                    Jai Hind! Your request has been logged. An alumni mentor will reach out to you within 3-5 working days.
+                                <p className="text-sm text-gray-500 dark:text-white/70 mb-8 px-2 leading-relaxed">
+                                    Jai Hind! Your request has been sent to {selectedMentorInModal ? <strong>{selectedMentorInModal.name}</strong> : 'unit mentors'}. They will reach out to you directly within 3-5 working days.
                                 </p>
                                 <button 
-                                    onClick={() => { setShowMentorshipModal(false); setMentorshipStep(1); }}
+                                    onClick={() => { setShowMentorshipModal(false); setMentorshipStep(1); setSelectedMentorInModal(null); setMentorshipTopic(''); }}
                                     className="ncc-btn ncc-btn-navy w-full"
                                 >
                                     Understood

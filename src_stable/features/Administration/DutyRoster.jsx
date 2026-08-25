@@ -12,14 +12,13 @@ const DELEGABLE_MODULES = [
     { id: 'rank_mgmt', name: 'Ranks', category: 'Administration' },
     { id: 'discipline', name: 'Discipline', category: 'Administration' },
     { id: 'kit_mgmt', name: 'Kit', category: 'Logistics' },
+    { id: 'summary', name: 'Attendance', category: 'Attendance' },
     { id: 'parade', name: 'Parade', category: 'Attendance' },
     { id: 'att_logs', name: 'Scan Logs', category: 'Attendance' },
     { id: 'leave_requests', name: 'Leave Requests', category: 'Attendance' },
     { id: 'training_calendar', name: 'Calendar', category: 'Training' },
-    { id: 'exams', name: 'Exams', category: 'Training' },
     { id: 'camps', name: 'Camps', category: 'Training' },
     { id: 'library', name: 'Library', category: 'Training' },
-    { id: 'notifications', name: 'Broadcast', category: 'Engagement' },
     { id: 'announcements', name: 'Notice Board', category: 'Engagement' },
     { id: 'events', name: 'Events', category: 'Engagement' },
     { id: 'social', name: 'Social', category: 'Engagement' },
@@ -37,6 +36,7 @@ export const DutyRoster = () => {
     const [selectedCadet, setSelectedCadet] = useState(null);
     const [activeDelegations, setActiveDelegations] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
+    const [mobileTab, setMobileTab] = useState('cadets'); // 'cadets' | 'delegations'
 
     // Filter senior cadets (usually C and B certs, but we'll show all for flexibility)
     const filteredCadets = useMemo(() => {
@@ -75,6 +75,7 @@ export const DutyRoster = () => {
     const handleSelectCadet = (cadet) => {
         setSelectedCadet(cadet);
         setActiveDelegations(cadet.delegatedModules || []);
+        setMobileTab('delegations');
     };
 
     const toggleModule = (moduleId) => {
@@ -135,20 +136,20 @@ export const DutyRoster = () => {
     };
 
     return (
-        <div className="max-w-7xl mx-auto space-y-6 fade-in p-4 lg:p-0 h-[calc(100vh-100px)] flex flex-col">
+        <div className="w-full space-y-4 sm:space-y-6 fade-in p-3 sm:p-6 lg:p-8 min-h-[calc(100vh-140px)] lg:h-[calc(100vh-100px)] flex flex-col pb-24 lg:pb-8">
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
                 <div>
-                    <h2 className="text-2xl font-display font-black text-ncc-navy dark:text-white flex items-center gap-3">
-                        <Shield className="w-8 h-8 text-ncc-gold" />
+                    <h2 className="text-xl sm:text-2xl font-display font-black text-ncc-navy dark:text-white flex items-center gap-3">
+                        <Shield className="w-7 h-7 sm:w-8 sm:h-8 text-ncc-gold" />
                         Chain of Command
                     </h2>
-                    <p className="text-gray-500 dark:text-white/70 text-sm">Delegate administrative access to senior cadets.</p>
+                    <p className="text-gray-500 dark:text-white/70 text-xs sm:text-sm">Delegate administrative access to senior cadets.</p>
                 </div>
                 {selectedCadet && (
                     <button 
                         onClick={handleSave}
                         disabled={isSaving}
-                        className="bg-ncc-navy text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-ncc-navy-mid transition-all shadow-lg shadow-ncc-navy/20 disabled:opacity-50"
+                        className="hidden md:flex bg-ncc-navy text-white px-6 py-3 rounded-xl font-bold items-center gap-2 hover:bg-ncc-navy-mid transition-all shadow-lg shadow-ncc-navy/20 disabled:opacity-50"
                     >
                         <Save className="w-5 h-5" />
                         {isSaving ? 'Saving...' : 'Save Delegations'}
@@ -156,26 +157,52 @@ export const DutyRoster = () => {
                 )}
             </header>
 
+            {/* Mobile Segmented Tab Switcher */}
+            <div className="lg:hidden flex bg-gray-100 dark:bg-white/5 p-1 rounded-2xl border border-gray-200 dark:border-white/10 shrink-0">
+                <button
+                    onClick={() => setMobileTab('cadets')}
+                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                        mobileTab === 'cadets' 
+                            ? 'bg-ncc-navy text-white shadow-md' 
+                            : 'text-gray-600 dark:text-white/70 hover:bg-gray-200 dark:hover:bg-white/10'
+                    }`}
+                >
+                    <User className="w-4 h-4" />
+                    1. Select Cadet
+                </button>
+                <button
+                    onClick={() => setMobileTab('delegations')}
+                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                        mobileTab === 'delegations' 
+                            ? 'bg-ncc-navy text-white shadow-md' 
+                            : 'text-gray-600 dark:text-white/70 hover:bg-gray-200 dark:hover:bg-white/10'
+                    }`}
+                >
+                    <Shield className="w-4 h-4 text-ncc-gold" />
+                    2. Delegations {selectedCadet ? `(${selectedCadet.name.split(' ')[0]})` : ''}
+                </button>
+            </div>
+
             <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
                 
                 {/* Left Panel: Cadet Selection */}
-                <div className="lg:w-1/3 flex flex-col bg-white dark:bg-[#050b14] rounded-3xl border border-[#ddd8cc] dark:border-white/10 shadow-sm overflow-hidden">
-                    <div className="p-4 border-b border-[#ddd8cc] dark:border-white/10 shrink-0 space-y-3">
+                <div className={`w-full lg:w-80 xl:w-96 shrink-0 flex flex-col bg-white dark:bg-[#050b14] rounded-3xl border border-[#ddd8cc] dark:border-white/10 shadow-sm overflow-hidden ${mobileTab === 'cadets' ? 'flex h-[calc(100vh-280px)] lg:h-auto' : 'hidden lg:flex'}`}>
+                    <div className="p-3 sm:p-4 border-b border-[#ddd8cc] dark:border-white/10 shrink-0 space-y-3">
                         <div className="relative">
-                            <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <Search className="w-4 h-4 sm:w-5 sm:h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input 
                                 type="text" 
                                 placeholder="Search cadets..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full bg-gray-50 dark:bg-[#0a1628] border border-gray-200 dark:border-white/10 rounded-2xl py-3 pl-11 pr-4 focus:ring-2 focus:ring-ncc-navy outline-none dark:text-white text-sm"
+                                className="w-full bg-gray-50 dark:bg-[#0a1628] border border-gray-200 dark:border-white/10 rounded-2xl py-2.5 sm:py-3 pl-10 pr-4 focus:ring-2 focus:ring-ncc-navy outline-none dark:text-white text-xs sm:text-sm"
                             />
                         </div>
                         <div className="flex gap-2">
                             <select 
                                 value={filterCert}
                                 onChange={e => setFilterCert(e.target.value)}
-                                className="flex-1 bg-gray-50 dark:bg-[#0a1628] border border-gray-200 dark:border-white/10 rounded-xl py-2 px-3 text-xs font-bold text-ncc-navy dark:text-white focus:ring-2 focus:ring-ncc-navy outline-none"
+                                className="flex-1 bg-gray-50 dark:bg-[#0a1628] border border-gray-200 dark:border-white/10 rounded-xl py-2 px-2.5 text-xs font-bold text-ncc-navy dark:text-white focus:ring-2 focus:ring-ncc-navy outline-none"
                             >
                                 <option value="All">All Certs</option>
                                 <option value="C">C Cert</option>
@@ -185,7 +212,7 @@ export const DutyRoster = () => {
                             <select 
                                 value={filterDiv}
                                 onChange={e => setFilterDiv(e.target.value)}
-                                className="flex-1 bg-gray-50 dark:bg-[#0a1628] border border-gray-200 dark:border-white/10 rounded-xl py-2 px-3 text-xs font-bold text-ncc-navy dark:text-white focus:ring-2 focus:ring-ncc-navy outline-none"
+                                className="flex-1 bg-gray-50 dark:bg-[#0a1628] border border-gray-200 dark:border-white/10 rounded-xl py-2 px-2.5 text-xs font-bold text-ncc-navy dark:text-white focus:ring-2 focus:ring-ncc-navy outline-none"
                             >
                                 <option value="All">All Divs</option>
                                 <option value="SD">SD (Boys)</option>
@@ -203,25 +230,25 @@ export const DutyRoster = () => {
                                 <button
                                     key={cadet.enrollmentId}
                                     onClick={() => handleSelectCadet(cadet)}
-                                    className={`w-full text-left p-3 rounded-2xl flex items-center justify-between transition-all ${
+                                    className={`w-full text-left p-2.5 sm:p-3 rounded-2xl flex items-center justify-between transition-all ${
                                         isSelected 
-                                            ? 'bg-ncc-navy text-white' 
+                                            ? 'bg-ncc-navy text-white shadow-md' 
                                             : 'hover:bg-gray-50 dark:hover:bg-white/5 text-ncc-navy dark:text-white'
                                     }`}
                                 >
                                     <div className="flex items-center gap-3 min-w-0">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 ${isSelected ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-[#0a1628] text-ncc-navy dark:text-white'}`}>
-                                            <User className="w-5 h-5" />
+                                        <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold shrink-0 ${isSelected ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-[#0a1628] text-ncc-navy dark:text-white'}`}>
+                                            <User className="w-4 h-4 sm:w-5 sm:h-5" />
                                         </div>
                                         <div className="min-w-0">
-                                            <p className="font-bold truncate text-sm">{cadet.name}</p>
-                                            <p className={`text-xs truncate ${isSelected ? 'text-white/80' : 'text-gray-500 dark:text-white/60'}`}>
+                                            <p className="font-bold truncate text-xs sm:text-sm">{cadet.name}</p>
+                                            <p className={`text-[11px] truncate ${isSelected ? 'text-white/80' : 'text-gray-500 dark:text-white/60'}`}>
                                                 {cadet.enrollmentId} • {cadet.certificate} Cert
                                             </p>
                                         </div>
                                     </div>
                                     {delegatedCount > 0 && (
-                                        <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${isSelected ? 'bg-white text-ncc-navy' : 'bg-ncc-gold/20 text-ncc-gold'}`}>
+                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg ${isSelected ? 'bg-white text-ncc-navy' : 'bg-ncc-gold/20 text-ncc-gold'}`}>
                                             {delegatedCount}
                                         </span>
                                     )}
@@ -232,24 +259,32 @@ export const DutyRoster = () => {
                 </div>
 
                 {/* Right Panel: Delegations */}
-                <div className="lg:w-2/3 bg-white dark:bg-[#050b14] rounded-3xl border border-[#ddd8cc] dark:border-white/10 shadow-sm overflow-hidden flex flex-col">
+                <div className={`w-full flex-1 bg-white dark:bg-[#050b14] rounded-3xl border border-[#ddd8cc] dark:border-white/10 shadow-sm overflow-hidden flex flex-col ${mobileTab === 'delegations' ? 'flex h-[calc(100vh-280px)] lg:h-auto' : 'hidden lg:flex'}`}>
                     {selectedCadet ? (
                         <>
-                            <div className="p-6 border-b border-[#ddd8cc] dark:border-white/10 shrink-0 bg-gray-50 dark:bg-white/5">
-                                <h3 className="text-xl font-black text-ncc-navy dark:text-white">
-                                    Delegating to {selectedCadet.name}
-                                </h3>
-                                <p className="text-sm text-gray-500 dark:text-white/70 mt-1">
-                                    Toggle the modules you want this cadet to manage on your behalf.
-                                </p>
+                            <div className="p-4 sm:p-6 border-b border-[#ddd8cc] dark:border-white/10 shrink-0 bg-gray-50 dark:bg-white/5 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-base sm:text-xl font-black text-ncc-navy dark:text-white">
+                                        Delegating to {selectedCadet.name}
+                                    </h3>
+                                    <p className="text-xs sm:text-sm text-gray-500 dark:text-white/70 mt-0.5">
+                                        Toggle the modules you want this cadet to manage.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setMobileTab('cadets')}
+                                    className="lg:hidden text-xs font-bold text-ncc-navy dark:text-ncc-gold bg-gray-200 dark:bg-white/10 px-3 py-1.5 rounded-lg shrink-0"
+                                >
+                                    Change Cadet
+                                </button>
                             </div>
                             
-                            <div className="flex-1 overflow-y-auto p-6">
-                                <div className="space-y-8">
+                            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+                                <div className="space-y-6 sm:space-y-8">
                                     {Object.entries(modulesByCategory).map(([category, modules]) => (
-                                        <div key={category} className="space-y-4">
+                                        <div key={category} className="space-y-3 sm:space-y-4">
                                             <div className="flex items-center justify-between border-b border-gray-100 dark:border-white/5 pb-2">
-                                                <h4 className="font-black text-sm text-gray-400 dark:text-white/60 uppercase tracking-widest">
+                                                <h4 className="font-black text-xs sm:text-sm text-gray-400 dark:text-white/60 uppercase tracking-widest">
                                                     {category}
                                                 </h4>
                                                 <button 
@@ -260,26 +295,26 @@ export const DutyRoster = () => {
                                                 </button>
                                             </div>
                                             
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                                            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5 sm:gap-3.5">
                                                 {modules.map(mod => {
                                                     const isGranted = activeDelegations.includes(mod.id);
                                                     return (
                                                         <button
                                                             key={mod.id}
                                                             onClick={() => toggleModule(mod.id)}
-                                                            className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all group ${
+                                                            className={`p-3 sm:p-4 rounded-2xl border text-left flex items-center justify-between transition-all group ${
                                                                 isGranted 
                                                                     ? 'bg-ncc-navy border-ncc-navy shadow-lg shadow-ncc-navy/20' 
                                                                     : 'bg-white dark:bg-[#0a1628] border-gray-200 dark:border-white/10 hover:border-ncc-gold'
                                                             }`}
                                                         >
-                                                            <span className={`font-bold text-sm ${isGranted ? 'text-white' : 'text-ncc-navy dark:text-white'}`}>
+                                                            <span className={`font-bold text-xs sm:text-sm truncate pr-1 ${isGranted ? 'text-white' : 'text-ncc-navy dark:text-white'}`}>
                                                                 {mod.name}
                                                             </span>
-                                                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+                                                            <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
                                                                 isGranted ? 'border-white bg-white text-ncc-navy' : 'border-gray-300 dark:border-white/20 group-hover:border-ncc-gold text-transparent'
                                                             }`}>
-                                                                <Check className="w-4 h-4" />
+                                                                <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                                             </div>
                                                         </button>
                                                     );
@@ -291,15 +326,39 @@ export const DutyRoster = () => {
                             </div>
                         </>
                     ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-gray-500 dark:text-white/60">
-                            <Shield className="w-16 h-16 text-gray-200 dark:text-white/10 mb-4" />
-                            <h3 className="text-xl font-bold text-ncc-navy dark:text-white mb-2">No Cadet Selected</h3>
-                            <p className="max-w-sm mx-auto">Select a cadet from the roster to configure their administrative access and delegations.</p>
+                        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 sm:p-8 text-gray-500 dark:text-white/60">
+                            <Shield className="w-12 h-12 sm:w-16 sm:h-16 text-gray-200 dark:text-white/10 mb-4" />
+                            <h3 className="text-lg sm:text-xl font-bold text-ncc-navy dark:text-white mb-2">No Cadet Selected</h3>
+                            <p className="max-w-sm mx-auto text-xs sm:text-sm mb-4">Select a cadet from the roster to configure their administrative access and delegations.</p>
+                            <button
+                                onClick={() => setMobileTab('cadets')}
+                                className="lg:hidden bg-ncc-navy text-white px-5 py-2.5 rounded-xl text-xs font-bold"
+                            >
+                                Select Cadet Now
+                            </button>
                         </div>
                     )}
                 </div>
 
             </div>
+
+            {/* Mobile Bottom Floating Save Action Bar */}
+            {selectedCadet && (
+                <div className="md:hidden fixed bottom-16 left-4 right-4 z-30 bg-ncc-navy text-white p-3 rounded-2xl shadow-2xl flex items-center justify-between border border-white/10 backdrop-blur-lg">
+                    <div className="min-w-0 pr-2">
+                        <p className="text-xs font-bold truncate">Saving for {selectedCadet.name}</p>
+                        <p className="text-[10px] text-white/70">{activeDelegations.length} modules granted</p>
+                    </div>
+                    <button 
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="bg-ncc-gold text-ncc-navy px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 shadow-md disabled:opacity-50"
+                    >
+                        <Save className="w-4 h-4" />
+                        {isSaving ? 'Saving...' : 'Save'}
+                    </button>
+                </div>
+            )}
         </div>
     );
 };

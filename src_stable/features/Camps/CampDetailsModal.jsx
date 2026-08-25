@@ -1,22 +1,67 @@
-import React, { useState } from 'react';
-import { X, Search, Award, Download } from '../../components/Icons.jsx';
+import React, { useState, useMemo } from 'react';
+import { X, Search, Award, Download, Trash2 } from '../../components/Icons.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
 import { generateNominalRollPDF } from '../../utils/pdfGenerator.js';
 
 import { useDataContext } from '../../context/DataContext.jsx';
 import { useAuthContext } from '../../context/AuthContext.jsx';
-import { addCadetsToCampBulk, updateCampRoster, logCampAchievement, addCampAchievementsBulk, deleteCamp, removeCampAchievement, updateCampAchievement } from '../../firebase/firestoreService.js';
+import { addCadetsToCampBulk, updateCampRoster, logCampAchievement, addCampAchievementsBulk, deleteCamp, removeCampAchievement, updateCampAchievement, removeCadetFromCamp } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
 
 export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
-    const { userRole } = useAuthContext();
-    const { cadets, camps } = useDataContext();
+    const { userRole, userInstitutionId } = useAuthContext();
+    const isBattalionAdmin = userRole === 'superadmin' || userRole === 'battalion_admin';
+    const isANO = userRole === 'admin' || userRole === 'officer';
+    const { cadets, camps, units = [] } = useDataContext();
     
     // Always use the latest camp data from context so the UI updates instantly
     const currentCamp = camps?.find(c => c.id === camp.id) || camp;
     
     const [searchTerm, setSearchTerm] = useState('');
     const roster = currentCamp.roster || [];
+
+    const displayRoster = useMemo(() => {
+        if (!isANO) return roster;
+        return roster.filter(r => {
+            const cadetDoc = cadets.find(c => c.id === r.cadetId);
+            return cadetDoc !== undefined;
+        });
+    }, [roster, cadets, isANO]);
+
+    // College vacancy details for ANO
+    const collegeSubdomain = userInstitutionId;
+    const isExcludedForUser = currentCamp.disallowedColleges?.includes(collegeSubdomain);
+    const totalAllocatedVacancies = isExcludedForUser ? 0 : (currentCamp.vacancies?.[collegeSubdomain] || 0);
+    const collegeRosterCount = useMemo(() => {
+        return roster.filter(r => {
+            const cadetDoc = cadets.find(c => c.id === r.cadetId);
+            const instId = cadetDoc?.institutionId || r.institutionId || 'unknown';
+            return instId === collegeSubdomain;
+        }).length;
+    }, [roster, cadets, collegeSubdomain]);
+    const remainingVacancies = Math.max(0, totalAllocatedVacancies - collegeRosterCount);
+
+    // College vacancy summary for Battalion Admin
+    const colleges = useMemo(() => units.filter(u => !u.isBattalion), [units]);
+    const collegeVacanciesSummary = useMemo(() => {
+        return colleges.map(col => {
+            const subdomain = col.subdomain || col.id;
+            const isExcluded = currentCamp.disallowedColleges?.includes(subdomain);
+            const allocated = isExcluded ? 0 : (currentCamp.vacancies?.[subdomain] || 0);
+            const filled = roster.filter(r => {
+                const cadetDoc = cadets.find(c => c.id === r.cadetId);
+                return (cadetDoc?.institutionId || r.institutionId) === subdomain;
+            }).length;
+            return {
+                id: subdomain,
+                name: col.collegeName || col.name || subdomain,
+                allocated,
+                filled,
+                isExcluded,
+                remaining: isExcluded ? 0 : Math.max(0, allocated - filled)
+            };
+        });
+    }, [colleges, currentCamp.vacancies, currentCamp.disallowedColleges, roster, cadets]);
     
     // For adding cadets
     const [selectedCandidateIds, setSelectedCandidateIds] = useState([]);
@@ -35,33 +80,78 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
     // Toggle for adding view
     const [showAddCadets, setShowAddCadets] = useState(false);
 
-    const unassignedCadets = cadets.filter(c => !roster.some(r => r.cadetId === c.id));
-    const filteredCandidates = unassignedCadets.filter(c => {
-        let match = true;
-        if (searchTerm) {
-            const q = searchTerm.toLowerCase();
-            match = match && (c.name?.toLowerCase().includes(q) || 
-                              c.enrollmentId?.toLowerCase().includes(q) || 
-                              c.regimentalNumber?.toLowerCase().includes(q));
+    const unassignedCadets = useMemo(() => {
+        let list = cadets.filter(c => !roster.some(r => r.cadetId === c.id));
+        if (isANO) {
+            list = list.filter(c => c.institutionId === userInstitutionId);
         }
-        if (selectedDivision !== 'All') {
-            const num = (c.enrollmentId || c.regimentalNumber || '').toUpperCase();
-            match = match && num.includes(selectedDivision);
-        }
-        if (selectedCert !== 'All') {
-            const cert = c.certificate || c.B || '';
-            match = match && cert === selectedCert;
-        }
-        return match;
-    });
+        return list;
+    }, [cadets, roster, isANO, userInstitutionId]);
+
+    const filteredCandidates = useMemo(() => {
+        return unassignedCadets
+            .filter(c => {
+                let match = true;
+                if (searchTerm) {
+                    const q = searchTerm.toLowerCase();
+                    match = match && (c.name?.toLowerCase().includes(q) || 
+                                      c.enrollmentId?.toLowerCase().includes(q) || 
+                                      c.regimentalNumber?.toLowerCase().includes(q));
+                }
+                if (selectedDivision !== 'All') {
+                    const num = (c.enrollmentId || c.regimentalNumber || '').toUpperCase();
+                    match = match && num.includes(selectedDivision);
+                }
+                if (selectedCert !== 'All') {
+                    const cert = c.certificate || c.B || '';
+                    match = match && cert === selectedCert;
+                }
+                return match;
+            })
+            .sort((a, b) => {
+                const countA = (a.campsAttended || []).length;
+                const countB = (b.campsAttended || []).length;
+                
+                // Prioritize 0 or 1 camps
+                const priorityA = countA <= 1 ? 1 : 0;
+                const priorityB = countB <= 1 ? 1 : 0;
+                
+                if (priorityA !== priorityB) {
+                    return priorityB - priorityA; // 1 (Priority) comes first
+                }
+                
+                // Secondary sort: number of camps (ascending)
+                if (countA !== countB) {
+                    return countA - countB;
+                }
+                
+                // Tertiary sort: Regimental number
+                const regA = a.enrollmentId || a.regimentalNumber || '';
+                const regB = b.enrollmentId || b.regimentalNumber || '';
+                return regA.localeCompare(regB);
+            });
+    }, [unassignedCadets, searchTerm, selectedDivision, selectedCert]);
 
     const handleSelectAll = (e) => {
-        if (e.target.checked) setSelectedCandidateIds(filteredCandidates.map(c => c.id));
-        else setSelectedCandidateIds([]);
+        if (e.target.checked) {
+            setSelectedCandidateIds(prev => {
+                const unique = new Set([...prev, ...filteredCandidates.map(c => c.id)]);
+                return Array.from(unique);
+            });
+        } else {
+            const filteredIds = filteredCandidates.map(c => c.id);
+            setSelectedCandidateIds(prev => prev.filter(id => !filteredIds.includes(id)));
+        }
     };
 
     const handleBulkAdd = async () => {
         if (selectedCandidateIds.length === 0) return;
+        if (isANO) {
+            if (totalAllocatedVacancies > 0 && selectedCandidateIds.length > remainingVacancies) {
+                toast.error(`Cannot assign cadets. You have ${remainingVacancies} vacancies remaining, but selected ${selectedCandidateIds.length}.`);
+                return;
+            }
+        }
         try {
             const cadetsToAdd = unassignedCadets.filter(c => selectedCandidateIds.includes(c.id));
             await addCadetsToCampBulk(camp.id, cadetsToAdd, candidateStatus);
@@ -73,6 +163,17 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
         } catch (err) {
             console.error(err);
             toast.error(err.message);
+        }
+    };
+
+    const handleRemoveFromRoster = async (cadetId, cadetName) => {
+        if (window.confirm(`Are you sure you want to remove ${cadetName} from this camp roster?`)) {
+            try {
+                await removeCadetFromCamp(camp.id, cadetId);
+                toast.success(`${cadetName} removed from camp roster.`);
+            } catch (err) {
+                toast.error(`Failed to remove cadet: ${err.message}`);
+            }
         }
     };
 
@@ -172,31 +273,88 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
 
                 <div className="flex-1 overflow-y-auto p-6 bg-gray-50 dark:bg-[#0a1628] flex flex-col gap-6">
                     
-                    {/* Admin Actions */}
-                    {userRole === 'admin' && (
+                    {/* College Vacancy Summary (Battalion Admin only) */}
+                    {isBattalionAdmin && collegeVacanciesSummary.length > 0 && (
+                        <div className="bg-white dark:bg-[#050b14] p-5 rounded-2xl border border-[#ddd8cc] dark:border-white/10 shadow-sm">
+                            <h4 className="text-xs font-black uppercase tracking-widest text-ncc-navy dark:text-white mb-3">College Participation Summary</h4>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                                {collegeVacanciesSummary.map(item => (
+                                    <div key={item.id} className={`p-3 rounded-xl border flex flex-col ${
+                                        item.isExcluded 
+                                            ? 'bg-red-500/5 border-red-500/20 text-red-500' 
+                                            : 'bg-gray-50 dark:bg-[#0a1628] border-gray-200 dark:border-white/5'
+                                    }`}>
+                                        <span className={`text-[10px] font-black truncate ${item.isExcluded ? 'text-red-500/80 dark:text-red-400/80' : 'text-ncc-navy dark:text-white'}`} title={item.name}>{item.name}</span>
+                                        <div className="flex justify-between items-baseline mt-1">
+                                            {item.isExcluded ? (
+                                                <span className="text-[9px] bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400 font-black uppercase tracking-wider px-1.5 py-0.5 rounded mt-1">Not Allowed</span>
+                                            ) : (
+                                                <>
+                                                    <span className="text-lg font-black text-ncc-gold">{item.filled} <span className="text-xs text-gray-400 font-bold">/ {item.allocated}</span></span>
+                                                    {item.allocated > 0 ? (
+                                                        item.remaining === 0 ? (
+                                                            <span className="text-[9px] bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400 font-black uppercase tracking-wider px-1.5 py-0.5 rounded">Full</span>
+                                                        ) : (
+                                                            <span className="text-[9px] text-gray-400 font-bold">{item.remaining} left</span>
+                                                        )
+                                                    ) : (
+                                                        <span className="text-[9px] text-gray-400 font-bold">Unallocated</span>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Excluded Warning for ANOs */}
+                    {isANO && isExcludedForUser && (
+                        <div className="bg-red-50 border border-red-200 dark:bg-red-950/20 dark:border-red-900/40 text-red-600 dark:text-red-400 p-4 rounded-xl text-center text-sm font-black uppercase tracking-wider">
+                            ⚠️ Your college has been excluded from this camp.
+                        </div>
+                    )}
+
+                    {/* Actions Bar */}
+                    {(isBattalionAdmin || (isANO && !isExcludedForUser)) && (
                         <div className="flex justify-between items-center bg-white dark:bg-[#050b14] p-3 rounded-xl border border-[#ddd8cc] shadow-sm">
                             <button 
                                 onClick={() => setShowAddCadets(!showAddCadets)}
                                 className={`px-4 py-2 text-sm font-bold rounded-lg transition-all focus:outline-none ${showAddCadets ? 'bg-gray-200 text-gray-700 dark:text-white/90 hover:bg-gray-300' : 'bg-ncc-navy text-white hover:bg-ncc-navy/90'}`}
                             >
-                                {showAddCadets ? '↓ Hide Add Cadets Panel' : '+ Assign Cadets to Roster'}
+                                {showAddCadets 
+                                    ? '↓ Hide Add Cadets Panel' 
+                                    : isBattalionAdmin 
+                                        ? '+ Assign Cadets' 
+                                        : (totalAllocatedVacancies > 0 ? `+ Nominate Cadets (${remainingVacancies} vacancies)` : '+ Nominate Cadets')}
                             </button>
-                            <div className="flex gap-2">
-                                <button onClick={onEditCamp} className="px-4 py-2 text-sm font-bold text-ncc-navy dark:text-white bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 rounded-lg transition">
-                                    Edit Camp
-                                </button>
-                                <button onClick={handleDeleteCamp} className="px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 rounded-lg transition">
-                                    Delete Camp
-                                </button>
-                            </div>
+                            {isBattalionAdmin && (
+                                <div className="flex gap-2">
+                                    <button onClick={onEditCamp} className="px-4 py-2 text-sm font-bold text-ncc-navy dark:text-white bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 rounded-lg transition">
+                                        Edit Camp
+                                    </button>
+                                    <button onClick={handleDeleteCamp} className="px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 rounded-lg transition">
+                                        Delete Camp
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
 
-                    {/* Admin Add Cadet Tool */}
-                    {userRole === 'admin' && showAddCadets && (
+                    {/* Add Cadet Tool */}
+                    {(isBattalionAdmin || (isANO && !isExcludedForUser)) && showAddCadets && (
                         <div className="bg-white dark:bg-[#050b14] p-5 rounded-xl border border-[#ddd8cc] shadow-sm flex flex-col max-h-[400px]">
+                            {isANO && totalAllocatedVacancies > 0 && (
+                                <div className="mb-3 p-3 bg-ncc-navy/5 dark:bg-white/5 rounded-xl text-xs flex justify-between items-center">
+                                    <span className="font-semibold text-ncc-navy dark:text-white">Vacancies:</span>
+                                    <span className="font-mono text-ncc-gold font-bold">{collegeRosterCount} / {totalAllocatedVacancies} Filled ({remainingVacancies} Remaining)</span>
+                                </div>
+                            )}
                             <div className="flex justify-between items-center mb-3">
-                                <h3 className="font-bold text-sm uppercase tracking-widest text-ncc-navy dark:text-white">Available Cadets ({filteredCandidates.length})</h3>
+                                <h3 className="font-bold text-sm uppercase tracking-widest text-ncc-navy dark:text-white">
+                                    {isANO ? `Available College Cadets (${filteredCandidates.length})` : `Available Cadets (${filteredCandidates.length})`}
+                                </h3>
                                 <div className="flex items-center gap-2">
                                     <select 
                                         className="ncc-input py-1 text-xs sm:w-32" 
@@ -260,34 +418,48 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
                                                     <input 
                                                         type="checkbox" 
                                                         className="rounded border-gray-300"
-                                                        checked={filteredCandidates.length > 0 && selectedCandidateIds.length === filteredCandidates.length}
+                                                        checked={filteredCandidates.length > 0 && filteredCandidates.every(c => selectedCandidateIds.includes(c.id))}
                                                         onChange={handleSelectAll}
                                                     />
                                                 </th>
                                                 <th className="px-3 py-2 font-bold text-gray-600 dark:text-white/80">Reg. No</th>
                                                 <th className="px-3 py-2 font-bold text-gray-600 dark:text-white/80">Name</th>
+                                                <th className="px-3 py-2 font-bold text-gray-600 dark:text-white/80">Camps</th>
                                                 <th className="px-3 py-2 font-bold text-gray-600 dark:text-white/80">Year</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-[#ddd8cc]">
-                                            {filteredCandidates.map(c => (
-                                                <tr key={c.id} className={`ncc-tr transition-all ${selectedCandidateIds.includes(c.id) ? 'ncc-tr-selected' : ''}`}>
-                                                    <td className="px-3 py-2 text-center">
-                                                        <input 
-                                                            type="checkbox" 
-                                                            className="rounded border-gray-300"
-                                                            checked={selectedCandidateIds.includes(c.id)}
-                                                            onChange={(e) => {
-                                                                if (e.target.checked) setSelectedCandidateIds(prev => [...prev, c.id]);
-                                                                else setSelectedCandidateIds(prev => prev.filter(id => id !== c.id));
-                                                            }}
-                                                        />
-                                                    </td>
-                                                    <td className="px-3 py-2 font-mono text-xs text-gray-500 dark:text-white/70">{c.enrollmentId || c.regimentalNumber}</td>
-                                                    <td className="px-3 py-2 font-bold text-ncc-navy dark:text-white">{c.name}</td>
-                                                    <td className="px-3 py-2 text-xs text-gray-500 dark:text-white/70">{c.year || '-'}</td>
-                                                </tr>
-                                            ))}
+                                            {filteredCandidates.map(c => {
+                                                const campsCount = (c.campsAttended || []).length;
+                                                return (
+                                                    <tr key={c.id} className={`ncc-tr transition-all ${selectedCandidateIds.includes(c.id) ? 'ncc-tr-selected' : ''}`}>
+                                                        <td className="px-3 py-2 text-center">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="rounded border-gray-300"
+                                                                checked={selectedCandidateIds.includes(c.id)}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) setSelectedCandidateIds(prev => [...prev, c.id]);
+                                                                    else setSelectedCandidateIds(prev => prev.filter(id => id !== c.id));
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td className="px-3 py-2 font-mono text-xs text-gray-500 dark:text-white/70">{c.enrollmentId || c.regimentalNumber}</td>
+                                                        <td className="px-3 py-2 font-bold text-ncc-navy dark:text-white">
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                <span>{c.name}</span>
+                                                                {campsCount <= 1 && (
+                                                                    <span className="bg-red-500 text-white text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded shadow-sm">
+                                                                        Priority ({campsCount} {campsCount === 1 ? 'camp' : 'camps'})
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-3 py-2 text-xs font-bold text-ncc-navy dark:text-ncc-gold">{campsCount}</td>
+                                                        <td className="px-3 py-2 text-xs text-gray-500 dark:text-white/70">{c.year || '-'}</td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 )}
@@ -296,13 +468,13 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
                     )}
 
                     {/* Roster Table */}
-                    <div className="bg-white dark:bg-[#050b14] rounded-[1.5rem] border border-gray-200 dark:border-white/10 shadow-sm flex-1 flex flex-col overflow-hidden">
+                    <div className="bg-white dark:bg-[#050b14] rounded-[1.5rem] border border-gray-200 dark:border-white/10 shadow-sm flex-1 flex flex-col overflow-hidden min-h-[480px]">
                         <div className="px-6 py-5 border-b border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#0a1628] flex justify-between items-center relative overflow-hidden group">
                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 dark:via-white/5 to-transparent skew-x-12 translate-x-[-150%] group-hover:translate-x-[150%] transition-transform duration-1000" />
                             <div className="flex items-center gap-4 relative z-10 flex-wrap">
                                 <h3 className="font-black text-xl font-display text-ncc-navy dark:text-white tracking-tight">Final Roster</h3>
-                                <span className="text-[10px] font-black text-ncc-gold uppercase tracking-widest px-2.5 py-1 bg-ncc-gold/10 border border-ncc-gold/20 rounded shadow-sm">{roster.length} Cadets</span>
-                                {userRole === 'admin' && roster.length > 0 && (
+                                <span className="text-[10px] font-black text-ncc-gold uppercase tracking-widest px-2.5 py-1 bg-ncc-gold/10 border border-ncc-gold/20 rounded shadow-sm">{displayRoster.length} Cadets</span>
+                                {isBattalionAdmin && roster.length > 0 && (
                                     <div className="flex items-center gap-2">
                                         <button 
                                             onClick={() => {
@@ -346,7 +518,7 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
 
                             
                             {/* Bulk Awards Tools */}
-                            {userRole === 'admin' && roster.length > 0 && (
+                            {isBattalionAdmin && roster.length > 0 && (
                                 <div className="flex items-center gap-2 bg-white dark:bg-[#050b14] px-3 py-1.5 rounded-lg border border-[#ddd8cc] shadow-sm">
                                     <input 
                                         type="text" 
@@ -370,14 +542,14 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
                                 </div>
                             )}
                         </div>
-                        <div className="overflow-x-auto ncc-scrollbar">
-                            {roster.length === 0 ? (
+                        <div className="overflow-x-auto overflow-y-auto ncc-scrollbar" style={{ minHeight: '380px' }}>
+                            {displayRoster.length === 0 ? (
                                 <div className="p-8 text-center text-gray-400 dark:text-white/80 font-medium">No cadets added to this camp yet.</div>
                             ) : (
                                 <table className="w-full text-sm text-left">
-                                    <thead className="bg-gray-100 dark:bg-[#11233c] text-[10px] font-black uppercase tracking-widest text-ncc-navy dark:text-white/70 border-b border-gray-200 dark:border-white/10">
+                                    <thead className="bg-gray-100 dark:bg-[#11233c] text-[10px] font-black uppercase tracking-widest text-ncc-navy dark:text-white/70 border-b border-gray-200 dark:border-white/10 sticky top-0 z-10">
                                         <tr>
-                                            {userRole === 'admin' && (
+                                            {isBattalionAdmin && (
                                                 <th className="px-4 py-4 w-10 text-center">
                                                     <input 
                                                         type="checkbox" 
@@ -391,13 +563,13 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
                                             <th className="px-4 py-4">Name</th>
                                             <th className="px-4 py-4">Status</th>
                                             <th className="px-4 py-4 w-2/5">Achievements / Awards</th>
-                                            {userRole === 'admin' && <th className="px-4 py-4 text-right">Action</th>}
+                                            {(isBattalionAdmin || isANO) && <th className="px-4 py-4 text-right">Action</th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                                        {roster.map((r, i) => (
+                                        {displayRoster.map((r, i) => (
                                             <tr key={r.cadetId} className={`ncc-tr transition-all ${rosterSelectedIds.includes(r.cadetId) ? 'ncc-tr-selected' : ''}`}>
-                                                {userRole === 'admin' && (
+                                                {isBattalionAdmin && (
                                                     <td className="px-4 py-3 text-center">
                                                         <input 
                                                             type="checkbox" 
@@ -424,7 +596,7 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
                                                                 <li key={idx} className="group relative flex items-center gap-1.5 text-xs text-emerald-800 font-medium bg-emerald-50 px-3 py-1.5 rounded-full inline-flex mr-2 mt-1 transition-all pr-12 border border-emerald-200">
                                                                     <Award className="w-3.5 h-3.5 shrink-0" />
                                                                     <span>{ach}</span>
-                                                                    {userRole === 'admin' && (
+                                                                    {isBattalionAdmin && (
                                                                         <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
                                                                             <button onClick={(e) => { e.stopPropagation(); handleEditAchievement(r.cadetId, ach); }} className="w-5 h-5 flex items-center justify-center bg-white border border-emerald-200 rounded-full text-emerald-600 hover:text-emerald-900 hover:bg-emerald-100 transition-colors shadow-sm" title="Edit Award">
                                                                                 <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
@@ -439,7 +611,7 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
                                                         </ul>
                                                     ) : <span className="text-gray-300 text-xs">-</span>}
                                                     
-                                                    {userRole === 'admin' && achievementTarget === r.cadetId && (
+                                                    {isBattalionAdmin && achievementTarget === r.cadetId && (
                                                         <div className="mt-2 flex items-center gap-2">
                                                             <input type="text" placeholder="e.g. Best Drill" className="ncc-input text-xs py-1 px-2 h-7" value={achievementText} onChange={(e) => setAchievementText(e.target.value)} />
                                                             <button onClick={handleAddAchievement} className="ncc-btn ncc-btn-primary ncc-btn-sm h-7 text-xs px-2">Save</button>
@@ -447,15 +619,28 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
                                                         </div>
                                                     )}
                                                 </td>
-                                                {userRole === 'admin' && (
+                                                {(isBattalionAdmin || isANO) && (
                                                     <td className="px-4 py-3 text-right">
-                                                        <button 
-                                                            onClick={() => {setAchievementTarget(r.cadetId); setAchievementText('');}}
-                                                            className="text-[10px] font-black uppercase tracking-widest text-ncc-gold hover:text-[#b8830e] hover:bg-ncc-gold/10 px-2.5 py-1.5 rounded transition-colors"
-                                                            disabled={achievementTarget === r.cadetId}
-                                                        >
-                                                            + Award
-                                                        </button>
+                                                        <div className="flex justify-end items-center gap-2">
+                                                            {isBattalionAdmin && (
+                                                                <button 
+                                                                    onClick={() => {setAchievementTarget(r.cadetId); setAchievementText('');}}
+                                                                    className="text-[10px] font-black uppercase tracking-widest text-ncc-gold hover:text-[#b8830e] hover:bg-ncc-gold/10 px-2.5 py-1.5 rounded transition-colors"
+                                                                    disabled={achievementTarget === r.cadetId}
+                                                                >
+                                                                    + Award
+                                                                </button>
+                                                            )}
+                                                            {(isBattalionAdmin || (isANO && (cadets.find(c => c.id === r.cadetId)?.institutionId === userInstitutionId))) && (
+                                                                <button
+                                                                    onClick={() => handleRemoveFromRoster(r.cadetId, r.cadetName)}
+                                                                    className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20 dark:text-red-400 rounded transition"
+                                                                    title="Remove from Camp"
+                                                                >
+                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                 )}
                                             </tr>

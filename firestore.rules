@@ -42,23 +42,24 @@ service cloud.firestore {
 
     // 5. Attendance
     match /artifacts/{appId}/public/data/attendance/{logId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && (
-        get(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid)).data.get('delegatedModules', []).hasAny(['parade', 'att_logs'])
-      );
-      allow update, delete: if false;
+      allow read, create, update, delete: if request.auth != null;
     }
 
     // 6. User Profiles
     match /artifacts/{appId}/public/data/users/{userId} {
       allow read: if true;
       allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && (
+      allow update: if (request.auth != null && (
         (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'enrollmentId', 'delegatedModules'])) ||
         get(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid)).data.role == 'admin'
-      );
+      )) || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['otpCode', 'otpExpiresAt', 'biometricChallenge', 'biometricExpiresAt']);
       allow delete: if false;
+    }
+
+    // 6b. Audit Logs
+    match /artifacts/{appId}/public/data/audit_logs/{logId} {
+      allow create: if true;
+      allow read: if request.auth != null;
     }
 
     // 7. Transactions

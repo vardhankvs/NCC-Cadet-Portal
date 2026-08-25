@@ -19,7 +19,7 @@ import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const ResourceLibraryView = ({ mode = 'library' }) => {
     const { user: currentUser, userRole, userEnrollmentId } = useAuthContext();
-    const isAdmin = userRole?.toLowerCase() === 'admin' || userRole?.toLowerCase() === 'officer';
+    const isAdmin = Boolean(userRole && userRole.toLowerCase() !== 'cadet');
     const { materials, quizzes, cadets } = useDataContext();
     const [userProfile, setUserProfile] = useState(null);
     
@@ -32,6 +32,7 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
     
     // Manuals Upload State
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+    const [editingResourceId, setEditingResourceId] = useState(null);
     const [newTitle, setNewTitle] = useState('');
     const [newLink, setNewLink] = useState('');
     const [newDescription, setNewDescription] = useState('');
@@ -89,12 +90,22 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
         }
     }, [userRole, viewingResults, userEnrollmentId, isAdmin]);
 
+    const handleEditResource = (res) => {
+        setEditingResourceId(res.id);
+        setNewTitle(res.title || '');
+        setNewCategory(res.category || 'Common Subjects');
+        setNewLink(res.link || '');
+        setNewDescription(res.description || '');
+        setUploadType(res.size === 'Direct Upload' ? 'file' : 'link');
+        setIsUploadModalOpen(true);
+    };
+
     const handleAddResource = async (e) => {
         e.preventDefault();
         if (!newLink || !newTitle) return;
         setAdding(true);
         try {
-            await addResource({
+            const resourceData = {
                 title: newTitle,
                 category: newCategory,
                 link: newLink,
@@ -103,16 +114,29 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
                       newLink.toLowerCase().includes('.pptx') ? 'PPT' : 
                       newLink.toLowerCase().includes('.ppt') ? 'PPT' : 'LINK',
                 size: uploadType === 'file' ? 'Direct Upload' : 'Cloud Link',
-                createdAt: new Date().toISOString()
-            });
-            toast.success("Resource added successfully!");
+                updatedAt: new Date().toISOString()
+            };
+
+            if (editingResourceId) {
+                await updateDoc(doc(getCollectionRef('resources'), editingResourceId), resourceData);
+                toast.success("Resource updated successfully!");
+            } else {
+                await addResource({
+                    ...resourceData,
+                    createdAt: new Date().toISOString()
+                });
+                toast.success("Resource published successfully!");
+            }
+
             setIsUploadModalOpen(false);
+            setEditingResourceId(null);
             setNewTitle('');
             setNewLink('');
             setNewDescription('');
             setAdding(false);
         } catch (error) {
-            toast.error("Failed to add resource.");
+            console.error("Resource error:", error);
+            toast.error("Failed to save resource.");
             setAdding(false);
         }
     };
@@ -358,7 +382,12 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
                                         >
                                             <Bookmark className={`w-4 h-4 ${userBookmarks.includes(res.id) ? 'fill-current' : ''}`} />
                                         </button>
-                                        {isAdmin && <button onClick={() => handleDelete(res.id)} className="p-1 text-ncc-red hover:bg-red-50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>}
+                                        {isAdmin && (
+                                            <>
+                                                <button onClick={() => handleEditResource(res)} className="p-1 text-gray-400 dark:text-white/80 hover:text-ncc-navy dark:hover:text-white transition" title="Edit Resource"><Edit2 className="w-3.5 h-3.5" /></button>
+                                                <button onClick={() => handleDelete(res.id)} className="p-1 text-ncc-red hover:bg-red-50 rounded" title="Delete Resource"><Trash2 className="w-3.5 h-3.5" /></button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                                 <h3 className="font-display font-bold text-lg text-ncc-navy dark:text-white mb-2 group-hover:text-ncc-gold transition-colors truncate">{res.title}</h3>
@@ -638,11 +667,11 @@ export const ResourceLibraryView = ({ mode = 'library' }) => {
             )}
 
             {isUploadModalOpen && (
-                <ModalOverlay onClose={() => setIsUploadModalOpen(false)}>
+                <ModalOverlay onClose={() => { setIsUploadModalOpen(false); setEditingResourceId(null); }}>
                     <div className="p-10 w-[600px] max-w-[95vw] max-h-[90vh] overflow-y-auto ncc-scrollbar relative bg-white dark:bg-[#050b14]">
-                        <button onClick={() => setIsUploadModalOpen(false)} className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition z-10"><X className="w-5 h-5 text-gray-400 dark:text-white/80" /></button>
+                        <button onClick={() => { setIsUploadModalOpen(false); setEditingResourceId(null); }} className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition z-10"><X className="w-5 h-5 text-gray-400 dark:text-white/80" /></button>
                         <div className="mb-10">
-                            <h3 className="text-3xl font-display font-bold text-ncc-navy dark:text-white">Upload Resource</h3>
+                            <h3 className="text-3xl font-display font-bold text-ncc-navy dark:text-white">{editingResourceId ? 'Edit Resource' : 'Upload Resource'}</h3>
                             <p className="text-sm text-gray-500 dark:text-white/70 font-medium">Distribute manuals, circulars, or training materials to the unit.</p>
                         </div>
                         <form onSubmit={handleAddResource} className="space-y-5">

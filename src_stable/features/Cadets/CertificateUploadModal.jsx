@@ -95,22 +95,21 @@ export const CertificateUploadModal = ({ cadet, existingCert, onClose }) => {
 
     return (
         <ModalOverlay onClose={onClose}>
-            <div className="bg-white dark:bg-[#050b14] rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="bg-ncc-navy p-6 text-white relative">
-                    <button 
-                        onClick={onClose} 
-                        className="absolute top-6 right-6 text-white/60 hover:text-white transition-colors"
-                    >
+            <div className="bg-white dark:bg-[#050b14] rounded-3xl w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[92vh] overflow-hidden">
+                <div className="bg-ncc-navy px-6 py-4 text-white relative flex-shrink-0 flex items-center gap-3">
+                    <div className="w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center text-ncc-gold flex-shrink-0">
+                        <Award className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <h2 className="text-lg font-display font-bold leading-tight">{existingCert ? 'Edit Certification' : 'Upload Certification'}</h2>
+                        <p className="text-xs text-white/60 truncate">{existingCert ? 'Update' : 'Record'} marks for {cadet.name || 'Cadet'}</p>
+                    </div>
+                    <button onClick={onClose} className="text-white/60 hover:text-white transition-colors flex-shrink-0">
                         <X className="w-5 h-5" />
                     </button>
-                    <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-4 text-ncc-gold">
-                        <Award className="w-6 h-6" />
-                    </div>
-                    <h2 className="text-2xl font-display font-bold">{existingCert ? 'Edit Certification' : 'Upload Certification'}</h2>
-                    <p className="text-sm text-white/70 mt-1">{existingCert ? 'Update' : 'Record'} offline exam marks for {cadet.name || 'Cadet'}</p>
                 </div>
 
-                <form onSubmit={handleSave} className="p-6 space-y-5">
+                <div className="overflow-y-auto flex-1 p-6 space-y-5">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-[10px] font-black text-ncc-navy dark:text-white uppercase tracking-widest mb-2">Certificate</label>
@@ -167,7 +166,7 @@ export const CertificateUploadModal = ({ cadet, existingCert, onClose }) => {
                         </div>
                     </div>
 
-                    <div className="pt-4 border-t border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/5 p-4 rounded-xl flex items-center justify-between">
+                    <div className="border-t border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/5 p-4 rounded-xl flex items-center justify-between">
                         <div>
                             <label className="block text-[10px] font-black text-gray-500 dark:text-white/60 uppercase tracking-widest mb-1">Calculated Aggregate</label>
                             <div className="text-sm font-bold text-ncc-navy dark:text-white">
@@ -184,15 +183,18 @@ export const CertificateUploadModal = ({ cadet, existingCert, onClose }) => {
                             </div>
                         </div>
                     </div>
+                </div>
 
+                <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 dark:border-white/10 bg-white dark:bg-[#050b14]">
                     <button 
-                        type="submit"
+                        type="button"
+                        onClick={handleSave}
                         disabled={saving || finalGrade === '-'}
-                        className="w-full ncc-btn ncc-btn-primary justify-center h-12 text-sm uppercase tracking-widest mt-6"
+                        className="w-full ncc-btn ncc-btn-primary justify-center h-12 text-sm uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                        {saving ? 'Saving...' : 'Save Certification'}
+                        {saving ? 'Saving...' : existingCert ? 'Update Certification' : 'Save Certification'}
                     </button>
-                </form>
+                </div>
             </div>
         </ModalOverlay>
     );

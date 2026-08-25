@@ -50,25 +50,25 @@ export const AttendanceSummary = ({ summaryData }) => {
 
     const chartData = useMemo(() => {
         const certGroups = {
-            B1: { total: 0, present: 0, count: 0 },
-            B2: { total: 0, present: 0, count: 0 },
-            C: { total: 0, present: 0, count: 0 },
-            NA: { total: 0, present: 0, count: 0 },
+            B1: { totalPeriods: 0, present: 0, count: 0 },
+            B2: { totalPeriods: 0, present: 0, count: 0 },
+            C: { totalPeriods: 0, present: 0, count: 0 },
+            NA: { totalPeriods: 0, present: 0, count: 0 },
         };
 
         individualSummaries.forEach((cadet) => {
-            const cert = cadet.certificate || 'NA';
+            const cert = cadet.currentCertificate || cadet.certificate || 'NA';
             if (certGroups[cert]) {
                 certGroups[cert].present += cadet.presentCount;
                 certGroups[cert].count += 1;
+                certGroups[cert].totalPeriods += cadet.totalPeriods || 0;
             }
         });
 
         return Object.keys(certGroups)
             .map((certName) => {
                 const group = certGroups[certName];
-                const certPeriods = periodsHeld?.[certName] || totalPeriodsHeld;
-                const maxPossible = group.count * certPeriods;
+                const maxPossible = group.totalPeriods;
                 const percentage =
                     maxPossible > 0 ? (group.present / maxPossible) * 100 : 0;
                 return {
@@ -78,12 +78,12 @@ export const AttendanceSummary = ({ summaryData }) => {
                 };
             })
             .filter((group) => group.cadets > 0);
-    }, [individualSummaries, totalPeriodsHeld]);
+    }, [individualSummaries]);
 
     const filteredSummaries = useMemo(() => {
         let list = [...individualSummaries];
         if (selectedCertificate !== 'All') {
-            list = list.filter((cadet) => cadet.certificate === selectedCertificate);
+            list = list.filter((cadet) => (cadet.currentCertificate || cadet.certificate) === selectedCertificate);
         }
         if (selectedDivision !== 'All') {
             list = list.filter((cadet) => {
@@ -101,9 +101,25 @@ export const AttendanceSummary = ({ summaryData }) => {
         return list;
     }, [individualSummaries, selectedCertificate, selectedDivision, searchTerm]);
 
+    const isPresentStatus = (status) => {
+        if (!status) return false;
+        const s = String(status).trim().toUpperCase();
+        return s === 'PRESENT' || s === 'P' || s === 'VERIFIED' || s === 'LATE' || s === 'ATTENDED' || s === '1';
+    };
+
     const handlePdfDownload = (idType = 'regimental') => {
         setIsDownloading(true);
-        const pdf = new jsPDF('p', 'mm', 'a4');
+
+        // Only include dates where at least one cadet in the filtered list has a valid class record
+        const allDates = Array.from(
+            new Set(
+                filteredSummaries.flatMap((c) => Object.keys(c.attendance || {}))
+            )
+        ).filter((d) => 
+            filteredSummaries.some((c) => c.attendance && (d in c.attendance) && String(c.attendance[d]).trim() !== '-')
+        ).sort((a, b) => a.localeCompare(b));
+
+        const pdf = new jsPDF('l', 'mm', 'a4');
         const pdfWidth = pdf.internal.pageSize.getWidth();
 
         if (idType === 'jntu') {
@@ -123,11 +139,10 @@ export const AttendanceSummary = ({ summaryData }) => {
 
             pdf.setFontSize(14);
             pdf.setFont('helvetica', 'bold');
-            pdf.text('ATTENDANCE SUMMARY', pdfWidth / 2, 35, { align: 'center' });
+            pdf.text('ATTENDANCE REGISTER SUMMARY', pdfWidth / 2, 35, { align: 'center' });
             
             pdf.setFontSize(10);
             pdf.setFont('helvetica', 'bold');
-            // Date on Right, Overall Avg on Left
             pdf.text(`Overall Average: ${overallAverage}%`, 10, 45);
             pdf.setFont('helvetica', 'normal');
             pdf.text(`Date: ${formatDate(new Date())}`, pdfWidth - 10, 45, { align: 'right' });
@@ -139,28 +154,56 @@ export const AttendanceSummary = ({ summaryData }) => {
             pdf.text('14(A) BN NCC Srikakulam', pdfWidth / 2, 15, { align: 'center' });
             
             pdf.setFontSize(12);
-            pdf.text('Attendance Summary', pdfWidth / 2, 22, { align: 'center' });
+            pdf.text('Regimental Attendance Register', pdfWidth / 2, 22, { align: 'center' });
             
             pdf.setFontSize(10);
             pdf.setFont('helvetica', 'bold');
-            // Consistent layout: Overall Avg on Left, Date on Right
             pdf.text(`Overall Average: ${overallAverage}%`, 10, 32);
             pdf.setFont('helvetica', 'normal');
             pdf.text(`Date: ${formatDate(new Date())}`, pdfWidth - 10, 32, { align: 'right' });
         }
 
-        const tableColumn = idType === 'jntu' 
-            ? ['S.No', 'Cadet Name', 'JNTU NO', 'Present', 'Total', 'Attend %']
-            : ['S.No', 'Cadet Name', 'Regimental No', 'Present', 'Total', 'Attend %'];
+        const idLabel = idType === 'jntu' ? 'JNTU NO' : 'ENROLLMENT NO';
+        const dateHeaders = allDates.map((d) => formatDate(d));
 
-        const tableRows = filteredSummaries.map((cadet, index) => [
-            index + 1,
-            cadet.name?.toUpperCase() || '-',
-            idType === 'jntu' ? (cadet.jntuNo || '-') : (cadet.enrollmentId || cadet.regimentalNumber || '-'),
-            cadet.presentCount,
-            cadet.totalPeriods || totalPeriodsHeld,
-            `${cadet.percentage}%`
-        ]);
+        const tableColumn = ['S.No', 'CADET NAME', idLabel, ...dateHeaders, 'PRESENT', 'TOTAL', 'ATTENDANCE %'];
+
+        const tableRows = filteredSummaries.map((cadet, index) => {
+            const dateStatuses = allDates.map((d) => {
+                if (cadet.attendance && d in cadet.attendance) {
+                    const status = cadet.attendance[d];
+                    return isPresentStatus(status) ? 'P' : 'A';
+                }
+                return '-';
+            });
+            return [
+                index + 1,
+                cadet.name?.toUpperCase() || '-',
+                idType === 'jntu' ? (cadet.jntuNo || '-') : (cadet.enrollmentId || cadet.regimentalNumber || '-'),
+                ...dateStatuses,
+                cadet.presentCount,
+                cadet.totalPeriods || totalPeriodsHeld,
+                `${cadet.percentage}%`
+            ];
+        });
+
+        const columnStyles = {
+            0: { halign: 'center', cellWidth: 12 }, // S.No
+            1: { halign: 'left' },                   // Cadet Name
+            2: { halign: 'center' },                 // Enrollment ID
+        };
+        
+        const numDates = allDates.length;
+        for (let i = 0; i < numDates; i++) {
+            columnStyles[3 + i] = { halign: 'center' };
+        }
+        columnStyles[3 + numDates] = { halign: 'center' };     // Present
+        columnStyles[3 + numDates + 1] = { halign: 'center' }; // Total
+        columnStyles[3 + numDates + 2] = { halign: 'center' }; // Attendance %
+
+        const totalCols = tableColumn.length;
+        const dynamicFontSize = totalCols > 15 ? 6 : totalCols > 10 ? 7 : 8;
+        const dynamicCellPadding = totalCols > 15 ? 1 : 2;
 
         autoTable(pdf, {
             head: [tableColumn],
@@ -168,8 +211,8 @@ export const AttendanceSummary = ({ summaryData }) => {
             startY: idType === 'jntu' ? 55 : 42,
             theme: 'grid',
             styles: { 
-                fontSize: 8, 
-                cellPadding: 2,
+                fontSize: dynamicFontSize, 
+                cellPadding: dynamicCellPadding,
                 valign: 'middle' 
             },
             headStyles: { 
@@ -178,39 +221,83 @@ export const AttendanceSummary = ({ summaryData }) => {
                 fontStyle: 'bold',
                 lineWidth: 0.1,
                 lineColor: [200, 200, 200],
-                halign: 'center' // Default headers to center
+                halign: 'center'
             },
-            columnStyles: {
-                0: { halign: 'center' }, // S.No
-                1: { halign: 'left' },   // Name
-                2: { halign: 'center' }, // ID
-                3: { halign: 'center' }, // Present
-                4: { halign: 'center' }, // Total
-                5: { halign: 'center' }  // %
-            },
-            alternateRowStyles: { fillColor: [250, 250, 250] }
+            columnStyles: columnStyles,
+            alternateRowStyles: { fillColor: [250, 250, 250] },
+            didParseCell: (data) => {
+                if (data.section === 'body' && data.column.index >= 3 && data.column.index < 3 + numDates) {
+                    if (data.cell.raw === 'P') {
+                        data.cell.styles.textColor = [16, 185, 129];
+                        data.cell.styles.fontStyle = 'bold';
+                    } else if (data.cell.raw === 'A') {
+                        data.cell.styles.textColor = [220, 38, 38];
+                        data.cell.styles.fontStyle = 'bold';
+                    } else if (data.cell.raw === '-') {
+                        data.cell.styles.textColor = [156, 163, 175];
+                        data.cell.styles.fontStyle = 'normal';
+                    }
+                }
+            }
         });
 
-        pdf.save(`NCC_Attendance_${idType.toUpperCase()}_${new Date().toISOString().split('T')[0]}.pdf`);
+        pdf.save(`NCC_Attendance_Register_${idType.toUpperCase()}_${new Date().toISOString().split('T')[0]}.pdf`);
         setIsDownloading(false);
     };
 
     const handleExcelDownload = () => {
         setIsDownloadingExcel(true);
         try {
-            let csv = 'S.No.,Name,Enrollment ID,Present,Total,Percentage\n';
+            const allDates = Array.from(
+                new Set(
+                    filteredSummaries.flatMap((c) => Object.keys(c.attendance || {}))
+                )
+            ).filter((d) => 
+                filteredSummaries.some((c) => c.attendance && (d in c.attendance) && String(c.attendance[d]).trim() !== '-')
+            ).sort((a, b) => a.localeCompare(b));
+
+            const dateHeaders = allDates.map((d) => `"${formatDate(d)}"`).join(',');
+
+            let csv = 'S.No,CADET NAME,ENROLLMENT NO,';
+            if (dateHeaders) {
+                csv += `${dateHeaders},`;
+            }
+            csv += 'PRESENT,TOTAL,ATTENDANCE %\n';
+
             filteredSummaries.forEach((cadet, index) => {
-                csv += `${index + 1},"${cadet.name}",${cadet.enrollmentId},${cadet.presentCount},${cadet.totalPeriods || totalPeriodsHeld},${cadet.percentage}%\n`;
+                const dateStatuses = allDates.map((d) => {
+                    if (cadet.attendance && d in cadet.attendance) {
+                        const status = cadet.attendance[d];
+                        return isPresentStatus(status) ? 'P' : 'A';
+                    }
+                    return '-';
+                }).join(',');
+
+                const name = `"${(cadet.name || '').replace(/"/g, '""')}"`;
+                const enrollmentId = `"${(cadet.enrollmentId || cadet.regimentalNumber || '').replace(/"/g, '""')}"`;
+                const present = cadet.presentCount;
+                const total = cadet.totalPeriods || totalPeriodsHeld;
+                const pct = `${cadet.percentage}%`;
+
+                csv += `${index + 1},${name},${enrollmentId},`;
+                if (dateStatuses) {
+                    csv += `${dateStatuses},`;
+                }
+                csv += `${present},${total},${pct}\n`;
             });
+
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.setAttribute('download', `NCC_Attendance_Summary_${new Date().toISOString().split('T')[0]}.csv`);
+            link.setAttribute('download', `NCC_Attendance_Register_${new Date().toISOString().split('T')[0]}.csv`);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-        } catch (e) { console.error(e); }
-        finally { setIsDownloadingExcel(false); }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsDownloadingExcel(false);
+        }
     };
 
     if (cadetNotFound) return <div className="ncc-error-card">Cadet record not found. Please contact admin.</div>;
@@ -300,10 +387,6 @@ export const AttendanceSummary = ({ summaryData }) => {
                                 <button onClick={() => handlePdfDownload('regimental')} disabled={isDownloading} className="ncc-btn bg-white/10 hover:bg-white/20 text-white border-white/10 w-full justify-center py-2.5 text-[10px]">
                                     {isDownloading ? <Loader className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4 text-ncc-gold" />}
                                     Export Regimental PDF
-                                </button>
-                                <button onClick={() => handlePdfDownload('jntu')} disabled={isDownloading} className="ncc-btn bg-white/10 hover:bg-white/20 text-white border-white/10 w-full justify-center py-2.5 text-[10px]">
-                                    {isDownloading ? <Loader className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4 text-ncc-gold" />}
-                                    Export JNTU NO PDF
                                 </button>
                                 <button onClick={handleExcelDownload} disabled={isDownloadingExcel} className="ncc-btn bg-ncc-gold hover:bg-ncc-gold/90 text-ncc-navy dark:text-white w-full justify-center py-2.5 text-[10px]">
                                     {isDownloadingExcel ? <Loader className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}

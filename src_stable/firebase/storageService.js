@@ -50,3 +50,22 @@ export const uploadCadetPhoto = async (file, cadetId) => {
     const snapshot = await uploadBytes(storageRef, file);
     return await getDownloadURL(snapshot.ref);
 };
+
+/**
+ * Uploads a staff profile photo to Firebase Storage.
+ * @param {File} file - The image file
+ * @param {string} identifier - A unique identifier (e.g. staff email or name)
+ * @returns {Promise<string>} - The public download URL
+ */
+export const uploadStaffPhoto = async (file, identifier) => {
+    if (!storage || !appId) throw new Error('Storage not initialized');
+
+    const cleanName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+    const timestamp = Date.now();
+    const cleanIdentifier = (identifier || 'unnamed').replace(/[^a-zA-Z0-9]/g, '_');
+    const storagePath = `artifacts/${appId}/public/staff_photos/${cleanIdentifier}/${timestamp}_${cleanName}`;
+
+    const storageRef = ref(storage, storagePath);
+    const snapshot = await uploadBytes(storageRef, file);
+    return await getDownloadURL(snapshot.ref);
+};

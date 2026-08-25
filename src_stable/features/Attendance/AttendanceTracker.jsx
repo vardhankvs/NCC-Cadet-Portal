@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { useDataContext } from '../../context/DataContext.jsx';
-import { recordAttendance } from '../../firebase/firestoreService.js';
+import { recordAttendance, addNotification, checkAndSendLowAttendanceAlert } from '../../firebase/firestoreService.js';
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay.jsx';
 import { Calendar } from '../../components/Icons.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
@@ -20,7 +20,7 @@ const formatHistoryDate = (dateString) => {
 };
 
 export const AttendanceTracker = ({ cadets }) => {
-    const { userRole, userEnrollmentId } = useAuthContext();
+    const { userRole, userEnrollmentId, userInstitutionId } = useAuthContext();
     const { attendanceData } = useDataContext();
     const [selectedDate, setSelectedDate] = useState(getTodayDateString());
     const [selectedCertificate, setSelectedCertificate] = useState('All');
@@ -55,9 +55,34 @@ export const AttendanceTracker = ({ cadets }) => {
         const newStatus = getStatus(cadet) === 'Present' ? 'Absent' : 'Present';
         setError(null);
         try { 
-            await recordAttendance(cadetId, selectedDate, newStatus);
+            await recordAttendance(cadetId, selectedDate, newStatus, 'ANO (Manual Grid)', userInstitutionId);
             try {
-                sendPushToCadets([cadet.id], '✅ Attendance Updated', `Your attendance was marked as ${newStatus} for today's class.`, 'attendance');
+                if (newStatus === 'Absent') {
+                    const title = "⚠️ Attendance Alert: Marked Absent";
+                    const body = `You were marked ABSENT for today's scheduled class (${formatDate(selectedDate)}). Please contact your ANO if you have a valid leave or reason.`;
+                    sendPushToCadets([cadet.id], title, body, 'attendance');
+                    addNotification(cadet.id, title, body, 'warning', cadet.institutionId || 'gmrit', cadet.enrollmentId);
+                } else {
+                    const title = "✅ Attendance Marked: Present";
+                    const body = `Your attendance was marked as PRESENT for today's class (${formatDate(selectedDate)}).`;
+                    sendPushToCadets([cadet.id], title, body, 'attendance');
+                    addNotification(cadet.id, title, body, 'success', cadet.institutionId || 'gmrit', cadet.enrollmentId);
+                }
+
+                // Calculate updated attendance percentage immediately
+                const cadetAtt = { ...(cadet.attendance || {}), [selectedDate]: newStatus };
+                let presentCount = 0;
+                Object.values(cadetAtt).forEach(s => {
+                    const str = String(s).trim().toUpperCase();
+                    if (str === 'PRESENT' || str === 'P' || str === 'VERIFIED' || str === 'LATE' || str === 'ATTENDED' || str === '1') {
+                        presentCount++;
+                    }
+                });
+                const totalPeriods = Object.keys(cadetAtt).length;
+                const updatedPercentage = totalPeriods > 0 ? (presentCount / totalPeriods) * 100 : 0;
+                const certLevel = cadet.certificate || cadet.currentCertificate || cadet.B || 'B1';
+                
+                checkAndSendLowAttendanceAlert(cadet.id, updatedPercentage, certLevel, null, cadet.institutionId || 'gmrit', cadet.enrollmentId);
             } catch (e) { console.error(e); }
         }
         catch (e) { setError(`Attendance update failed: ${e.message}`); }

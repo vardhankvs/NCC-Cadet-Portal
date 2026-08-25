@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { sendPushToUser, sendPushToAdmins } from '../../firebase/pushNotifications.js';
 
 export const DirectChat = ({ initialCadetId, onClose }) => {
-    const { user, userRole, userEnrollmentId } = useAuthContext();
+    const { user, userRole, userEnrollmentId, userInstitutionId } = useAuthContext();
     const { cadets } = useDataContext();
     const isAdmin = userRole === 'admin';
     
@@ -48,6 +48,19 @@ export const DirectChat = ({ initialCadetId, onClose }) => {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             
+            // Filter conversations to only show the ones for the respective college
+            const isBattalionHQ = userRole === 'superadmin' || userRole === 'battalion_admin';
+            if (isAdmin && !isBattalionHQ) {
+                const activeInstId = userInstitutionId || 'none';
+                data = data.filter(c => {
+                    if (c.institutionId) {
+                        return c.institutionId === activeInstId;
+                    }
+                    // Fallback for older chats without institutionId: match against the cadet roster
+                    return cadets.some(cadet => cadet.enrollmentId === c.cadetEnrollmentId);
+                });
+            }
+
             // Sort in memory to avoid index requirements
             data.sort((a, b) => (b.lastTimestamp?.seconds || 0) - (a.lastTimestamp?.seconds || 0));
             
@@ -86,7 +99,7 @@ export const DirectChat = ({ initialCadetId, onClose }) => {
         });
 
         return () => unsubscribe();
-    }, [isAdmin, userEnrollmentId, initialCadetId]);
+    }, [isAdmin, userRole, userEnrollmentId, userInstitutionId, initialCadetId, cadets]);
 
     // 2. Fetch Messages for Active Conversation
     useEffect(() => {
@@ -136,7 +149,8 @@ export const DirectChat = ({ initialCadetId, onClose }) => {
                     cadetEnrollmentId: currentCadetId,
                     lastMessage: newMessage,
                     lastTimestamp: serverTimestamp(),
-                    unreadBy: isAdmin ? [currentCadetId] : ['admin']
+                    unreadBy: isAdmin ? [currentCadetId] : ['admin'],
+                    institutionId: userInstitutionId || '14a-bn-srikakulam'
                 });
                 setActiveConv({ ...activeConv, id: convId });
             } else {

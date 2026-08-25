@@ -17,7 +17,7 @@ import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
 
 export const GrievanceView = () => {
-    const { userRole, userEnrollmentId, userId } = useAuthContext();
+    const { userRole, userEnrollmentId, userId, userInstitutionId } = useAuthContext();
     const { cadets, loading: contextLoading } = useDataContext();
     const [grievances, setGrievances] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -61,15 +61,23 @@ export const GrievanceView = () => {
             const userRank = currentUser?.rank || '';
             const isSeniorRank = seniorRanks.some(rank => userRank.toUpperCase().includes(rank));
             const isStaff = userRole === 'admin' || userRank.toUpperCase().includes('ANO') || userRank.toUpperCase().includes('STAFF');
-            
-            const canSeeAll = isSeniorRank || isStaff;
+            const isBattalionHQ = userRole === 'superadmin' || userRole === 'battalion_admin';
 
-            if (canSeeAll) {
-                setGrievances(allGrievances);
+            // First level: Filter by institutionId if not Battalion HQ
+            let collegeGrievances = allGrievances;
+            if (!isBattalionHQ) {
+                const activeInstId = userInstitutionId || 'none';
+                collegeGrievances = allGrievances.filter(g => g.institutionId === activeInstId);
+            }
+
+            const canSeeAllCollege = isSeniorRank || isStaff;
+
+            if (isBattalionHQ || canSeeAllCollege) {
+                setGrievances(collegeGrievances);
             } else {
-                // Regular cadets see only their own
+                // Regular cadets see only their own within their college
                 // Use multiple identifiers (ID, EnrollmentID, Name) to ensure visibility doesn't break
-                setGrievances(allGrievances.filter(g => 
+                setGrievances(collegeGrievances.filter(g => 
                     g.cadetId === userId || 
                     g.cadetId === userEnrollmentId ||
                     g.cadetName === currentUser?.name
@@ -79,7 +87,7 @@ export const GrievanceView = () => {
         });
 
         return () => unsubscribe();
-    }, [currentUser, userRole]);
+    }, [currentUser, userRole, userInstitutionId]);
 
     // Update selectedGrievance when data changes in grievances list
     useEffect(() => {
@@ -106,7 +114,8 @@ export const GrievanceView = () => {
                 currentUser.enrollmentId,
                 subject,
                 message,
-                isAnonymous
+                isAnonymous,
+                userInstitutionId
             );
             toast.success("Issue reported to the chain of command.");
             setShowSubmitModal(false);

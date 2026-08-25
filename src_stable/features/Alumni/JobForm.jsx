@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { addJobOpportunity, updateJobOpportunity } from '../../firebase/firestoreService.js';
+import { addJobOpportunity, updateJobOpportunity, getCollectionRef } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
 import { Plus } from '../../components/Icons.jsx';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
+import { addDoc } from 'firebase/firestore';
 
 export const JobForm = ({ onClose, editingJob = null }) => {
     const [formData, setFormData] = useState(editingJob ? {
@@ -30,10 +31,26 @@ export const JobForm = ({ onClose, editingJob = null }) => {
                 await updateJobOpportunity(editingJob.id, formData);
                 toast.success('Opportunity updated successfully.');
                 sendPushToAll('💼 Job Opportunity Updated', `${formData.title} (${formData.type}) has been updated on the Job Board`, 'career_bridge');
+                await addDoc(getCollectionRef('notifications'), {
+                    subject: '💼 Job Opportunity Updated',
+                    message: `${formData.title} (${formData.type}) has been updated on the Job Board.`,
+                    target: 'All',
+                    sender: 'Battalion HQ',
+                    timestamp: new Date().toISOString(),
+                    type: 'career_bridge'
+                });
             } else {
                 await addJobOpportunity(formData);
                 toast.success('Opportunity posted to the Career Bridge.');
                 sendPushToAll('💼 New Job Opportunity', `${formData.title} (${formData.type}) has been posted on the Job Board`, 'career_bridge');
+                await addDoc(getCollectionRef('notifications'), {
+                    subject: '💼 New Job Opportunity',
+                    message: `${formData.title} (${formData.type}) has been posted on the Job Board.`,
+                    target: 'All',
+                    sender: 'Battalion HQ',
+                    timestamp: new Date().toISOString(),
+                    type: 'career_bridge'
+                });
             }
             onClose();
         } catch (error) {

@@ -34,8 +34,8 @@ export const useFirestoreSubscription = (collectionName, requiresAuth = true) =>
             return;
         }
 
-        // Must have a tenant or be a superadmin (for auth'd users)
-        if (user && !tenant && userRole !== 'superadmin') {
+        // Must have a tenant or be a superadmin/battalion_admin (for auth'd users)
+        if (user && !tenant && userRole !== 'superadmin' && userRole !== 'battalion_admin') {
             setLoading(false);
             return;
         }
@@ -56,7 +56,10 @@ export const useFirestoreSubscription = (collectionName, requiresAuth = true) =>
         // Use User Institution ID as primary filter for logged-in users, fallback to Tenant ID for guests
         const activeUnitId = userInstitutionId || tenant?.id;
 
-        if (userRole !== 'superadmin' && activeUnitId) {
+        // Exempt global/battalion-wide collections from multi-tenancy segregation
+        // 'camps' is battalion-wide — all roles must see all records regardless of college tag
+        const globalCollections = ['units', 'staff', 'references', 'settings', 'jobs', 'materials', 'camps', 'announcements'];
+        if (userRole !== 'superadmin' && userRole !== 'battalion_admin' && activeUnitId && !globalCollections.includes(collectionName)) {
             q = query(ref, where('institutionId', '==', activeUnitId));
         }
 

@@ -17,15 +17,19 @@ const waitForSW = async (timeoutMs = 10000) => {
 
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-        const reg = await navigator.serviceWorker.getRegistration('/');
-        if (reg?.active) {
-            console.log('FCM: Service worker is active —', reg.scope);
-            return true;
+        try {
+            const reg = await navigator.serviceWorker.getRegistration('/');
+            if (reg?.active && reg.active.state === 'activated') {
+                console.log('FCM: Service worker is active & activated —', reg.scope);
+                return true;
+            }
+        } catch (e) {
+            // Ignore temporary SW state transition errors
         }
         await new Promise(r => setTimeout(r, 500));
     }
-    console.warn('FCM: Service worker did not become active within', timeoutMs, 'ms');
-    return false;
+    console.warn('FCM: Service worker active check timed out, falling back to navigator.serviceWorker.ready');
+    return true;
 };
 
 /**
@@ -47,27 +51,33 @@ export const requestNotificationPermission = async (userId, collectionName = 'ca
         const permission = await Notification.requestPermission();
         console.log('FCM: Notification permission status:', permission);
         if (permission !== 'granted') {
-            console.warn('FCM: Permission denied.');
-            alert(
-                'Notification permission was not granted.\n\n' +
-                'Please go to your browser Settings → Site Settings → Notifications ' +
-                'and allow notifications for this site, then reload the page.'
-            );
+            console.warn('FCM: Permission denied (notifications blocked or dismissed by user).');
             return null;
         }
 
-        // Step 2 — wait for service worker to be active (required for getToken)
-        const swReady = await waitForSW(8000);
-        if (!swReady) {
-            console.warn('FCM: Service worker not ready — token registration skipped. Will retry on next login.');
-            return null;
+        // Step 2 — wait for service worker to be ready
+        await waitForSW(6000);
+
+        let swReg = await navigator.serviceWorker.getRegistration('/');
+        if (!swReg || !swReg.active) {
+            swReg = await navigator.serviceWorker.ready;
         }
 
-        // Step 3 — get FCM token
-        const token = await getToken(messaging, {
-            vapidKey: VAPID_KEY,
-            serviceWorkerRegistration: await navigator.serviceWorker.getRegistration('/')
-        });
+        // Step 3 — get FCM token safely
+        let token = null;
+        try {
+            token = await getToken(messaging, {
+                vapidKey: VAPID_KEY,
+                serviceWorkerRegistration: swReg
+            });
+        } catch (swErr) {
+            console.warn('FCM: First getToken attempt had SW state change, retrying with navigator.serviceWorker.ready...', swErr.message);
+            const readyReg = await navigator.serviceWorker.ready;
+            token = await getToken(messaging, {
+                vapidKey: VAPID_KEY,
+                serviceWorkerRegistration: readyReg
+            });
+        }
 
         console.log('FCM: Token retrieved:', token ? token.substring(0, 20) + '…' : 'EMPTY');
 

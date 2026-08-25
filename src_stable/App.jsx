@@ -33,6 +33,7 @@ export function App() {
         otpLoading,
         handleAdminLoginStep2,
         cancelOtp,
+        handleDemoLogin,
     } = useAuthContext();
 
     // Default to 'cadet' or 'phone' tab
@@ -109,6 +110,9 @@ export function App() {
         }
     }
 
+    // Check for Demo Route
+    const isDemoRoute = pathname === '/demo' || pathname.startsWith('/demo/');
+
     // Show loading indicator while checking auth
     if (authLoading && !user) {
         return (
@@ -122,12 +126,12 @@ export function App() {
     let content;
 
     if (!user || otpPending) {
-        if (!showAuth) {
+        if (!showAuth && !isDemoRoute && !otpPending) {
             content = (
                 <LandingPage 
                     user={user}
                     onGetStarted={(type, isSignup = false) => {
-                        if (type === 'cadet' || type === 'admin') {
+                        if (type === 'cadet' || type === 'admin' || type === 'ano') {
                             setAuthTab(type);
                         }
                         setInitialIsSignup(isSignup);
@@ -149,6 +153,8 @@ export function App() {
                     <LoginPage
                         onLogin={handleLogin}
                         onSignup={handleSignup}
+                        onDemoLogin={handleDemoLogin}
+                        isDemoMode={isDemoRoute}
                         loading={authLoading}
                         error={authError}
                         setError={setAuthError}

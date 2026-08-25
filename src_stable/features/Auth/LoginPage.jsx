@@ -24,6 +24,14 @@ export const LoginPage = ({
     otpLoading = false,
     onOtpVerify,
     onOtpCancel,
+    // ANO Fingerprint Biometric props
+    fingerprintPending = false,
+    fingerprintEmail = null,
+    fingerprintLoading = false,
+    onFingerprintVerify,
+    onFingerprintCancel,
+    onDemoLogin,
+    isDemoMode = false,
 }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -310,26 +318,39 @@ export const LoginPage = ({
 
                         {/* Role tabs - only show for login, not registration */}
                         {showAdminTab && !isSignup && (
-                            <div className="flex bg-gray-100 dark:bg-white/5 rounded-xl p-1 border border-gray-200 dark:border-white/10">
+                            <div className="flex bg-gray-100 dark:bg-white/5 rounded-xl p-1 border border-gray-200 dark:border-white/10 gap-1">
                                 <button
+                                    type="button"
                                     onClick={() => handleTabChange('cadet')}
-                                    className={`flex-1 flex justify-center items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                                    className={`flex-1 flex justify-center items-center gap-1.5 px-2 py-2 rounded-lg text-xs font-bold transition-all duration-200 ${
                                         activeAuthTab === 'cadet'
                                             ? 'bg-ncc-navy dark:bg-ncc-gold text-white dark:text-ncc-navy shadow-ncc'
                                             : 'text-ncc-navy/60 dark:text-white/40 hover:text-ncc-navy dark:hover:text-white'
                                     }`}
                                 >
-                                    <User className="w-4 h-4" /> Cadet
+                                    <User className="w-3.5 h-3.5" /> Cadet
                                 </button>
                                 <button
+                                    type="button"
+                                    onClick={() => handleTabChange('ano')}
+                                    className={`flex-1 flex justify-center items-center gap-1.5 px-2 py-2 rounded-lg text-xs font-bold transition-all duration-200 ${
+                                        activeAuthTab === 'ano'
+                                            ? 'bg-ncc-navy dark:bg-ncc-gold text-white dark:text-ncc-navy shadow-ncc'
+                                            : 'text-ncc-navy/60 dark:text-white/40 hover:text-ncc-navy dark:hover:text-white'
+                                    }`}
+                                >
+                                    <Shield className="w-3.5 h-3.5" /> ANO
+                                </button>
+                                <button
+                                    type="button"
                                     onClick={() => handleTabChange('admin')}
-                                    className={`flex-1 flex justify-center items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                                    className={`flex-1 flex justify-center items-center gap-1.5 px-2 py-2 rounded-lg text-xs font-bold transition-all duration-200 ${
                                         activeAuthTab === 'admin'
                                             ? 'bg-ncc-navy dark:bg-ncc-gold text-white dark:text-ncc-navy shadow-ncc'
                                             : 'text-ncc-navy/60 dark:text-white/40 hover:text-ncc-navy dark:hover:text-white'
                                     }`}
                                 >
-                                    <Shield className="w-4 h-4" /> Officer
+                                    <Shield className="w-3.5 h-3.5" /> Battalion Admin
                                 </button>
                             </div>
                         )}
@@ -338,7 +359,7 @@ export const LoginPage = ({
                         <div className="flex items-center gap-3">
                             <div className="flex-1 h-px bg-ncc-cream-dark" />
                             <span className="text-xs font-bold uppercase tracking-widest text-ncc-navy dark:text-white/40">
-                                {isSignup ? 'Cadet Registration' : (activeAuthTab === 'cadet' ? 'Cadet Authentication' : 'Admin Authentication')}
+                                {isSignup ? 'Cadet Registration' : (activeAuthTab === 'cadet' ? 'Cadet Authentication' : (activeAuthTab === 'ano' ? 'ANO Authentication' : 'Battalion Admin Authentication'))}
                             </span>
                             <div className="flex-1 h-px bg-ncc-cream-dark" />
                         </div>
@@ -399,7 +420,7 @@ export const LoginPage = ({
                                     placeholder="Enter your full name"
                                 />
                             )}
-                            {activeAuthTab === 'admin' && (
+                            {(activeAuthTab === 'admin' || activeAuthTab === 'ano') && (
                                 <InputField
                                     label="Email Address"
                                     name="email"
@@ -469,7 +490,7 @@ export const LoginPage = ({
                                     <button
                                         type="button"
                                         onClick={
-                                            activeAuthTab === 'admin'
+                                            (activeAuthTab === 'admin' || activeAuthTab === 'ano')
                                                 ? handleAdminResetPassword
                                                 : () =>
                                                       setIsCadetResetModalOpen(
@@ -535,6 +556,42 @@ export const LoginPage = ({
                             <p className="text-xs text-center text-gray-400 dark:text-white/80 border-t border-ncc-cream-dark pt-3">
                                 Only the first admin signup will be registered.
                             </p>
+                        )}
+
+                        {isDemoMode && (
+                            <div className="border-t border-[#ddd8cc] dark:border-white/10 pt-5 mt-4 space-y-3">
+                                <div className="text-center">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-ncc-gold bg-ncc-gold/10 border border-ncc-gold/30 px-2.5 py-0.5 rounded">
+                                        Demonstration Access
+                                    </span>
+                                    <p className="text-[10px] text-gray-400 dark:text-white/50 mt-1">
+                                        Click any button to log in instantly without password or 2FA verification.
+                                    </p>
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => onDemoLogin('cadet')}
+                                        className="w-full py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition-all shadow-md flex justify-center items-center gap-1.5"
+                                    >
+                                        Log in as Cadet (Demo)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => onDemoLogin('admin')}
+                                        className="w-full py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition-all shadow-md flex justify-center items-center gap-1.5"
+                                    >
+                                        Log in as ANO / Staff (Demo)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => onDemoLogin('superadmin')}
+                                        className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition-all shadow-md flex justify-center items-center gap-1.5"
+                                    >
+                                        Log in as Battalion Admin (Demo)
+                                    </button>
+                                </div>
+                            </div>
                         )}
                     </div>
                 </div>

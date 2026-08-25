@@ -31,6 +31,9 @@ import {
 import { sendPushToUser, sendPushToAll } from './pushNotifications.js';
 import { toast } from 'react-toastify';
 
+import { isMaskedValue } from '../utils/maskUtils.js';
+import { normalizeDate } from '../utils/dateUtils.js';
+
 // --- MULTI-TENANCY HELPER ---
 export const getCurrentUserInstitution = async () => {
     // Note: needs `auth` from config.js, exporting it below if not imported
@@ -38,7 +41,16 @@ export const getCurrentUserInstitution = async () => {
     if (!auth || !auth.currentUser) return '14a-bn-srikakulam';
     try {
         const token = await auth.currentUser.getIdTokenResult();
-        return token.claims?.institutionId || '14a-bn-srikakulam';
+        if (token.claims?.institutionId) {
+            return token.claims.institutionId;
+        }
+        // Fall back to looking up the user profile document in Firestore
+        const userDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', auth.currentUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+            return userDocSnap.data().institutionId || '14a-bn-srikakulam';
+        }
+        return '14a-bn-srikakulam';
     } catch (e) {
         console.error('Error fetching institution ID:', e);
         return '14a-bn-srikakulam';
@@ -79,6 +91,57 @@ export const migrateInstitutionId = async (fromId, toId, type = 'cadets') => {
     return count;
 };
 
+export const cleanupAttendanceRecords = async () => {
+    try {
+        const cadetsRef = getCollectionRef('cadets');
+        const attRef = getCollectionRef('attendance');
+        if (!cadetsRef || !attRef) return;
+
+        const datesToRemove = ['18-06-2026', '2026-06-18', '18/06/2026'];
+        const targetNorms = new Set(datesToRemove.map(d => normalizeDate(d)).filter(Boolean));
+
+        const cadetsSnap = await getDocs(query(cadetsRef, limit(500)));
+        let batch = writeBatch(db);
+        let opCount = 0;
+
+        cadetsSnap.docs.forEach((docSnap) => {
+            const data = docSnap.data();
+            const att = data.attendance || {};
+            const keysToDelete = Object.keys(att).filter(k => {
+                const norm = normalizeDate(k);
+                return targetNorms.has(norm) || datesToRemove.includes(k);
+            });
+
+            if (keysToDelete.length > 0) {
+                const updates = {};
+                keysToDelete.forEach(k => {
+                    updates[`attendance.${k}`] = deleteField();
+                });
+                updates.updatedAt = serverTimestamp();
+                batch.update(docSnap.ref, updates);
+                opCount++;
+            }
+        });
+
+        const logsSnap = await getDocs(attRef);
+        logsSnap.docs.forEach((logSnap) => {
+            const data = logSnap.data();
+            const norm = normalizeDate(data.date);
+            if (targetNorms.has(norm) || datesToRemove.includes(data.date)) {
+                batch.delete(logSnap.ref);
+                opCount++;
+            }
+        });
+
+        if (opCount > 0) {
+            await batch.commit();
+            console.log(`✅ Attendance cleanup: Removed 18-06-2026 attendance records (${opCount} operations)`);
+        }
+    } catch (e) {
+        console.warn('Attendance cleanup warning:', e);
+    }
+};
+
 export const rescueAllData = async (targetId = '14a-bn-srikakulam') => {
     const collections = [
         'cadets', 'camps', 'social_activities', 'blood_requests', 'notifications', 
@@ -90,6 +153,7 @@ export const rescueAllData = async (targetId = '14a-bn-srikakulam') => {
         const count = await migrateInstitutionId('gmrit', targetId, col);
         total += count;
     }
+    await cleanupAttendanceRecords();
     return total;
 };
 
@@ -101,6 +165,44 @@ export const rescueAllData = async (targetId = '14a-bn-srikakulam') => {
 export const deleteItem = async (type, id) => {
     const ref = getCollectionRef(type);
     if (!ref) throw new Error('Database not ready.');
+
+    if (type === 'staff') {
+        try {
+            const staffDoc = await getDoc(doc(ref, id));
+            if (staffDoc.exists()) {
+                const staffData = staffDoc.data();
+                const email = staffData?.email?.trim().toLowerCase();
+                if (email) {
+                    // 1. Delete matching user documents from Firestore users collection
+                    const usersRef = getCollectionRef('users');
+                    if (usersRef) {
+                        const q = query(usersRef, where('email', '==', email));
+                        const snap = await getDocs(q);
+                        for (const d of snap.docs) {
+                            await deleteDoc(d.ref).catch(() => {});
+                        }
+                    }
+
+                    // 2. Call backend API to delete from Firebase Authentication
+                    const apiUrl = typeof window !== 'undefined' && window.location?.hostname?.includes('vercel.app') 
+                        ? '/api/updateUserCredentials' 
+                        : 'https://ncc-portal-redesign.vercel.app/api/updateUserCredentials';
+                    
+                    fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'delete',
+                            currentEmail: email
+                        })
+                    }).catch(e => console.warn('Auth deletion on staff delete notice:', e));
+                }
+            }
+        } catch (staffFetchErr) {
+            console.warn('Staff cleanup check notice:', staffFetchErr);
+        }
+    }
+
     await deleteDoc(doc(ref, id));
 };
 
@@ -147,6 +249,31 @@ export const saveCadet = async (data, id = null) => {
 
     if (id) {
         // EDIT MODE
+        const docSnap = await getDoc(doc(ref, id));
+        const existingData = docSnap.exists() ? docSnap.data() : {};
+        
+        if (isMaskedValue(payload.aadhaarNumber) || !payload.aadhaarNumber) {
+            payload.aadhaarNumber = existingData.aadhaarNumber || '';
+        }
+        if (isMaskedValue(payload.phonePersonal) || !payload.phonePersonal) {
+            payload.phonePersonal = existingData.phonePersonal || existingData.phone || '';
+        }
+        if (isMaskedValue(payload.phoneParents) || !payload.phoneParents) {
+            payload.phoneParents = existingData.phoneParents || '';
+        }
+        if (isMaskedValue(payload.addressPresent) || !payload.addressPresent) {
+            payload.addressPresent = existingData.addressPresent || existingData.address || '';
+        }
+        if (isMaskedValue(payload.addressPermanent) || !payload.addressPermanent) {
+            payload.addressPermanent = existingData.addressPermanent || '';
+        }
+        if (isMaskedValue(payload.dob) || !payload.dob) {
+            payload.dob = existingData.dob || '';
+        }
+        if (isMaskedValue(payload.bloodGroup) || !payload.bloodGroup) {
+            payload.bloodGroup = existingData.bloodGroup || '';
+        }
+
         await updateDoc(doc(ref, id), {
             ...payload,
             updatedAt: serverTimestamp(),
@@ -162,6 +289,24 @@ export const saveCadet = async (data, id = null) => {
         };
 
         const institutionId = await getCurrentUserInstitution();
+
+        // Check vacancy limit
+        if (institutionId) {
+            const unitsRef = collection(db, 'artifacts', appId, 'public', 'data', 'units');
+            const unitSnap = await getDoc(doc(unitsRef, institutionId));
+            if (unitSnap.exists()) {
+                const unitData = unitSnap.data();
+                const maxVacancies = (unitData.allottedCadetCount || 0) + (unitData.newVacancies || 0);
+                if (maxVacancies > 0) {
+                    const activeQuery = query(ref, where('institutionId', '==', institutionId));
+                    const activeSnap = await getDocs(activeQuery);
+                    const activeCount = activeSnap.docs.filter(d => d.data().status !== 'alumni').length;
+                    if (activeCount >= maxVacancies) {
+                        throw new Error(`Vacancy Limit Reached: This college unit is allocated a maximum of ${maxVacancies} cadets, and currently has ${activeCount} active cadets.`);
+                    }
+                }
+            }
+        }
 
         await addDoc(ref, {
             ...payload,
@@ -254,6 +399,37 @@ export const bulkAddCadets = async (cadets, institutionId) => {
     const existingMap = new Map(
         snapshot.docs.map((d) => [(d.data().enrollmentId || '').toString().trim(), d.ref])
     );
+
+    // Check vacancy limit for bulk import
+    if (institutionId) {
+        const unitsRef = collection(db, 'artifacts', appId, 'public', 'data', 'units');
+        const unitSnap = await getDoc(doc(unitsRef, institutionId));
+        if (unitSnap.exists()) {
+            const unitData = unitSnap.data();
+            const maxVacancies = (unitData.allottedCadetCount || 0) + (unitData.newVacancies || 0);
+            if (maxVacancies > 0) {
+                const activeCount = snapshot.docs.filter(d => d.data().status !== 'alumni').length;
+                let newAdditionsCount = 0;
+                for (const cadet of cadets) {
+                    const getField = (keys) => {
+                        for (const key of keys) {
+                            if (cadet[key] !== undefined && cadet[key] !== null) return cadet[key].toString().trim();
+                            if (cadet[key.toLowerCase()] !== undefined) return cadet[key.toLowerCase()].toString().trim();
+                        }
+                        return '';
+                    };
+                    const enrollmentId = getField(['Regimental Number', 'Regimental No', 'enrollmentId', 'regimental number']);
+                    const name = getField(['Name', 'name', 'Full Name']);
+                    if (enrollmentId && name && !existingMap.has(enrollmentId.toString().trim())) {
+                        newAdditionsCount++;
+                    }
+                }
+                if (activeCount + newAdditionsCount > maxVacancies) {
+                    throw new Error(`Vacancy Limit Reached: Importing these cadets would result in ${activeCount + newAdditionsCount} active cadets, which exceeds the college vacancy limit of ${maxVacancies}. (Current active cadets: ${activeCount})`);
+                }
+            }
+        }
+    }
 
     const batch = writeBatch(db);
     let addedCount = 0;
@@ -378,31 +554,161 @@ export const deduplicateCadets = async (institutionId) => {
         const instances = groups[enrollId];
         
         // Keep one, delete others
+        // Sort so that we process complete/correct documents first:
+        // 1. Prefer specific college (not 14a-bn-srikakulam)
+        // 2. Prefer documents with more fields filled out (higher details score)
+        // 3. Prefer more recently updated documents
         instances.sort((a, b) => {
+            const isBattalionA = a.institutionId === '14a-bn-srikakulam';
+            const isBattalionB = b.institutionId === '14a-bn-srikakulam';
+            if (isBattalionA && !isBattalionB) return 1;
+            if (!isBattalionA && isBattalionB) return -1;
+
+            const scoreA = (a.fcmTokens?.length || 0) * 10 + 
+                           (a.certifications?.length || 0) * 10 + 
+                           (a.examHistory?.length || 0) * 10 + 
+                           (Object.keys(a.attendance || {}).length) * 5 + 
+                           (a.campHistory?.length || 0) * 5 + 
+                           (a.photoUrl ? 5 : 0) + 
+                           (a.rankHistory?.length || 0) * 3;
+            const scoreB = (b.fcmTokens?.length || 0) * 10 + 
+                           (b.certifications?.length || 0) * 10 + 
+                           (b.examHistory?.length || 0) * 10 + 
+                           (Object.keys(b.attendance || {}).length) * 5 + 
+                           (b.campHistory?.length || 0) * 5 + 
+                           (b.photoUrl ? 5 : 0) + 
+                           (b.rankHistory?.length || 0) * 3;
+            if (scoreA !== scoreB) {
+                return scoreB - scoreA;
+            }
+
             const timeA = a.updatedAt?.toDate?.()?.getTime() || a.createdAt?.toDate?.()?.getTime() || 0;
             const timeB = b.updatedAt?.toDate?.()?.getTime() || b.createdAt?.toDate?.()?.getTime() || 0;
             return timeB - timeA; // Latest first
         });
 
         const primary = instances[0];
+        let mergedAttendance = { ...(primary.attendance || {}) };
 
-        // Ensure the primary record has the correct institutionId
-        if (primary.institutionId !== targetId) {
-            batch.update(primary.ref, { institutionId: targetId });
-            alignedCount++;
-        }
-
-        // Delete all redundant copies
+        // Merge attendance from all redundant copies into primary
         for (let i = 1; i < instances.length; i++) {
+            if (instances[i].attendance) {
+                mergedAttendance = { ...instances[i].attendance, ...mergedAttendance };
+            }
             batch.delete(instances[i].ref);
             removedCount++;
         }
+
+        // Ensure the primary record has a valid institutionId.
+        // If targetId is the battalion headquarters, do NOT overwrite a specific college ID.
+        let newInstitutionId = primary.institutionId;
+        if (!newInstitutionId || newInstitutionId === '14a-bn-srikakulam') {
+            const specificInst = instances.find(inst => inst.institutionId && inst.institutionId !== '14a-bn-srikakulam');
+            if (specificInst) {
+                newInstitutionId = specificInst.institutionId;
+            } else if (targetId && targetId !== '14a-bn-srikakulam') {
+                newInstitutionId = targetId;
+            }
+        } else if (targetId && targetId !== '14a-bn-srikakulam' && primary.institutionId !== targetId) {
+            newInstitutionId = targetId;
+        }
+
+        const updates = { attendance: mergedAttendance, updatedAt: serverTimestamp() };
+        if (primary.institutionId !== newInstitutionId) {
+            updates.institutionId = newInstitutionId;
+            alignedCount++;
+        }
+
+        batch.set(primary.ref, updates, { merge: true });
     }
 
     if (removedCount > 0 || alignedCount > 0) {
         await batch.commit();
     }
     return { removedCount, alignedCount, totalScanned: snapshot.docs.length };
+};
+
+/**
+ * Deduplicate Staff: Finds all staff members with the same email or generic auto-seeded profile
+ * and removes duplicate/dummy records.
+ */
+export const deduplicateStaff = async () => {
+    const ref = getCollectionRef('staff');
+    if (!ref) throw new Error('Database not ready.');
+
+    const snapshot = await getDocs(ref);
+    const batch = writeBatch(db);
+    let removedCount = 0;
+
+    const groups = {};
+    const corruptRefs = [];
+
+    snapshot.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        if (!data.name && !data.email) {
+            corruptRefs.push(docSnap.ref);
+            return;
+        }
+
+        const emailKey = (data.email || '').trim().toLowerCase();
+        if (!emailKey) return;
+
+        if (!groups[emailKey]) groups[emailKey] = [];
+        groups[emailKey].push({ id: docSnap.id, ...data, ref: docSnap.ref });
+    });
+
+    corruptRefs.forEach(ref => {
+        batch.delete(ref);
+        removedCount++;
+    });
+
+    for (const emailKey of Object.keys(groups)) {
+        const instances = groups[emailKey];
+        if (instances.length <= 1) continue;
+
+        instances.sort((a, b) => {
+            const isGenericA = a.name === 'Associate NCC Officer';
+            const isGenericB = b.name === 'Associate NCC Officer';
+            if (isGenericA && !isGenericB) return 1;
+            if (!isGenericA && isGenericB) return -1;
+
+            const scoreA = (a.phone ? 5 : 0) + (a.photoUrl || a.photoURL ? 5 : 0) + (a.address ? 2 : 0) + (a.rank && a.rank !== 'ANO' ? 2 : 0);
+            const scoreB = (b.phone ? 5 : 0) + (b.photoUrl || b.photoURL ? 5 : 0) + (b.address ? 2 : 0) + (b.rank && b.rank !== 'ANO' ? 2 : 0);
+            return scoreB - scoreA;
+        });
+
+        for (let i = 1; i < instances.length; i++) {
+            batch.delete(instances[i].ref);
+            removedCount++;
+        }
+    }
+
+    if (removedCount > 0) {
+        await batch.commit();
+    }
+    return { removedCount, totalScanned: snapshot.docs.length };
+};
+
+// --- Unit Gallery (Save / Upload Item) ---
+export const saveGalleryItem = async (data, id = null) => {
+    const ref = getCollectionRef('unit_gallery');
+    if (!ref) throw new Error('Database not ready.');
+
+    const payload = {
+        title: data.title || 'NCC Unit Activity',
+        location: data.location || 'Unit HQ',
+        date: data.date || new Date().toISOString().split('T')[0],
+        photoUrl: data.photoUrl || '',
+        institutionId: data.institutionId || '14a-bn-srikakulam',
+        uploaderName: data.uploaderName || 'ANO',
+        createdAt: serverTimestamp(),
+    };
+
+    if (id) {
+        await updateDoc(doc(ref, id), payload);
+    } else {
+        await addDoc(ref, payload);
+    }
 };
 
 export const rescueCadets = async () => {
@@ -416,7 +722,7 @@ export const rescueCadets = async () => {
     let count = 0;
 
     snapshot.docs.forEach(docSnap => {
-        batch.update(docSnap.ref, { institutionId: targetId });
+        batch.set(docSnap.ref, { institutionId: targetId }, { merge: true });
         count++;
     });
 
@@ -428,13 +734,66 @@ export const rescueCadets = async () => {
 
 
 // --- Attendance ---
-export const recordAttendance = async (cadetId, date, status) => {
-    const ref = getCollectionRef('cadets');
-    if (!ref) throw new Error('Database not ready.');
-    await updateDoc(doc(ref, cadetId), {
-        [`attendance.${date}`]: status,
+export const recordAttendance = async (cadetId, date, status, markedBy = 'ANO (Manual)', userInstId = null) => {
+    const cadetsRef = getCollectionRef('cadets');
+    const attRef = getCollectionRef('attendance');
+    if (!cadetsRef || !attRef) throw new Error('Database not ready.');
+
+    const cleanDate = normalizeDate(date) || date;
+    const cadetDocRef = doc(cadetsRef, cadetId);
+    const cadetSnap = await getDoc(cadetDocRef);
+    if (!cadetSnap.exists()) throw new Error('Cadet record not found.');
+
+    const cadet = cadetSnap.data();
+    const isPresent = status && ['PRESENT', 'P', 'VERIFIED', 'LATE', 'ATTENDED', 'EXEMPT', '1'].includes(String(status).trim().toUpperCase());
+
+    const instId = userInstId || cadet.institutionId || await getCurrentUserInstitution();
+    const regId = cadet.enrollmentId || cadet.regimentalNumber || '';
+    const division = regId.toUpperCase().includes('SW') ? 'SW' : 'SD';
+
+    // 1. Update Cadet profile document
+    await updateDoc(cadetDocRef, {
+        [`attendance.${cleanDate}`]: isPresent ? (status || 'Present') : 'Absent',
         updatedAt: serverTimestamp(),
     });
+
+    // 2. Sync Attendance History Logs collection
+    const existingLogsSnap = await getDocs(query(attRef, where('cadetId', '==', cadetId), where('date', '==', cleanDate)));
+
+    if (isPresent) {
+        if (!existingLogsSnap.empty) {
+            existingLogsSnap.docs.forEach(async (logDoc) => {
+                await updateDoc(doc(attRef, logDoc.id), {
+                    cadetName: cadet.name || '',
+                    enrollmentId: regId,
+                    certificate: cadet.certificate || cadet.B || 'NA',
+                    division,
+                    timestamp: serverTimestamp(),
+                    markedBy,
+                    institutionId: instId,
+                    date: cleanDate,
+                });
+            });
+        } else {
+            await addDoc(attRef, {
+                cadetId,
+                cadetName: cadet.name || '',
+                enrollmentId: regId,
+                certificate: cadet.certificate || cadet.B || 'NA',
+                division,
+                timestamp: serverTimestamp(),
+                markedBy,
+                institutionId: instId,
+                date: cleanDate,
+            });
+        }
+    } else {
+        if (!existingLogsSnap.empty) {
+            for (const logDoc of existingLogsSnap.docs) {
+                await deleteDoc(doc(attRef, logDoc.id));
+            }
+        }
+    }
 };
 
 // --- Events ---
@@ -517,9 +876,18 @@ export const saveStaff = async (data, id = null) => {
         await updateDoc(doc(ref, id), payload);
     } else {
         payload.createdAt = serverTimestamp();
-        payload.institutionId = await getCurrentUserInstitution(); // Multi-Tenancy tag
+        payload.institutionId = data.institutionId || await getCurrentUserInstitution(); // Multi-Tenancy tag
         await addDoc(ref, payload);
     }
+};
+
+export const checkUserLoginExists = async (email) => {
+    if (!email) return false;
+    const ref = getCollectionRef('users');
+    if (!ref) return false;
+    const q = query(ref, where('email', '==', email.trim().toLowerCase()));
+    const snap = await getDocs(q);
+    return !snap.empty;
 };
 
 // --- Event Images ---
@@ -604,7 +972,7 @@ export const updateAllCadetFeesBulk = async (feeData) => {
 // ------------------------------
 // --- ANNOUNCEMENTS ---
 // ------------------------------
-export const saveAnnouncement = async (title, content, targetCertificate = 'All', targetDivision = 'All', noticeDate = null, id = null) => {
+export const saveAnnouncement = async (title, content, targetCertificate = 'All', targetDivision = 'All', noticeDate = null, id = null, senderRole = 'ano', targetAudience = 'cadets', targetCollege = 'All') => {
     const ref = getCollectionRef('announcements');
     if (!ref) throw new Error('Database not ready.');
     const institutionId = await getCurrentUserInstitution();
@@ -614,7 +982,10 @@ export const saveAnnouncement = async (title, content, targetCertificate = 'All'
         targetCertificate,
         targetDivision,
         noticeDate: noticeDate || new Date().toISOString().split('T')[0],
-        institutionId, 
+        institutionId,
+        senderRole,
+        targetAudience,
+        targetCollege,
         updatedAt: serverTimestamp() 
     };
 
@@ -733,8 +1104,7 @@ export const updateCadetContactInfo = async (cadetId, contactData) => {
 // ------------------------------------
 
 /**
- * Updates the global PhonePe QR Code URL (Admin Only)
- * Saves into: artifacts/[appId]/public/data/settings/payment
+ * Updates payment settings (QR URL and Razorpay Key ID)
  */
 export const updatePaymentScanner = async (newUrl) => {
     const ref = getCollectionRef('settings');
@@ -752,6 +1122,74 @@ export const updatePaymentScanner = async (newUrl) => {
         },
         { merge: true }
     );
+};
+
+export const updatePaymentSettings = async ({ paymentQRUrl, razorpayKeyId }) => {
+    const ref = getCollectionRef('settings');
+    if (!ref) throw new Error('Database not ready.');
+
+    const institutionId = await getCurrentUserInstitution();
+    const paymentDocRef = doc(ref, 'payment');
+
+    const data = {
+        institutionId,
+        updatedAt: serverTimestamp(),
+    };
+    if (paymentQRUrl !== undefined) data.paymentQRUrl = paymentQRUrl;
+    if (razorpayKeyId !== undefined) data.razorpayKeyId = razorpayKeyId;
+
+    await setDoc(paymentDocRef, data, { merge: true });
+};
+
+/**
+ * Record an instant successful payment from Razorpay Checkout (Client-Side, zero backend cost).
+ * Automatically marks transaction as approved and credits cadet's feePaid balance.
+ */
+export const recordInstantRazorpayPayment = async ({
+    cadetId,
+    amount,
+    cadetName,
+    enrollmentId,
+    paymentId,
+    institutionId = null
+}) => {
+    const ref = getCollectionRef('transactions');
+    if (!ref) throw new Error('Database not ready.');
+
+    const finalInstId = institutionId || await getCurrentUserInstitution();
+    const numericAmount = Number(typeof amount === 'string' ? amount.replace(/[^0-9.]/g, '') : amount);
+
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+        throw new Error('Invalid payment amount for Razorpay transaction.');
+    }
+
+    const batch = writeBatch(db);
+
+    // 1. Save approved transaction record
+    const transRef = doc(ref);
+    batch.set(transRef, {
+        cadetId,
+        cadetName,
+        enrollmentId,
+        amount: numericAmount,
+        status: 'approved',
+        type: 'Razorpay',
+        paymentId: paymentId || `RZP-${Date.now()}`,
+        institutionId: finalInstId,
+        createdAt: serverTimestamp(),
+        approvedAt: serverTimestamp(),
+        autoApproved: true
+    });
+
+    // 2. Increment cadet feePaid balance
+    const cadetRef = doc(getCollectionRef('cadets'), cadetId);
+    batch.set(cadetRef, {
+        feePaid: increment(numericAmount),
+        updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    await batch.commit();
+    return transRef.id;
 };
 
 /**
@@ -801,6 +1239,123 @@ export const addNotification = async (userId, title, message, type = 'info', ins
         institutionId,
         createdAt: serverTimestamp()
     });
+};
+
+/**
+ * Checks if a cadet's attendance percentage is below the Battalion Admin threshold for B or C cert,
+ * and sends both a real-time push notification and an in-app alert warning to the cadet's phone/browser.
+ */
+export const checkAndSendLowAttendanceAlert = async (cadetId, percentage, certLevel = 'B', customLimit = null, institutionId = 'gmrit', enrollmentId = null) => {
+    if (!cadetId || typeof percentage !== 'number' || isNaN(percentage)) return;
+    const rounded = Math.round(percentage);
+    const certUpper = String(certLevel || 'B').toUpperCase().trim();
+    const isCCert = certUpper === 'C';
+
+    let minLimit = customLimit;
+    if (minLimit === null || typeof minLimit !== 'number') {
+        minLimit = 75;
+        try {
+            const configRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'certificate_config');
+            const snap = await getDoc(configRef);
+            if (snap.exists()) {
+                const data = snap.data();
+                if (isCCert) {
+                    minLimit = typeof data.minAttendanceC === 'number' ? data.minAttendanceC : 75;
+                } else {
+                    minLimit = typeof data.minAttendanceB === 'number' ? data.minAttendanceB : (data.minAttendanceLimit || 75);
+                }
+            }
+        } catch (e) { console.warn("Config fetch failed", e); }
+    }
+
+    const notifRef = getCollectionRef('notifications');
+
+    if (rounded < minLimit) {
+        const certTag = isCCert ? 'C Certificate' : 'B Certificate';
+        const title = `⚠️ Low Attendance Warning (${rounded}%)`;
+        const body = `Your attendance level has dropped to ${rounded}%, which is below the minimum required limit set by Battalion HQ (${minLimit}% for ${certTag}). Please attend upcoming classes to maintain exam eligibility.`;
+        
+        try {
+            // 1. ALWAYS dispatch real-time push notification to cadet device(s)
+            const { sendPushToCadets } = await import('./pushNotifications.js');
+            await sendPushToCadets([cadetId, enrollmentId], title, body, 'attendance');
+
+            // 2. Manage in-app alert notification in Firestore (search by userId OR enrollmentId)
+            let existingDocs = [];
+            try {
+                if (cadetId) {
+                    const q1 = query(notifRef, where('userId', '==', cadetId));
+                    const snap1 = await getDocs(q1);
+                    existingDocs.push(...snap1.docs);
+                }
+                if (enrollmentId) {
+                    const q2 = query(notifRef, where('enrollmentId', '==', enrollmentId));
+                    const snap2 = await getDocs(q2);
+                    existingDocs.push(...snap2.docs);
+                }
+            } catch (e) { console.warn("Notice lookup failed:", e); }
+
+            const lowAttDocs = existingDocs.filter((d, idx, arr) => 
+                arr.findIndex(x => x.id === d.id) === idx && 
+                (d.data().isLowAttendance === true || (d.data().title && d.data().title.includes('Low Attendance Warning')))
+            );
+
+            if (lowAttDocs.length > 0) {
+                // Update existing document with new details instead of spamming duplicates
+                for (const targetDoc of lowAttDocs) {
+                    await updateDoc(targetDoc.ref, {
+                        title,
+                        message: body,
+                        percentage: rounded,
+                        minLimit,
+                        updatedAt: serverTimestamp()
+                    });
+                }
+            } else {
+                // Create single clean low attendance warning document
+                await addDoc(notifRef, {
+                    userId: cadetId,
+                    enrollmentId: enrollmentId || cadetId,
+                    title,
+                    message: body,
+                    type: 'warning',
+                    isLowAttendance: true,
+                    percentage: rounded,
+                    minLimit,
+                    status: 'unread',
+                    institutionId,
+                    createdAt: serverTimestamp()
+                });
+            }
+        } catch (e) {
+            console.error("Low attendance alert update failed:", e.message);
+        }
+    } else {
+        // Attendance is AT OR ABOVE requirement (e.g. 100% or >= minLimit).
+        // Automatically delete any old low attendance warning documents for this cadet from Firestore!
+        try {
+            let existingDocs = [];
+            if (cadetId) {
+                const q1 = query(notifRef, where('userId', '==', cadetId));
+                const snap1 = await getDocs(q1);
+                existingDocs.push(...snap1.docs);
+            }
+            if (enrollmentId) {
+                const q2 = query(notifRef, where('enrollmentId', '==', enrollmentId));
+                const snap2 = await getDocs(q2);
+                existingDocs.push(...snap2.docs);
+            }
+
+            for (const docSnap of existingDocs) {
+                const data = docSnap.data();
+                if (data.isLowAttendance === true || (data.title && data.title.includes('Low Attendance Warning'))) {
+                    await deleteDoc(docSnap.ref);
+                }
+            }
+        } catch (e) {
+            console.warn("Cleanup of old low attendance warnings failed:", e);
+        }
+    }
 };
 
 /**
@@ -1021,6 +1576,8 @@ export const saveCamp = async (data, id = null) => {
         startDate: data.startDate,
         endDate: data.endDate,
         institutionId,
+        vacancies: data.vacancies || {}, // { [subdomain]: number }
+        disallowedColleges: data.disallowedColleges || [], // [subdomain1, subdomain2]
         updatedAt: serverTimestamp(),
     };
 
@@ -1093,9 +1650,6 @@ export const updateCampRoster = async (campId, cadetId, status = 'Selected') => 
         // 2. Update Cadet Document & Award Merits
         const campHistory = cadetData.campHistory || [];
         const cadetCampIndex = campHistory.findIndex(c => c.campId === campId);
-        
-        // Award 5 merit points for camp selection
-        const newMeritPoints = (cadetData.meritPoints || 0) + 5;
 
         if (cadetCampIndex >= 0) {
             campHistory[cadetCampIndex] = { ...campHistory[cadetCampIndex], status: status || 'Selected' };
@@ -1109,8 +1663,31 @@ export const updateCampRoster = async (campId, cadetId, status = 'Selected') => 
                 achievements: []
             });
         }
+
+        // 3. Update campsAttended list for UI and analytics
+        const campsAttended = cadetData.campsAttended || [];
+        const campYear = campData.startDate ? String(new Date(campData.startDate).getFullYear()) : 'N/A';
+        const cadetCampsAttendedIndex = campsAttended.findIndex(c => c.campId === campId || c.name === campData.name);
+        
+        if (cadetCampsAttendedIndex >= 0) {
+            campsAttended[cadetCampsAttendedIndex] = {
+                campId: campId,
+                name: campData.name || 'Unnamed Camp',
+                year: campYear,
+                location: campData.location || 'N/A'
+            };
+        } else {
+            campsAttended.push({
+                campId: campId,
+                name: campData.name || 'Unnamed Camp',
+                year: campYear,
+                location: campData.location || 'N/A'
+            });
+        }
+
         transaction.update(cadetRef, { 
             campHistory, 
+            campsAttended,
             meritPoints: increment(5),
             updatedAt: serverTimestamp() 
         });
@@ -1127,7 +1704,7 @@ export const addCadetsToCampBulk = async (campId, cadetsToAdd, status = 'Selecte
         const campData = campDoc.data();
         const roster = campData.roster || [];
         
-        cadetsToAdd.forEach(cadet => {
+        for (const cadet of cadetsToAdd) {
              const existingIndex = roster.findIndex(c => c.cadetId === cadet.id);
              if (existingIndex >= 0) {
                  roster[existingIndex].status = status || 'Selected';
@@ -1141,8 +1718,9 @@ export const addCadetsToCampBulk = async (campId, cadetsToAdd, status = 'Selecte
                  });
              }
              
-             // Update the cadet document
+             // Update the cadet document using data passed from the client context
              const cadetRef = doc(getCollectionRef('cadets'), cadet.id);
+             
              const campHistory = [...(cadet.campHistory || [])];
              const cadetCampIndex = campHistory.findIndex(c => c.campId === campId);
              
@@ -1158,12 +1736,69 @@ export const addCadetsToCampBulk = async (campId, cadetsToAdd, status = 'Selecte
                      achievements: []
                  });
              }
-             transaction.update(cadetRef, { campHistory });
-        });
+
+             // Update campsAttended list for UI and analytics
+             const campsAttended = [...(cadet.campsAttended || [])];
+             const campYear = campData.startDate ? String(new Date(campData.startDate).getFullYear()) : 'N/A';
+             const cadetCampsAttendedIndex = campsAttended.findIndex(c => c.campId === campId || c.name === campData.name);
+             if (cadetCampsAttendedIndex >= 0) {
+                 campsAttended[cadetCampsAttendedIndex] = {
+                     campId: campId,
+                     name: campData.name || 'Unnamed Camp',
+                     year: campYear,
+                     location: campData.location || 'N/A'
+                 };
+             } else {
+                 campsAttended.push({
+                     campId: campId,
+                     name: campData.name || 'Unnamed Camp',
+                     year: campYear,
+                     location: campData.location || 'N/A'
+                 });
+             }
+             
+             transaction.update(cadetRef, { 
+                 campHistory, 
+                 campsAttended,
+                 updatedAt: serverTimestamp()
+             });
+        }
         
         transaction.update(campRef, { roster, updatedAt: serverTimestamp() });
     });
 };
+
+export const removeCadetFromCamp = async (campId, cadetId) => {
+    const campRef = doc(getCollectionRef('camps'), campId);
+    const cadetRef = doc(getCollectionRef('cadets'), cadetId);
+    if (!campRef || !cadetRef) throw new Error('Database not ready.');
+
+    return runTransaction(db, async (transaction) => {
+        const campDoc = await transaction.get(campRef);
+        const cadetDoc = await transaction.get(cadetRef);
+        
+        if (!campDoc.exists()) throw new Error("Camp not found");
+        if (!cadetDoc.exists()) throw new Error("Cadet not found");
+
+        const campData = campDoc.data();
+        const cadetData = cadetDoc.data();
+
+        // 1. Remove from Camp Roster
+        const roster = (campData.roster || []).filter(c => c.cadetId !== cadetId);
+        transaction.update(campRef, { roster, updatedAt: serverTimestamp() });
+
+        // 2. Remove from Cadet Document camp history, campsAttended list, & decrement merit points
+        const campHistory = (cadetData.campHistory || []).filter(c => c.campId !== campId);
+        const campsAttended = (cadetData.campsAttended || []).filter(c => c.campId !== campId && c.name !== campData.name);
+        transaction.update(cadetRef, { 
+            campHistory, 
+            campsAttended,
+            meritPoints: increment(-5),
+            updatedAt: serverTimestamp() 
+        });
+    });
+};
+
 
 export const logCampAchievement = async (campId, cadetId, achievementText) => {
     const campRef = doc(getCollectionRef('camps'), campId);
@@ -1395,35 +2030,48 @@ export const updateCadetRank = async (cadetId, newRank, reason = 'Promotion') =>
     if (!ref) throw new Error('Database not ready.');
 
     const cadetDocRef = doc(ref, cadetId);
-    
-    return runTransaction(db, async (transaction) => {
-        const cadetDoc = await transaction.get(cadetDocRef);
+
+    try {
+        const cadetDoc = await getDoc(cadetDocRef);
         if (!cadetDoc.exists()) throw new Error("Cadet not found");
 
         const data = cadetDoc.data();
-        const rankHistory = data.rankHistory || [];
-        
+        const rankHistory = Array.isArray(data.rankHistory) ? [...data.rankHistory] : [];
+
         // Add current rank to history before changing if first time
         if (rankHistory.length === 0 && data.rank) {
-             rankHistory.push({
-                 rank: data.rank,
-                 date: data.createdAt || Timestamp.now(),
-                 reason: 'Initial Entry'
-             });
+            rankHistory.push({
+                rank: data.rank,
+                date: data.createdAt || Timestamp.now(),
+                reason: 'Initial Entry'
+            });
         }
 
         rankHistory.push({
             rank: newRank,
             date: Timestamp.now(),
-            reason: reason
+            reason: reason || 'Merit-based promotion'
         });
 
-        transaction.update(cadetDocRef, {
+        await updateDoc(cadetDocRef, {
             rank: newRank,
             rankHistory,
             updatedAt: serverTimestamp()
         });
-    });
+        return true;
+    } catch (err) {
+        console.warn('Primary updateCadetRank failed, attempting direct update fallback:', err);
+        try {
+            await updateDoc(cadetDocRef, {
+                rank: newRank,
+                updatedAt: serverTimestamp()
+            });
+            return true;
+        } catch (fallbackErr) {
+            console.error('Fallback updateCadetRank failed:', fallbackErr);
+            throw new Error(err.message || 'Promotion update failed.');
+        }
+    }
 };
 
 // ------------------------------------
@@ -1789,11 +2437,11 @@ export const bulkAddQuizQuestions = async (questions) => {
 /**
  * Submits a new grievance/issue from a cadet.
  */
-export const submitGrievance = async (cadetId, cadetName, enrollmentId, subject, message, anonymous = false) => {
+export const submitGrievance = async (cadetId, cadetName, enrollmentId, subject, message, anonymous = false, institutionId = null) => {
     const ref = getCollectionRef('grievances');
     if (!ref) throw new Error('Database not ready.');
 
-    const institutionId = await getCurrentUserInstitution();
+    const finalInstitutionId = institutionId || await getCurrentUserInstitution();
 
     await addDoc(ref, {
         cadetId,
@@ -1805,7 +2453,7 @@ export const submitGrievance = async (cadetId, cadetName, enrollmentId, subject,
         status: 'Pending', // Pending, Reviewed, Resolved, Escalated
         priority: 'Normal', // Normal, High, Critical
         responses: [],
-        institutionId,
+        institutionId: finalInstitutionId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
     });
@@ -1958,30 +2606,6 @@ export const updateKitSizes = async (cadetId, sizes) => {
     });
 };
 
-export const nominateForCamp = async (campId, cadetData) => {
-    const ref = doc(getCollectionRef('camps'), campId);
-    await updateDoc(ref, {
-        nominations: arrayUnion({
-            ...cadetData,
-            status: 'Pending',
-            appliedAt: new Date().toISOString()
-        })
-    });
-};
-
-export const updateNominationStatus = async (campId, cadetId, status) => {
-    const ref = doc(getCollectionRef('camps'), campId);
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-        const nominations = snap.data().nominations || [];
-        const index = nominations.findIndex(n => n.cadetId === cadetId);
-        if (index !== -1) {
-            nominations[index].status = status;
-            nominations[index].updatedAt = new Date().toISOString();
-            await updateDoc(ref, { nominations });
-        }
-    }
-};
 
 export const submitPFTScores = async (cadetId, scores) => {
     const ref = doc(getCollectionRef('cadets'), cadetId);
@@ -2145,16 +2769,16 @@ export const getAllSessions = async (limitCount = 50) => {
         .slice(0, limitCount);
 };
 
-// ── Admin OTP (2FA) ────────────────────────────────────────────────────────
-// Using the users collection for OTP storage because the cloud rules
-// strictly block writes to unknown collections like admin_otps.
+// ── OTP 2FA & Biometric Authentication ────────────────────────────────────
+// Using the users collection for OTP / Biometric session storage because security rules
+// allow user writes to their own user profile document.
 
-export const generateAdminOTP = async (adminUid, email) => {
+export const generateUserOTP = async (userUid, email) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
 
     try {
-        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', adminUid);
+        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', userUid);
         await updateDoc(userRef, {
             otpCode: otp,
             otpExpiresAt: expiresAt.toISOString()
@@ -2166,12 +2790,12 @@ export const generateAdminOTP = async (adminUid, email) => {
     }
 };
 
-export const verifyAdminOTP = async (adminUid, inputOtp) => {
+export const verifyUserOTP = async (userUid, inputOtp) => {
     try {
-        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', adminUid);
+        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', userUid);
         const snap = await getDoc(userRef);
 
-        if (!snap.exists()) throw new Error("Invalid admin session.");
+        if (!snap.exists()) throw new Error("Invalid login session.");
 
         const data = snap.data();
         if (!data.otpCode || !data.otpExpiresAt) {
@@ -2193,15 +2817,73 @@ export const verifyAdminOTP = async (adminUid, inputOtp) => {
     }
 };
 
-export const clearAdminOTP = async (adminUid) => {
+export const clearUserOTP = async (userUid) => {
     try {
-        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', adminUid);
+        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', userUid);
         await updateDoc(userRef, {
             otpCode: deleteField(),
             otpExpiresAt: deleteField()
         });
     } catch (error) {
         console.error("OTP Clear Error:", error);
+    }
+};
+
+// Aliases for backward compatibility
+export const generateAdminOTP = generateUserOTP;
+export const verifyAdminOTP = verifyUserOTP;
+export const clearAdminOTP = clearUserOTP;
+
+// ── ANO Biometric Fingerprint Session Helpers ──
+export const generateAnoBiometricSession = async (anoUid) => {
+    const challenge = `bio_challenge_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
+
+    try {
+        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', anoUid);
+        await updateDoc(userRef, {
+            biometricChallenge: challenge,
+            biometricExpiresAt: expiresAt.toISOString()
+        });
+        return challenge;
+    } catch (error) {
+        console.error("Biometric Session Generation Error:", error);
+        throw new Error("Failed to initialize biometric verification session.");
+    }
+};
+
+export const verifyAnoBiometricSession = async (anoUid) => {
+    try {
+        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', anoUid);
+        const snap = await getDoc(userRef);
+
+        if (!snap.exists()) throw new Error("Invalid ANO session.");
+
+        const data = snap.data();
+        if (!data.biometricChallenge || !data.biometricExpiresAt) {
+            throw new Error("Biometric session expired or invalid.");
+        }
+
+        if (new Date(data.biometricExpiresAt) < new Date()) {
+            throw new Error("Biometric authentication timed out.");
+        }
+
+        return true;
+    } catch (error) {
+        console.error("Biometric Verification Error:", error);
+        throw error;
+    }
+};
+
+export const clearAnoBiometricSession = async (anoUid) => {
+    try {
+        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', anoUid);
+        await updateDoc(userRef, {
+            biometricChallenge: deleteField(),
+            biometricExpiresAt: deleteField()
+        });
+    } catch (error) {
+        console.error("Biometric Clear Error:", error);
     }
 };
 
@@ -2233,18 +2915,58 @@ export const verifyCadetAttendance = async (pendingDocId, cadetLocation) => {
 };
 
 // --- Mentorship ---
-export const submitMentorshipRequest = async (cadetId, cadetName, enrollmentId, contactInfo) => {
+export const submitMentorshipRequest = async (
+    cadetId,
+    cadetName,
+    enrollmentId,
+    contactInfo,
+    message = '',
+    targetMentorId = null,
+    targetMentorName = null,
+    targetMentorEmail = null
+) => {
     const ref = getCollectionRef('mentorship_requests');
     if (!ref) throw new Error('Database not ready.');
-    await addDoc(ref, {
-        cadetId,
-        cadetName,
-        enrollmentId,
-        contactInfo,
+
+    const payload = {
+        cadetId: cadetId || null,
+        cadetName: cadetName || 'Unknown User',
+        enrollmentId: enrollmentId || 'N/A',
+        contactInfo: contactInfo || 'No contact provided',
+        message: message || '',
+        targetMentorId: targetMentorId || null,
+        targetMentorName: targetMentorName || 'Any Available Mentor',
+        targetMentorEmail: targetMentorEmail || null,
         status: 'pending', // pending, assigned, completed
         createdAt: serverTimestamp(),
         institutionId: await getCurrentUserInstitution()
-    });
+    };
+
+    const docSnap = await addDoc(ref, payload);
+
+    // Notify targeted mentor and unit command
+    try {
+        const notifRef = getCollectionRef('notifications');
+        if (notifRef) {
+            await addDoc(notifRef, {
+                subject: `🤝 Mentorship Request: ${cadetName || 'Cadet'}`,
+                message: `${cadetName || 'Cadet'} (${enrollmentId || 'N/A'}) requested mentorship${targetMentorName ? ` from ${targetMentorName}` : ''}. Contact: ${contactInfo}. Note: "${message || 'Guidance requested'}"`,
+                target: targetMentorId || 'All',
+                targetUserId: targetMentorId || null,
+                sender: cadetName || 'Cadet',
+                timestamp: new Date().toISOString(),
+                type: 'mentorship'
+            });
+        }
+
+        if (targetMentorId) {
+            sendPushToUser(targetMentorId, '🤝 New Mentorship Request', `${cadetName} requested mentorship with you!`, 'alumni');
+        }
+    } catch (err) {
+        console.warn('Mentorship notification failure (non-critical):', err);
+    }
+
+    return docSnap.id;
 };
 
 export const updateMentorshipStatus = async (requestId, status, assignedMentorId = null) => {
@@ -2254,3 +2976,320 @@ export const updateMentorshipStatus = async (requestId, status, assignedMentorId
     if (assignedMentorId) data.assignedMentorId = assignedMentorId;
     await updateDoc(doc(ref, requestId), data);
 };
+
+// --- BULK ADD RESULTS ---
+export const bulkAddResults = async (resultsData, institutionId) => {
+    const ref = getCollectionRef('cadets');
+    if (!ref) throw new Error('Database not ready.');
+
+    if (!institutionId) {
+        throw new Error('College/Institution ID is required.');
+    }
+
+    // Fetch cadets for this institution
+    const q = query(ref, where('institutionId', '==', institutionId));
+    const snapshot = await getDocs(q);
+    
+    // Map enrollmentId (case-insensitive & trimmed) to cadet doc and existing certifications
+    const cadetMap = new Map(
+        snapshot.docs.map((d) => {
+            const data = d.data();
+            return [(data.enrollmentId || '').toString().trim().toUpperCase(), { ref: d.ref, data }];
+        })
+    );
+
+    const batch = writeBatch(db);
+    let updatedCount = 0;
+    let skippedCount = 0;
+
+    for (const row of resultsData) {
+        try {
+            const getField = (keys) => {
+                for (const key of keys) {
+                    if (row[key] !== undefined && row[key] !== null) return row[key].toString().trim();
+                    if (row[key.toLowerCase()] !== undefined) return row[key.toLowerCase()].toString().trim();
+                    if (row[key.toUpperCase()] !== undefined) return row[key.toUpperCase()].toString().trim();
+                }
+                return '';
+            };
+
+            const enrollmentId = getField(['Regimental Number', 'Regimental No', 'enrollmentId', 'regimental number', 'reg no']);
+            const certRaw = getField(['Certificate', 'cert', 'certLevel', 'level']);
+            const yearRaw = getField(['Year', 'exam year', 'year']);
+            const theoryMarksRaw = getField(['Theory Marks', 'theory', 'theoryMarks']);
+            const theoryMaxRaw = getField(['Theory Max', 'theoryMax']);
+            const practicalMarksRaw = getField(['Practical Marks', 'practical', 'practicalMarks']);
+            const practicalMaxRaw = getField(['Practical Max', 'practicalMax']);
+            const bonusMarksRaw = getField(['Bonus Marks', 'bonus', 'bonusMarks']);
+
+            if (!enrollmentId || !certRaw || !theoryMarksRaw || !practicalMarksRaw) {
+                skippedCount++;
+                continue;
+            }
+
+            const cadetObj = cadetMap.get(enrollmentId.toUpperCase());
+            if (!cadetObj) {
+                skippedCount++; // Cadet not found in this college
+                continue;
+            }
+
+            // Parse values
+            const certLevel = certRaw.toUpperCase().includes('C') ? 'C' : 'B';
+            const year = yearRaw || new Date().getFullYear().toString();
+            const theoryMarks = parseInt(theoryMarksRaw) || 0;
+            const theoryMax = parseInt(theoryMaxRaw) || 350;
+            const practicalMarks = parseInt(practicalMarksRaw) || 0;
+            const practicalMax = parseInt(practicalMaxRaw) || 150;
+            const bonusMarks = parseInt(bonusMarksRaw) || 0;
+
+            // Compute Grade
+            const tPercent = (theoryMarks / theoryMax) * 100;
+            const pPercent = (practicalMarks / practicalMax) * 100;
+            const totalScored = theoryMarks + practicalMarks + bonusMarks;
+            const totalMax = theoryMax + practicalMax;
+            const aggPercent = (totalScored / totalMax) * 100;
+
+            let finalGrade = 'Fail';
+            if (tPercent < 45 || pPercent < 45 || aggPercent < 50) {
+                finalGrade = 'Fail';
+            } else if (aggPercent >= 80) {
+                finalGrade = 'A';
+            } else if (aggPercent >= 65) {
+                finalGrade = 'B';
+            } else if (aggPercent >= 50) {
+                finalGrade = 'C';
+            }
+
+            const newCert = {
+                id: Date.now().toString() + '_' + Math.random().toString(36).substr(2, 9),
+                type: 'certificate',
+                certLevel: certLevel + ' Certificate',
+                year,
+                theoryMarks,
+                theoryMax,
+                practicalMarks,
+                practicalMax,
+                bonusMarks,
+                totalScore: totalScored,
+                totalMax,
+                finalGrade,
+                dateAdded: new Date().toISOString(),
+                dateModified: new Date().toISOString()
+            };
+
+            let currentCerts = cadetObj.data.certifications || [];
+            // Remove existing certificate of same level if present
+            currentCerts = currentCerts.filter(c => c.certLevel !== newCert.certLevel);
+            currentCerts.push(newCert);
+
+            batch.update(cadetObj.ref, { certifications: currentCerts });
+            updatedCount++;
+        } catch (e) {
+            console.error('Error parsing row:', e);
+            skippedCount++;
+        }
+    }
+
+    if (updatedCount > 0) {
+        await batch.commit();
+    }
+
+    return { updatedCount, skippedCount };
+};
+
+// --- NEW: NCC SELECTION PROCESS / RECRUITMENT ---
+export const saveApplicant = async (data, id = null, institutionIdParam = null) => {
+    const ref = getCollectionRef('applicants');
+    if (!ref) throw new Error('Database not ready.');
+
+    const payload = {
+        fullName: data.fullName || '',
+        studentId: data.studentId || '',
+        email: data.email || '',
+        phone: data.phone || '',
+        department: data.department || '',
+        year: data.year || '1st',
+        gender: data.gender || 'SD',
+        status: data.status || 'Applied',
+        dropoutReason: data.dropoutReason || null,
+        physicalStats: {
+            height: Number(data.physicalStats?.height) || 0,
+            weight: Number(data.physicalStats?.weight) || 0,
+            bmi: Number(data.physicalStats?.bmi) || 0,
+        },
+        trialScores: {
+            runTime: data.trialScores?.runTime || '',
+            pushups: Number(data.trialScores?.pushups) || 0,
+            situps: Number(data.trialScores?.situps) || 0,
+            pullups: Number(data.trialScores?.pullups) || 0,
+            runWithinLimit: data.trialScores?.runWithinLimit || 'Pending',
+        },
+        writtenScore: Number(data.writtenScore) || 0,
+        interviewScore: Number(data.interviewScore) || 0,
+        medicalStatus: data.medicalStatus || 'Pending',
+        meritScore: Number(data.meritScore) || 0,
+        updatedAt: serverTimestamp(),
+    };
+
+    if (id) {
+        await updateDoc(doc(ref, id), payload);
+    } else {
+        const institutionId = institutionIdParam || await getCurrentUserInstitution();
+        payload.institutionId = institutionId;
+        payload.createdAt = serverTimestamp();
+        await addDoc(ref, payload);
+    }
+};
+
+export const promoteApplicantToCadet = async (applicantId, cadetDetails) => {
+    const applicantRef = doc(getCollectionRef('applicants'), applicantId);
+    const applicantSnap = await getDoc(applicantRef);
+    if (!applicantSnap.exists()) throw new Error('Applicant not found');
+
+    const appData = applicantSnap.data();
+    const cadetsRef = getCollectionRef('cadets');
+
+    const payload = {
+        name: appData.fullName,
+        enrollmentId: cadetDetails.enrollmentId.trim().toUpperCase(),
+        jntuNo: appData.studentId || '',
+        rank: cadetDetails.rank || 'CDT',
+        certificate: cadetDetails.certificate || 'NA',
+        fatherName: '',
+        motherName: '',
+        year: appData.year || '1st',
+        branch: appData.department || '',
+        aadhaarNumber: '',
+        phonePersonal: appData.phone || '',
+        phoneParents: '',
+        addressPresent: '',
+        addressPermanent: '',
+        hostelerType: 'Days scholar',
+        ecaCca: '',
+        dob: '',
+        personalEmail: appData.email || '',
+        collegeEmail: '',
+        bloodGroup: '',
+        photoUrl: '',
+        enrollmentFee: 0,
+        uniformFee: 0,
+        campFee: 0,
+        feePaid: 0,
+        feeDueDate: '',
+        institutionId: appData.institutionId,
+        status: 'active',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        attendance: {},
+    };
+
+    // Add to cadets collection
+    await addDoc(cadetsRef, payload);
+
+    // Update applicant status to Approved and store enrollment id
+    await updateDoc(applicantRef, {
+        status: 'Approved',
+        enrolledAs: cadetDetails.enrollmentId.trim().toUpperCase(),
+        updatedAt: serverTimestamp()
+    });
+};
+
+export const submitApplicantList = async (institutionId) => {
+    const ref = getCollectionRef('applicants');
+    if (!ref) throw new Error('Database not ready.');
+
+    const q = query(ref, where('institutionId', '==', institutionId), where('status', '==', 'Selected'));
+    const snap = await getDocs(q);
+
+    if (snap.empty) throw new Error('No selected candidates to submit.');
+
+    const batch = writeBatch(db);
+    snap.docs.forEach(docSnap => {
+        batch.update(docSnap.ref, {
+            status: 'Submitted',
+            updatedAt: serverTimestamp()
+        });
+    });
+
+    await batch.commit();
+};
+
+export const dropoutApplicant = async (applicantId, reason) => {
+    const ref = doc(getCollectionRef('applicants'), applicantId);
+    await updateDoc(ref, {
+        status: 'Dropped',
+        dropoutReason: reason,
+        updatedAt: serverTimestamp()
+    });
+};
+
+export const approveSubmittedApplicants = async (institutionId, enrollmentList) => {
+    const ref = getCollectionRef('applicants');
+    const cadetsRef = getCollectionRef('cadets');
+    if (!ref || !cadetsRef) throw new Error('Database not ready.');
+
+    const batch = writeBatch(db);
+
+    for (const item of enrollmentList) {
+        const applicantRef = doc(ref, item.applicantId);
+        const applicantSnap = await getDoc(applicantRef);
+        if (!applicantSnap.exists()) continue;
+
+        const appData = applicantSnap.data();
+
+        // Create Cadet Profile
+        const newCadetRef = doc(cadetsRef);
+        batch.set(newCadetRef, {
+            name: appData.fullName,
+            enrollmentId: item.enrollmentId.trim().toUpperCase(),
+            jntuNo: appData.studentId || '',
+            rank: item.rank || 'CDT',
+            certificate: item.certificate || 'NA',
+            fatherName: '',
+            motherName: '',
+            year: appData.year || '1st',
+            branch: appData.department || '',
+            aadhaarNumber: '',
+            phonePersonal: appData.phone || '',
+            phoneParents: '',
+            addressPresent: '',
+            addressPermanent: '',
+            hostelerType: 'Days scholar',
+            ecaCca: '',
+            dob: '',
+            personalEmail: appData.email || '',
+            collegeEmail: '',
+            bloodGroup: '',
+            photoUrl: '',
+            enrollmentFee: 0,
+            uniformFee: 0,
+            campFee: 0,
+            feePaid: 0,
+            feeDueDate: '',
+            institutionId: appData.institutionId,
+            status: 'active',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            attendance: {},
+        });
+
+        // Update applicant state
+        batch.update(applicantRef, {
+            status: 'Approved',
+            enrolledAs: item.enrollmentId.trim().toUpperCase(),
+            updatedAt: serverTimestamp()
+        });
+    }
+
+    await batch.commit();
+};
+
+export const updateUnitVacancies = async (unitId, count) => {
+    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'units', unitId);
+    await updateDoc(ref, {
+        newVacancies: Number(count),
+        updatedAt: serverTimestamp()
+    });
+};
+
+

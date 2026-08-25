@@ -45,13 +45,13 @@ export const TenantProvider = ({ children }) => {
                         ...data
                     });
                 } else {
-                    // Fallback to default GMRIT if not found
+                    // Fallback to default 14(A) BN NCC if not found
                     console.warn(`Unit configuration for "${subdomain}" not found. Falling back to default.`);
                     setTenant({
-                        id: 'gmrit-default',
+                        id: '14a-bn-ncc',
                         subdomain: 'gmrit',
                         unitName: '14(A) BN NCC',
-                        location: 'GMRIT Srikakulam',
+                        location: 'Srikakulam',
                         primaryColor: '#1B3A6B',
                         secondaryColor: '#B8830E',
                         heroBg: heroBgImg, // Default

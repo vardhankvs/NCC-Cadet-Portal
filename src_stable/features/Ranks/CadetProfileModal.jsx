@@ -1,11 +1,17 @@
 import React from 'react';
-import { X, Mail, Phone, MapPin, Droplet, Briefcase, List, Calendar, Award, Shield, Download, FileText } from '../../components/Icons.jsx';
+import { X, Mail, Phone, MapPin, Droplet, Briefcase, List, Calendar, Award, Shield, Download, FileText, User } from '../../components/Icons.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useAuthContext } from '../../context/AuthContext.jsx';
+import { getMaskedCadet } from '../../utils/maskUtils.js';
 
-export const CadetProfileModal = ({ cadet, attendancePct, attendancePresentCount, attendanceTotalPeriods, onClose }) => {
+export const CadetProfileModal = ({ cadet: rawCadet, attendancePct, attendancePresentCount, attendanceTotalPeriods, onClose, hideJntuAndBranch }) => {
+    const { userRole, userEnrollmentId } = useAuthContext();
+    const cadet = getMaskedCadet(rawCadet, userRole, userEnrollmentId);
     if (!cadet) return null;
+
+    const isBattalionAdmin = userRole === 'superadmin' || userRole === 'battalion_admin';
 
     const initials = cadet.name ? cadet.name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase() : 'NC';
     const cert = cadet.certificate || cadet.B;
@@ -13,6 +19,49 @@ export const CadetProfileModal = ({ cadet, attendancePct, attendancePresentCount
     const division = reg.includes('SW') ? 'SW' : reg.includes('SD') ? 'SD' : '—';
 
     const certColor = cert === 'C' ? 'bg-ncc-gold text-white' : cert === 'B2' ? 'bg-blue-600 text-white' : cert === 'B1' ? 'bg-emerald-600 text-white' : 'bg-gray-400 text-white';
+
+    // Robust calculation of attendance metrics if props are empty or zero
+    const rawAttendanceMap = cadet.attendance || rawCadet.attendance || {};
+    const attendanceEntries = Object.entries(rawAttendanceMap);
+    
+    let computedPresent = 0;
+    let computedTotal = attendanceEntries.length;
+
+    attendanceEntries.forEach(([_, status]) => {
+        const s = String(status).toUpperCase().trim();
+        if (s === 'PRESENT' || s === 'P' || s === '1' || s === 'ATTENDED') {
+            computedPresent++;
+        }
+    });
+
+    if (computedPresent === 0) {
+        if (typeof cadet.totalAttended === 'number') computedPresent = cadet.totalAttended;
+        else if (typeof cadet.attendedParades === 'number') computedPresent = cadet.attendedParades;
+        else if (typeof cadet.paradesAttended === 'number') computedPresent = cadet.paradesAttended;
+        else if (typeof cadet.presentCount === 'number') computedPresent = cadet.presentCount;
+        else if (typeof cadet.attendancePresentCount === 'number') computedPresent = cadet.attendancePresentCount;
+    }
+
+    if (computedTotal === 0) {
+        if (typeof cadet.totalParades === 'number') computedTotal = cadet.totalParades;
+        else if (typeof cadet.totalPeriods === 'number') computedTotal = cadet.totalPeriods;
+        else if (typeof cadet.attendanceTotalPeriods === 'number') computedTotal = cadet.attendanceTotalPeriods;
+    }
+
+    const effectivePresent = (attendancePresentCount && attendancePresentCount > 0) ? attendancePresentCount : computedPresent;
+    const effectiveTotal = (attendanceTotalPeriods && attendanceTotalPeriods > 0) ? attendanceTotalPeriods : (computedTotal > 0 ? computedTotal : effectivePresent);
+    
+    let effectivePct = (attendancePct !== undefined && attendancePct !== null && attendancePct > 0) ? attendancePct : (cadet.attendancePercentage ?? cadet.attendancePct);
+    if ((effectivePct === undefined || effectivePct === null || effectivePct === 0) && effectiveTotal > 0) {
+        effectivePct = Math.round((effectivePresent / effectiveTotal) * 100);
+    }
+    if (effectivePct === undefined || effectivePct === null) {
+        effectivePct = 0;
+    }
+
+    const displayClassesText = (effectiveTotal > 0)
+        ? `${effectivePresent} / ${effectiveTotal} NCC Classes Attended`
+        : (effectivePresent > 0 ? `${effectivePresent} NCC Classes Attended` : (effectivePct > 0 ? `Attendance ${effectivePct}%` : `0 Classes Attended`));
 
     const handleDownloadPDF = () => {
         const doc = new jsPDF();
@@ -43,13 +92,15 @@ export const CadetProfileModal = ({ cadet, attendancePct, attendancePresentCount
             startY: 65,
             head: [['Field', 'Information']],
             body: [
-                ['JNTU Number', cadet.jntuNo || 'N/A'],
+                ...(!isBattalionAdmin && !hideJntuAndBranch ? [['JNTU Number', cadet.jntuNo || 'N/A']] : []),
+                ['Father\'s Name', cadet.fatherName || 'N/A'],
+                ['Mother\'s Name', cadet.motherName || 'N/A'],
                 ['Date of Birth', cadet.dob || 'N/A'],
-                ['Blood Group', cadet.bloodGroup || 'N/A'],
-                ['Branch / Dept', cadet.branch || 'N/A'],
-                ['Fee Status', cadet.feePaid ? 'Paid' : 'Pending'],
-                ['Address', cadet.addressPresent || 'N/A'],
-                ['Email', cadet.personalEmail || cadet.email || 'N/A'],
+                ...(!isBattalionAdmin ? [['Blood Group', cadet.bloodGroup || 'N/A']] : []),
+                ...(!isBattalionAdmin && !hideJntuAndBranch ? [['Branch / Dept', cadet.branch || 'N/A']] : []),
+                ...(!isBattalionAdmin ? [['Fee Status', cadet.feePaid ? 'Paid' : 'Pending']] : []),
+                ...(!isBattalionAdmin ? [['Address', cadet.addressPresent || 'N/A']] : []),
+                ...(!isBattalionAdmin ? [['Email', cadet.personalEmail || cadet.email || 'N/A']] : []),
                 ['Phone', cadet.phonePersonal || cadet.phone || 'N/A'],
             ],
             theme: 'striped',
@@ -65,10 +116,12 @@ export const CadetProfileModal = ({ cadet, attendancePct, attendancePresentCount
             startY: finalY + 5,
             head: [['Metric', 'Value']],
             body: [
-                ['Attendance Percentage', `${attendancePct}%`],
-                ['Parades Attended', `${attendancePresentCount} / ${attendanceTotalPeriods}`],
-                ['Merit Points', String(cadet.meritPoints || 0)],
-                ['Demerit Points', String(cadet.demeritPoints || 0)],
+                ['Attendance Percentage', `${effectivePct}%`],
+                ['NCC Classes Attended', `${effectivePresent} / ${effectiveTotal}`],
+                ...(!isBattalionAdmin ? [
+                    ['Merit Points', String(cadet.meritPoints || 0)],
+                    ['Demerit Points', String(cadet.demeritPoints || 0)],
+                ] : []),
             ],
             theme: 'grid',
             headStyles: { fillColor: [212, 175, 55], textColor: [15, 46, 74] },
@@ -106,6 +159,7 @@ export const CadetProfileModal = ({ cadet, attendancePct, attendancePresentCount
     };
 
     const handleDownloadNominationForm = () => {
+        if (isBattalionAdmin) return;
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.width;
         
@@ -222,7 +276,6 @@ export const CadetProfileModal = ({ cadet, attendancePct, attendancePresentCount
                                 </div>
                             </div>
                         </div>
-
                         {/* Actions */}
                         <div className="flex items-center gap-3">
                             <button 
@@ -251,24 +304,24 @@ export const CadetProfileModal = ({ cadet, attendancePct, attendancePresentCount
                 <div className="bg-ncc-navy/95 border-b border-white/5 py-3 px-6 md:px-10">
                     <div className="max-w-7xl mx-auto w-full grid grid-cols-3 md:grid-cols-6 gap-4">
                         <div className="text-center md:text-left">
-                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-0.5">Merit</p>
+                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-0.5">Merit Points</p>
                             <p className="text-lg font-black text-emerald-400">{cadet.meritPoints || 0}</p>
                         </div>
                         <div className="text-center md:text-left">
-                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-0.5">Demerit</p>
+                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-0.5">Demerit Points</p>
                             <p className="text-lg font-black text-red-400">{cadet.demeritPoints || 0}</p>
                         </div>
-                        <div className="col-span-1 md:col-span-2">
+                        <div className="col-span-1 md:col-span-2 col-start-1 md:col-start-3">
                             <div className="flex justify-between items-center mb-1">
                                 <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">Attendance</p>
-                                <p className="text-[10px] font-black text-emerald-400">{attendancePct}%</p>
+                                <p className="text-[10px] font-black text-emerald-400">{effectivePct}%</p>
                             </div>
                             <div className="h-1.5 w-full bg-white dark:bg-[#050b14]/10 rounded-full overflow-hidden">
-                                <div className="h-full bg-emerald-400" style={{ width: `${attendancePct}%` }} />
+                                <div className="h-full bg-emerald-400" style={{ width: `${effectivePct}%` }} />
                             </div>
                         </div>
                         <div className="hidden md:block col-span-2 text-right self-center">
-                            <p className="text-[10px] font-black text-ncc-gold uppercase tracking-[0.2em]">{attendancePresentCount} Parades Attended</p>
+                            <p className="text-[10px] font-black text-ncc-gold uppercase tracking-[0.2em]">{displayClassesText}</p>
                         </div>
                     </div>
                 </div>
@@ -286,22 +339,24 @@ export const CadetProfileModal = ({ cadet, attendancePct, attendancePresentCount
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-1">
                                     <div>
                                         <DetailRow icon={List}       label="Regimental No." value={cadet.regimentalNumber || cadet.enrollmentId} />
-                                        <DetailRow icon={List}       label="JNTU Number"    value={cadet.jntuNo} />
-                                        <DetailRow icon={Calendar}   label="Date of Birth"  value={cadet.dob} />
-                                        <DetailRow icon={Droplet}    label="Blood Group"    value={cadet.bloodGroup} />
+                                        {!hideJntuAndBranch && <DetailRow icon={List}       label="JNTU Number"    value={cadet.jntuNo || 'N/A'} />}
+                                        <DetailRow icon={Calendar}   label="Date of Birth"  value={cadet.dob || 'N/A'} />
+                                        <DetailRow icon={User}       label="Father's Name"  value={cadet.fatherName || 'N/A'} />
+                                        <DetailRow icon={User}       label="Mother's Name"  value={cadet.motherName || 'N/A'} />
+                                        <DetailRow icon={Droplet}    label="Blood Group"    value={cadet.bloodGroup || 'N/A'} />
                                     </div>
                                     <div>
-                                        <DetailRow icon={Briefcase}  label="Branch / Dept"  value={cadet.branch} />
+                                        {!hideJntuAndBranch && <DetailRow icon={Briefcase}  label="Branch / Dept"  value={cadet.branch || 'N/A'} />}
                                         <DetailRow icon={Award}      label="Certificate"    value={cert ? `Cert ${cert}` : 'N/A'} />
                                         <DetailRow icon={Shield}     label="Fee Status"     value={cadet.feePaid ? 'Paid' : 'Pending'} />
-                                        <DetailRow icon={MapPin}     label="Address"        value={cadet.addressPresent} />
+                                        <DetailRow icon={MapPin}     label="Address"        value={cadet.addressPresent || cadet.address || 'N/A'} />
                                     </div>
                                 </div>
                             </section>
 
                             <section>
                                 <h3 className="text-[10px] font-black text-ncc-navy dark:text-white/40 uppercase tracking-[0.3em] mb-6 flex items-center gap-4">
-                                    Promotion Timeline <div className="flex-1 h-px bg-ncc-navy/10 dark:bg-white/10" />
+                                    Rank History & Promotion Timeline <div className="flex-1 h-px bg-ncc-navy/10 dark:bg-white/10" />
                                 </h3>
                                 {cadet.rankHistory && cadet.rankHistory.length > 0 ? (
                                     <div className="relative pl-10 space-y-6">
@@ -324,7 +379,13 @@ export const CadetProfileModal = ({ cadet, attendancePct, attendancePresentCount
                                         ))}
                                     </div>
                                 ) : (
-                                    <p className="text-xs text-gray-400 dark:text-white/80 italic bg-white dark:bg-[#050b14] p-6 rounded-3xl border border-dashed border-gray-200 dark:border-white/10 text-center uppercase tracking-widest">No promotion records</p>
+                                    <div className="bg-white dark:bg-[#050b14] p-6 rounded-3xl border border-dashed border-gray-200 dark:border-white/10 flex items-center gap-3">
+                                        <Award className="w-5 h-5 text-ncc-gold" />
+                                        <div>
+                                            <p className="text-xs font-bold text-ncc-navy dark:text-white uppercase tracking-wider">Initial Rank: {cadet.rank || 'CDT'}</p>
+                                            <p className="text-[10px] text-gray-400 dark:text-white/70 mt-0.5">No formal promotion events recorded yet.</p>
+                                        </div>
+                                    </div>
                                 )}
                             </section>
                         </div>
@@ -336,24 +397,51 @@ export const CadetProfileModal = ({ cadet, attendancePct, attendancePresentCount
                                     Contact Details <div className="flex-1 h-px bg-ncc-navy/10 dark:bg-white/10" />
                                 </h3>
                                 <div className="bg-white dark:bg-[#0a1628] p-6 rounded-[2rem] border border-ncc-navy/5 dark:border-white/5 shadow-sm space-y-5">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center shadow-inner">
-                                            <Mail className="w-5 h-5 text-blue-600" />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="text-[8px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest">Email Address</p>
-                                            <p className="text-sm font-bold text-ncc-navy dark:text-white truncate">{cadet.personalEmail || cadet.email}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-4 border-t border-gray-50 pt-4">
-                                        <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center shadow-inner">
-                                            <Phone className="w-5 h-5 text-emerald-600" />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="text-[8px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest">Mobile Phone</p>
-                                            <p className="text-sm font-bold text-ncc-navy dark:text-white">{cadet.phonePersonal || cadet.phone}</p>
-                                        </div>
-                                    </div>
+                                    {(cadet.personalEmail || cadet.email) && (
+                                        <a 
+                                            href={`mailto:${cadet.personalEmail || cadet.email}`}
+                                            className="flex items-center gap-4 pb-4 border-b border-gray-50 dark:border-white/5 group hover:opacity-90 transition-all cursor-pointer"
+                                            title="Click to send email"
+                                        >
+                                            <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
+                                                <Mail className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-[8px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest">Email Address</p>
+                                                <p className="text-sm font-bold text-ncc-navy dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:underline">{cadet.personalEmail || cadet.email}</p>
+                                            </div>
+                                        </a>
+                                    )}
+                                    {(cadet.phonePersonal || cadet.phone) && (
+                                        <a 
+                                            href={`tel:${cadet.phonePersonal || cadet.phone}`}
+                                            className="flex items-center gap-4 group hover:opacity-90 transition-all cursor-pointer"
+                                            title="Click to call mobile number"
+                                        >
+                                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
+                                                <Phone className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-[8px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest">Mobile Phone</p>
+                                                <p className="text-sm font-bold text-ncc-navy dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 group-hover:underline">{cadet.phonePersonal || cadet.phone}</p>
+                                            </div>
+                                        </a>
+                                    )}
+                                    {cadet.phoneParents && (
+                                        <a 
+                                            href={`tel:${cadet.phoneParents}`}
+                                            className="flex items-center gap-4 pt-4 border-t border-gray-50 dark:border-white/5 group hover:opacity-90 transition-all cursor-pointer"
+                                            title="Click to call parents contact"
+                                        >
+                                            <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
+                                                <Phone className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-[8px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest">Parents Contact</p>
+                                                <p className="text-sm font-bold text-ncc-navy dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 group-hover:underline">{cadet.phoneParents}</p>
+                                            </div>
+                                        </a>
+                                    )}
                                 </div>
                             </section>
 

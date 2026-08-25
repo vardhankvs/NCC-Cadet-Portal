@@ -56,6 +56,7 @@ export default defineConfig({
         __firebase_config: JSON.stringify(''),
     },
     build: {
-        sourcemap: true
+        sourcemap: true,
+        emptyOutDir: false
     }
 });

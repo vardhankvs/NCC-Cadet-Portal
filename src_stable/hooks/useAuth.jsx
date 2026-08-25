@@ -1,14 +1,15 @@
-// src/hooks/useAuth.jsx
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { auth, db, appId } from '../firebase/config';
 import { onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc, onSnapshot, collection, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, collection, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import {
     loginUser,
     signupUser,
     logoutUser,
     logoutAllDevices,
     loginAdminWithOTP,
+    loginUserWithOTP,
+    loginAnoWithBiometrics,
 } from '../firebase/authService';
 import {
     updateUserLastViewedAnnouncements,
@@ -18,10 +19,16 @@ import {
     terminateSession,
     verifyAdminOTP,
     clearAdminOTP,
+    verifyUserOTP,
+    clearUserOTP,
+    verifyAnoBiometricSession,
+    clearAnoBiometricSession,
     logAuditEvent,
 } from '../firebase/firestoreService';
+import { useTenant } from '../context/TenantContext';
 
 export const useAuth = () => {
+    const { tenant } = useTenant();
     const [user, setUser] = useState(null);
     const [userRole, setUserRole] = useState(null);
     const [userEnrollmentId, setUserEnrollmentId] = useState(null);
@@ -35,11 +42,18 @@ export const useAuth = () => {
     const [authError, setAuthError] = useState(null);
     const [signupSuccess, setSignupSuccess] = useState(false);
 
-    // ── OTP 2FA state (admin only) ──
+    // ── OTP 2FA state (Cadet & Admin) ──
     const [otpPending, setOtpPending] = useState(false);
     const [otpUid, setOtpUid] = useState(null);
     const [otpEmail, setOtpEmail] = useState(null);
     const [otpLoading, setOtpLoading] = useState(false);
+
+    // ── Fingerprint Biometric state (ANO only) ──
+    const [fingerprintPending, setFingerprintPending] = useState(false);
+    const [fingerprintUid, setFingerprintUid] = useState(null);
+    const [fingerprintEmail, setFingerprintEmail] = useState(null);
+    const [fingerprintLoading, setFingerprintLoading] = useState(false);
+
     // Store credentials temporarily for step 2 re-login
     const pendingCredRef = useRef(null);
 
@@ -83,9 +97,18 @@ export const useAuth = () => {
                 // One-time fetch to bootstrap the UI
                 try {
                     const userDocSnap = await getDoc(userDocRef);
+                    let userData;
                     if (userDocSnap.exists()) {
-                        const userData = userDocSnap.data();
+                        userData = userDocSnap.data();
+                    } else {
+                        console.warn('User doc not found, logging out.');
+                        setUserRole(null);
+                        setUserInstitutionId(null);
+                        await logoutUser();
+                        return;
+                    }
 
+                    if (userData) {
                         // Block login if a global logout was triggered after this sign-in
                         if (userData.lastLogoutTime) {
                             const logoutTime = userData.lastLogoutTime.toDate();
@@ -97,18 +120,73 @@ export const useAuth = () => {
                             }
                         }
 
-                        let finalInstitutionId = customInstitutionId || userData.institutionId || '14a-bn-srikakulam';
+                        let finalInstitutionId = customInstitutionId || userData.institutionId;
 
-                        if (userData.institutionId && userData.institutionId !== '14a-bn-srikakulam') {
-                            finalInstitutionId = '14a-bn-srikakulam';
+                        // Query official roster/staff directory to sync/verify the correct institutionId
+                        const userRoleVal = customRole || userData.role;
+                        if (userRoleVal === 'cadet' && userData.enrollmentId) {
                             try {
-                                await updateDoc(userDocRef, { institutionId: '14a-bn-srikakulam' });
-                            } catch (e) {
-                                console.error('Failed to auto-heal user institutionId:', e);
+                                const cadetsRef = collection(db, 'artifacts', appId, 'public', 'data', 'cadets');
+                                const rosterQuery = query(cadetsRef, where('enrollmentId', '==', userData.enrollmentId.trim().toUpperCase()));
+                                const rosterSnap = await getDocs(rosterQuery);
+                                if (!rosterSnap.empty) {
+                                    const officialInstitutionId = rosterSnap.docs[0].data().institutionId;
+                                    if (officialInstitutionId && officialInstitutionId !== finalInstitutionId) {
+                                        finalInstitutionId = officialInstitutionId;
+                                        await updateDoc(userDocRef, { institutionId: officialInstitutionId });
+                                        console.log(`Synced cadet institutionId to official roster: ${officialInstitutionId}`);
+                                    }
+                                }
+                            } catch (err) {
+                                console.error('Error syncing institutionId for cadet:', err);
+                            }
+                        } else if (userRoleVal === 'admin' && userData.email) {
+                            try {
+                                const staffRef = collection(db, 'artifacts', appId, 'public', 'data', 'staff');
+                                const staffQuery = query(staffRef, where('email', '==', userData.email.trim().toLowerCase()));
+                                const staffSnap = await getDocs(staffQuery);
+                                if (!staffSnap.empty) {
+                                    const officialInstitutionId = staffSnap.docs[0].data().institutionId;
+                                    if (officialInstitutionId && officialInstitutionId !== finalInstitutionId) {
+                                        finalInstitutionId = officialInstitutionId;
+                                        await updateDoc(userDocRef, { institutionId: officialInstitutionId });
+                                        console.log(`Synced admin/staff institutionId to official staff directory: ${officialInstitutionId}`);
+                                    }
+                                }
+                            } catch (err) {
+                                console.error('Error syncing institutionId for staff:', err);
                             }
                         }
 
+                        if (!finalInstitutionId) {
+                            finalInstitutionId = '14a-bn-srikakulam';
+                        }
+
                         const role = customRole || userData.role;
+
+                        // Restrict non-battalion users to their own subdomain/institution portal
+                        if (role !== 'superadmin' && role !== 'battalion_admin' && finalInstitutionId !== tenant?.subdomain) {
+                            console.warn(`Redirecting User: User institution (${finalInstitutionId}) does not match current portal (${tenant?.subdomain})`);
+                            
+                            const hostname = window.location.hostname;
+                            const url = new URL(window.location.href);
+                            
+                            if (hostname !== 'localhost' && !hostname.includes('firebaseapp.com') && !hostname.includes('web.app')) {
+                                const parts = hostname.split('.');
+                                if (parts.length >= 3) {
+                                    parts[0] = finalInstitutionId;
+                                    url.hostname = parts.join('.');
+                                } else {
+                                    url.searchParams.set('unit', finalInstitutionId);
+                                }
+                            } else {
+                                url.searchParams.set('unit', finalInstitutionId);
+                            }
+                            
+                            window.location.href = url.toString();
+                            return;
+                        }
+
                         setUserRole(role);
                         setUserInstitutionId(finalInstitutionId);
                         setUserEnrollmentId(userData.enrollmentId || null);
@@ -136,11 +214,6 @@ export const useAuth = () => {
                             sessionIdRef.current = sId;
                             if (sId) startHeartbeat(sId);
                         }
-                    } else {
-                        console.warn('User doc not found, logging out.');
-                        setUserRole(null);
-                        setUserInstitutionId(null);
-                        await logoutUser();
                     }
                 } catch (fetchError) {
                     console.error('Error fetching user role:', fetchError);
@@ -160,7 +233,7 @@ export const useAuth = () => {
                 sessionIdRef.current = null;
             }
             setAuthLoading(false);
-            setAuthError(null);
+            setAuthError(prev => prev && prev.includes('Access Denied') ? prev : null);
         });
         return () => {
             unsubscribe();
@@ -199,22 +272,22 @@ export const useAuth = () => {
         return () => unsubscribeSnapshot();
     }, [user]);
 
-    // ── Step 1: Admin login → trigger OTP ──────────────────────────────────
-    const handleAdminLoginStep1 = async (email, password) => {
+    // ── Step 1: Cadet / Admin login → trigger 2FA OTP ──────────────────────
+    const handleUserOtpStep1 = async (identifier, password, tab) => {
         setAuthLoading(true);
         setAuthError(null);
-        setOtpPending(true); // Pre-emptively block Dashboard from loading during the auth handshake
+        setOtpPending(true);
         try {
-            const { uid, email: userEmail } = await loginAdminWithOTP(email, password);
-            pendingCredRef.current = { email, password };
+            const { uid, email, authEmail } = await loginUserWithOTP(identifier, password, tab);
+            pendingCredRef.current = { authEmail, password, tab };
             setOtpUid(uid);
-            setOtpEmail(userEmail);
+            setOtpEmail(email);
             setAuthLoading(false);
             return true;
         } catch (e) {
-            setOtpPending(false); // Revert if login failed
+            setOtpPending(false);
             if (e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
-                setAuthError('Invalid credentials. Please check your email and password.');
+                setAuthError(tab === 'cadet' ? 'Invalid credentials. Please check your Regimental ID and password.' : 'Invalid credentials. Please check your email and password.');
             } else {
                 setAuthError(e.message);
             }
@@ -223,33 +296,54 @@ export const useAuth = () => {
         }
     };
 
-    // ── Step 2: Verify OTP → complete real login ────────────────────────────
+    // ── Step 2: Verify OTP → directly launch OS Native Biometric Fingerprint (Windows Hello / Touch ID / Android) ──
     const handleAdminLoginStep2 = async (inputOtp) => {
         setOtpLoading(true);
         setAuthError(null);
         try {
-            await verifyAdminOTP(otpUid, inputOtp);
+            await verifyUserOTP(otpUid, inputOtp);
 
-            const { email: adminEmail, password: adminPassword } = pendingCredRef.current || {};
-            await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
-            
-            // Now that we are authenticated again, we can clear the OTP from the database
-            await clearAdminOTP(otpUid);
+            const { authEmail, password, tab } = pendingCredRef.current || {};
+            const currentUid = otpUid;
+            const currentEmail = authEmail;
 
-            await logAuditEvent({
-                action: 'OTP_VERIFIED',
-                collection: 'auth',
-                summary: `Admin ${adminEmail} completed 2FA login`,
-                adminUid: otpUid,
-                adminEmail,
-            });
+            if (tab === 'admin' || tab === 'ano') {
+                // Directly launch Native OS Biometric Fingerprint Prompt (NO UI modal)
+                const { triggerNativeOsFingerprintPrompt } = await import('../firebase/authService');
+                await triggerNativeOsFingerprintPrompt(currentEmail);
 
-            pendingCredRef.current = null;
-            setOtpPending(false);
-            setOtpUid(null);
-            setOtpEmail(null);
+                // ONLY AFTER Native OS Fingerprint succeeds: complete Firebase Auth login!
+                await signInWithEmailAndPassword(auth, authEmail, password);
+
+                await clearUserOTP(currentUid).catch(() => {});
+                await logAuditEvent({
+                    action: 'BIOMETRIC_VERIFIED',
+                    collection: 'auth',
+                    summary: `Admin/Officer ${currentEmail} completed 3-Stage 2FA (Password + OTP + Native OS Biometrics)`,
+                    adminUid: currentUid,
+                    adminEmail: currentEmail,
+                }).catch(() => {});
+
+                pendingCredRef.current = null;
+                setOtpPending(false);
+                setOtpUid(null);
+                setOtpEmail(null);
+            } else {
+                // Cadet login complete
+                await signInWithEmailAndPassword(auth, authEmail, password);
+                await clearUserOTP(currentUid).catch(() => {});
+                pendingCredRef.current = null;
+                setOtpPending(false);
+                setOtpUid(null);
+                setOtpEmail(null);
+            }
         } catch (e) {
-            setAuthError(e.message);
+            console.error('2FA Verification Error:', e);
+            if (e.message?.includes('cancelled') || e.message?.includes('NotAllowedError')) {
+                setAuthError('OS Biometric Fingerprint prompt was cancelled or not recognized. Please try logging in again.');
+            } else {
+                setAuthError(e.message || 'OTP Verification / Biometric prompt failed.');
+            }
         }
         setOtpLoading(false);
     };
@@ -262,22 +356,32 @@ export const useAuth = () => {
         setAuthError(null);
     };
 
+    const cancelFingerprint = () => {
+        setFingerprintPending(false);
+        setFingerprintUid(null);
+        setFingerprintEmail(null);
+        pendingCredRef.current = null;
+        setAuthError(null);
+    };
+
+    const handleAnoFingerprintVerify = async () => {};
+
     const handleLogin = async (email, pass, enrollId, tab) => {
         setAuthLoading(true);
         setAuthError(null);
         setSignupSuccess(false);
         try {
-            if (tab === 'admin') {
-                await handleAdminLoginStep1(email, pass);
+            if (tab === 'admin' || tab === 'ano') {
+                await handleUserOtpStep1(email, pass, tab);
+                return;
+            }
+            if (tab === 'cadet') {
+                await handleUserOtpStep1(enrollId, pass, 'cadet');
                 return;
             }
             await loginUser(email, pass, enrollId, tab);
         } catch (e) {
-            if (e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
-                setAuthError('Invalid credentials. Please check your username and password.');
-            } else {
-                setAuthError(e.message);
-            }
+            setAuthError(e.message);
             setAuthLoading(false);
         }
     };
@@ -330,6 +434,25 @@ export const useAuth = () => {
         setAuthLoading(false);
     };
 
+    const handleDemoLogin = async (role) => {
+        setAuthLoading(true);
+        setAuthError(null);
+        setSignupSuccess(false);
+        setOtpPending(false);
+        try {
+            let email = '';
+            if (role === 'cadet') email = 'demo.cadet@ncc.unit';
+            else if (role === 'admin') email = 'demo.ano@ncc.unit';
+            else if (role === 'superadmin') email = 'demo.admin@ncc.unit';
+            
+            await signInWithEmailAndPassword(auth, email, 'DemoPass123!');
+        } catch (e) {
+            console.error('Demo login error:', e);
+            setAuthError(e.message);
+            setAuthLoading(false);
+        }
+    };
+
     const markAnnouncementsAsRead = async () => {
         if (!user || userRole !== 'cadet') return;
         try {
@@ -351,15 +474,29 @@ export const useAuth = () => {
     };
 
     const hasPermission = (moduleId) => {
-        if (userRole === 'admin') return true;
+        if (userRole === 'admin' || userRole === 'superadmin' || userRole === 'battalion_admin') return true;
         return userDelegatedModules.includes(moduleId);
     };
+
+    const userProfile = React.useMemo(() => {
+        if (!user) return null;
+        return {
+            id: user.uid,
+            name: userName || user.displayName || user.email || 'User',
+            enrollmentId: userEnrollmentId || 'N/A',
+            email: user.email || '',
+            personalEmail: user.email || '',
+            phone: user.phoneNumber || '',
+            phonePersonal: user.phoneNumber || ''
+        };
+    }, [user, userName, userEnrollmentId]);
 
     return {
         user,
         userRole,
         userEnrollmentId,
         userName,
+        userProfile,
         userInstitutionId,
         userDelegatedModules,
         hasPermission,
@@ -376,11 +513,17 @@ export const useAuth = () => {
         markAnnouncementsAsRead,
         lastViewedNotifications,
         markNotificationsAsRead,
-        // OTP 2FA
+        // OTP 2FA & Biometric Stubs (for backward compatibility with cached PWA bundles)
         otpPending,
         otpEmail,
         otpLoading,
         handleAdminLoginStep2,
         cancelOtp,
+        fingerprintPending,
+        fingerprintEmail,
+        fingerprintLoading,
+        handleAnoFingerprintVerify,
+        cancelFingerprint,
+        handleDemoLogin,
     };
 };

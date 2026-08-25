@@ -167,7 +167,7 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
     const [loading, setLoading]     = useState(false);
     const [saved, setSaved]         = useState(false);
 
-    const ranks         = ['CDT', 'LCPL', 'CPL', 'SGT', 'CSM', 'JUO', 'SUO'];
+    const ranks         = ['CDT', 'LCPL', 'CPL', 'SGT', 'CQMS', 'CSM', 'JUO', 'SUO'];
     const certificates  = ['NA', 'B1', 'B2', 'C'];
     const years         = ['1st', '2nd', '3rd', '4th'];
     const hostelerOpts  = ['Days scholar', 'Hosteler'];

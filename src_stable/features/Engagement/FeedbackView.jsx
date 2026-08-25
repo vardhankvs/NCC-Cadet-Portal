@@ -12,7 +12,7 @@ import { formatDate } from '../../utils/dateUtils.js';
 export const FeedbackView = () => {
     const { user, userRole, userEnrollmentId, userName } = useAuthContext();
     const { cadets } = useDataContext();
-    const isAdmin = userRole?.toLowerCase() === 'admin' || userRole?.toLowerCase() === 'officer';
+    const isAdmin = userRole === 'superadmin' || userRole === 'battalion_admin';
     const [rating, setRating] = useState(0);
     const [hover, setHover] = useState(0);
     const [message, setMessage] = useState('');
@@ -28,9 +28,9 @@ export const FeedbackView = () => {
 
     // Check cadet's previous feedback
     useEffect(() => {
-        if (isAdmin || !userEnrollmentId) { setCheckingPrevious(false); return; }
+        if (isAdmin || !user?.uid) { setCheckingPrevious(false); return; }
         const ref = getCollectionRef('feedback');
-        const fbQuery = query(ref, where('enrollmentId', '==', userEnrollmentId));
+        const fbQuery = query(ref, where('cadetId', '==', user.uid));
         const unsubscribe = onSnapshot(fbQuery, (snapshot) => {
             if (!snapshot.empty) {
                 setPreviousFeedback(snapshot.docs[0].data());
@@ -40,7 +40,7 @@ export const FeedbackView = () => {
             setCheckingPrevious(false);
         });
         return () => unsubscribe();
-    }, [isAdmin, userEnrollmentId]);
+    }, [isAdmin, user?.uid]);
 
     useEffect(() => {
         if (!isAdmin) return;
@@ -97,8 +97,8 @@ export const FeedbackView = () => {
         try {
             await submitFeedback({
                 cadetId: user?.uid,
-                cadetName: userName || 'Anonymous Cadet',
-                enrollmentId: userEnrollmentId,
+                cadetName: userName || 'Anonymous User',
+                enrollmentId: userEnrollmentId || '',
                 rating,
                 message,
                 timestamp: new Date().toISOString()

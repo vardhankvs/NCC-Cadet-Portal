@@ -38,8 +38,8 @@ const RANK_HIERARCHY = [
         maxVisible: 4,
     },
     {
-        // C-SGT — Emerald Green  (#2E8B55)
-        id: 'C-SGT', name: 'Company Sergeant', abbr: 'C/SGT',
+        // CSM — Emerald Green  (#2E8B55)
+        id: 'CSM', name: 'Company Sergeant Major', abbr: 'CSM',
         icon: Award, tier: 'officer',
         accent: '#2E8B55',
         cardStyle: { border: '2px solid #2E8B55' },
@@ -52,7 +52,7 @@ const RANK_HIERARCHY = [
     },
     {
         // CQMS — Ocean Teal  (#0A8FA0)
-        id: 'CQMS', name: 'Company Quartermaster', abbr: 'CQMS',
+        id: 'CQMS', name: 'Company Quarter Master Sergeant', abbr: 'CQMS',
         icon: Shield, tier: 'nco',
         accent: '#0A8FA0',
         cardStyle: { border: '2px solid #0A8FA0' },
@@ -268,7 +268,7 @@ const Connector = ({ color = '#c8a951' }) => (
 const SummaryStrip = ({ groupedCadets }) => {
     const total = Object.values(groupedCadets).reduce((a, b) => a + b.length, 0);
     const officers = (groupedCadets['SUO']?.length || 0) + (groupedCadets['JUO']?.length || 0);
-    const ncos = (groupedCadets['C-SGT']?.length || 0) + (groupedCadets['CQMS']?.length || 0) + (groupedCadets['SGT']?.length || 0) + (groupedCadets['CPL']?.length || 0) + (groupedCadets['LCPL']?.length || 0);
+    const ncos = (groupedCadets['CSM']?.length || 0) + (groupedCadets['CQMS']?.length || 0) + (groupedCadets['SGT']?.length || 0) + (groupedCadets['CPL']?.length || 0) + (groupedCadets['LCPL']?.length || 0);
     const cadets = groupedCadets['CDT']?.length || 0;
 
     const pills = [
@@ -303,7 +303,8 @@ export const UnitOrganogram = ({ initialFilter = 'All', initialDivFilter = 'All'
     const [divFilter, setDivFilter] = useState(initialDivFilter);
     const [cleaning, setCleaning] = useState(false);
     const [cleanResult, setCleanResult] = useState(null);
-    const { userInstitutionId } = useAuthContext();
+    const { userInstitutionId, userRole } = useAuthContext();
+    const isAdmin = Boolean(userRole && userRole.toLowerCase() !== 'cadet');
 
     useEffect(() => {
         setFilter(initialFilter);
@@ -423,7 +424,7 @@ export const UnitOrganogram = ({ initialFilter = 'All', initialDivFilter = 'All'
                 <div className="flex flex-col sm:flex-row flex-wrap justify-center items-center gap-3 mb-8">
                     {/* Certificate Filters */}
                     <div className="flex items-center gap-2 bg-white dark:bg-[#050b14] border border-[#ddd8cc] rounded-full p-1 shadow-sm">
-                        {['All', 'B1', 'C'].map(f => (
+                        {['All', 'B1', 'B2', 'C'].map(f => (
                             <button key={f} onClick={() => handleFilterChange(f)}
                                 className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
                                     filter === f
@@ -452,45 +453,47 @@ export const UnitOrganogram = ({ initialFilter = 'All', initialDivFilter = 'All'
                 {/* ── Summary Strip ── */}
                 <SummaryStrip groupedCadets={groupedCadets} />
 
-                {/* Prominent Clean Duplicates Button */}
-                <div className="flex justify-center mb-10">
-                    <button
-                        onClick={handleCleanDuplicates}
-                        disabled={cleaning}
-                        className={`
-                            flex items-center gap-3 px-8 py-3 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg
-                            ${cleanResult 
-                                ? 'bg-emerald-500 text-white scale-105' 
-                                : 'bg-ncc-red text-white hover:bg-ncc-red/90 hover:-translate-y-1 active:scale-95'}
-                            disabled:opacity-50 disabled:cursor-not-allowed
-                        `}
-                    >
-                        {cleaning ? (
-                            <RefreshCcw className="w-5 h-5 animate-spin" />
-                        ) : cleanResult ? (
-                            <CheckCircle className="w-5 h-5" />
-                        ) : (
-                            <Trash2 className="w-5 h-5" />
-                        )}
-                        <div className="text-left">
-                            <p className="text-[12px] leading-none">
-                                {cleaning ? 'Processing...' : cleanResult ? 'Success!' : 'Fix Duplicates Now'}
-                            </p>
-                            <p className="text-[9px] opacity-70 font-bold mt-1">
-                                {cleaning ? 'Merging records...' : cleanResult ? cleanResult : 'Deletes redundant copies safely'}
-                            </p>
-                        </div>
-                    </button>
-                    
-                    {/* EMERGENCY RESCUE BUTTON */}
-                    <button
-                        onClick={handleRescue}
-                        className="flex items-center gap-2 px-6 py-2 rounded-xl bg-amber-500 text-white font-bold text-[10px] uppercase tracking-wider hover:bg-amber-600 transition-all shadow-md ml-4"
-                    >
-                        <LifeBuoy className="w-4 h-4" />
-                        Rescue My Cadets
-                    </button>
-                </div>
+                {/* Prominent Clean Duplicates Button & Rescue Button (Admin Only) */}
+                {isAdmin && (
+                    <div className="flex justify-center mb-10">
+                        <button
+                            onClick={handleCleanDuplicates}
+                            disabled={cleaning}
+                            className={`
+                                flex items-center gap-3 px-8 py-3 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg
+                                ${cleanResult 
+                                    ? 'bg-emerald-500 text-white scale-105' 
+                                    : 'bg-ncc-red text-white hover:bg-ncc-red/90 hover:-translate-y-1 active:scale-95'}
+                                disabled:opacity-50 disabled:cursor-not-allowed
+                            `}
+                        >
+                            {cleaning ? (
+                                <RefreshCcw className="w-5 h-5 animate-spin" />
+                            ) : cleanResult ? (
+                                <CheckCircle className="w-5 h-5" />
+                            ) : (
+                                <Trash2 className="w-5 h-5" />
+                            )}
+                            <div className="text-left">
+                                <p className="text-[12px] leading-none">
+                                    {cleaning ? 'Processing...' : cleanResult ? 'Success!' : 'Fix Duplicates Now'}
+                                </p>
+                                <p className="text-[9px] opacity-70 font-bold mt-1">
+                                    {cleaning ? 'Merging records...' : cleanResult ? cleanResult : 'Deletes redundant copies safely'}
+                                </p>
+                            </div>
+                        </button>
+                        
+                        {/* EMERGENCY RESCUE BUTTON */}
+                        <button
+                            onClick={handleRescue}
+                            className="flex items-center gap-2 px-6 py-2 rounded-xl bg-amber-500 text-white font-bold text-[10px] uppercase tracking-wider hover:bg-amber-600 transition-all shadow-md ml-4"
+                        >
+                            <LifeBuoy className="w-4 h-4" />
+                            Rescue My Cadets
+                        </button>
+                    </div>
+                )}
 
                 {/* ── Pyramid Organogram ── */}
                 <div className="relative flex flex-col items-center w-full overflow-x-auto">

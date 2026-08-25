@@ -8,9 +8,9 @@ import { toast } from 'react-toastify';
 import { formatDate } from '../../utils/dateUtils.js';
 
 export const PFTTrackerView = () => {
-    const { user, userRole, userEnrollmentId, userName } = useAuthContext();
+    const { userRole, userEnrollmentId, userName } = useAuthContext();
     const { cadets = [] } = useDataContext();
-    const isAdmin = userRole === 'admin' || userRole === 'officer';
+    const isAdmin = Boolean(userRole && userRole.toLowerCase() !== 'cadet');
 
     const currentCadet = cadets.find(c => c.enrollmentId === userEnrollmentId);
     const [loading, setLoading] = useState(false);

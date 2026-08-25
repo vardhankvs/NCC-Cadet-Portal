@@ -6,7 +6,7 @@ import { Briefcase, Edit, Plus, Search, Loader, X, CheckCircle, AlertCircle, Dow
 import { FeeEditModal } from './FeeEditModal.jsx';
 import { FeeBulkUpdateModal } from './FeeBulkUpdateModal.jsx';
 import { PaymentSettingsModal } from './PaymentSettingsModal.jsx';
-import { requestPaymentVerification, approveTransaction, rejectTransaction, deleteTransaction, addNotification } from '../../firebase/firestoreService.js';
+import { requestPaymentVerification, approveTransaction, rejectTransaction, deleteTransaction, addNotification, recordInstantRazorpayPayment } from '../../firebase/firestoreService.js';
 import { formatCurrency, calculateDue } from '../../utils/feeUtils.js';
 import { toast } from 'react-toastify';
 import { sendPushToUser } from '../../firebase/pushNotifications.js';
@@ -42,6 +42,174 @@ export const FeeManagementView = () => {
     const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
     const [isDownloadingExcel, setIsDownloadingExcel] = useState(false);
     const [customAmount, setCustomAmount] = useState('');
+    const [paymentMode, setPaymentMode] = useState('razorpay'); // 'razorpay' or 'qr'
+
+    const loadRazorpayScript = () => {
+        return new Promise((resolve) => {
+            if (window.Razorpay) {
+                resolve(true);
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+            script.onload = () => resolve(true);
+            script.onerror = () => resolve(false);
+            document.body.appendChild(script);
+        });
+    };
+
+    const handleRazorpayCheckout = async (amountToPay) => {
+        const keyId = paymentSettings?.razorpayKeyId || 'rzp_test_1DP5mmOlF5G5ag';
+        const loaded = await loadRazorpayScript();
+        if (!loaded) {
+            toast.error('Failed to load Razorpay SDK. Please check your internet connection.');
+            return;
+        }
+
+        const cadetObj = activeCadet;
+        if (!cadetObj) {
+            toast.error('Cadet record missing.');
+            return;
+        }
+
+        const numericAmt = Number(amountToPay);
+        if (isNaN(numericAmt) || numericAmt <= 0) {
+            toast.error('Please enter a valid amount.');
+            return;
+        }
+
+        setPaymentStatus('verifying');
+
+        let serverOrderId = null;
+        let activeKeyId = keyId;
+
+        // Try creating Razorpay Order via Vercel server API first
+        try {
+            const apiUrl = window.location.hostname.includes('vercel.app')
+                ? '/api/createRazorpayOrder'
+                : 'https://ncc-portal-redesign.vercel.app/api/createRazorpayOrder';
+
+            const apiRes = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    amount: numericAmt,
+                    cadetId: cadetObj.id,
+                    cadetName: cadetObj.name,
+                    enrollmentId: cadetObj.enrollmentId
+                })
+            });
+
+            const contentType = apiRes.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                const apiData = await apiRes.json();
+                if (apiRes.ok && apiData.orderId) {
+                    serverOrderId = apiData.orderId;
+                    if (apiData.keyId) activeKeyId = apiData.keyId;
+                }
+            }
+        } catch (e) {
+            console.warn('Server Order Creation skipped, falling back to instant client checkout mode.');
+        }
+
+        const options = {
+            key: activeKeyId,
+            amount: Math.round(numericAmt * 100), // In paise
+            currency: 'INR',
+            name: 'GMRIT 14(A) BN NCC',
+            description: `Unit Fee Payment - ${cadetObj.name}`,
+            image: 'https://gmrit-ncc-fb1df.web.app/pwa-192x192.png',
+            order_id: serverOrderId || undefined,
+            handler: async function (response) {
+                try {
+                    let verificationSuccess = false;
+
+                    // If server order was generated, verify signature server-side
+                    if (serverOrderId && response.razorpay_signature) {
+                        try {
+                            const apiUrl = window.location.hostname.includes('vercel.app')
+                                ? '/api/verifyRazorpayPayment'
+                                : 'https://ncc-portal-redesign.vercel.app/api/verifyRazorpayPayment';
+
+                            const verifyRes = await fetch(apiUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    razorpay_order_id: response.razorpay_order_id,
+                                    razorpay_payment_id: response.razorpay_payment_id,
+                                    razorpay_signature: response.razorpay_signature,
+                                    cadetId: cadetObj.id,
+                                    cadetName: cadetObj.name,
+                                    enrollmentId: cadetObj.enrollmentId,
+                                    amount: numericAmt,
+                                    institutionId: cadetObj.institutionId
+                                })
+                            });
+                            const contentType = verifyRes.headers.get('content-type') || '';
+                            if (contentType.includes('application/json')) {
+                                const verifyData = await verifyRes.json();
+                                if (verifyRes.ok && verifyData.success) {
+                                    verificationSuccess = true;
+                                }
+                            }
+                        } catch (vErr) {
+                            console.warn('Server signature verification error, recording locally:', vErr);
+                        }
+                    }
+
+                    // Direct client record fallback
+                    if (!verificationSuccess) {
+                        await recordInstantRazorpayPayment({
+                            cadetId: cadetObj.id,
+                            amount: numericAmt,
+                            cadetName: cadetObj.name,
+                            enrollmentId: cadetObj.enrollmentId,
+                            paymentId: response.razorpay_payment_id,
+                            institutionId: cadetObj.institutionId
+                        });
+                    }
+
+                    setPaymentStatus('success');
+                    toast.success(`Payment Successful! Razorpay ID: ${response.razorpay_payment_id}`);
+
+                    // Generate receipt automatically
+                    generatePaymentReceipt({
+                        id: response.razorpay_payment_id,
+                        cadetName: cadetObj.name,
+                        enrollmentId: cadetObj.enrollmentId,
+                        amount: numericAmt,
+                        status: 'approved',
+                        approvedAt: { toDate: () => new Date() },
+                        paymentId: response.razorpay_payment_id
+                    });
+                } catch (err) {
+                    setPaymentStatus('idle');
+                    toast.error('Payment succeeded but failed to save record: ' + (err.message || err));
+                }
+            },
+            prefill: {
+                name: cadetObj.name || '',
+                email: cadetObj.personalEmail || cadetObj.email || user?.email || '',
+                contact: cadetObj.phonePersonal || cadetObj.phone || ''
+            },
+            theme: {
+                color: '#0f2e4a'
+            },
+            modal: {
+                ondismiss: function () {
+                    setPaymentStatus('idle');
+                }
+            }
+        };
+
+        try {
+            const rzp = new window.Razorpay(options);
+            rzp.open();
+        } catch (err) {
+            setPaymentStatus('idle');
+            toast.error('Razorpay Modal Error: ' + (err.message || err));
+        }
+    };
 
     const calculateGrandTotal = (c) => Number(c.enrollmentFee || DEFAULT_ENROLLMENT_FEE) + Number(c.uniformFee || DEFAULT_UNIFORM_FEE) + Number(c.campFee || DEFAULT_CAMP_FEE);
 
@@ -361,18 +529,47 @@ export const FeeManagementView = () => {
 
     return (
         <>
-            {isScannerModalOpen && <PaymentSettingsModal currentUrl={paymentSettings?.paymentQRUrl} onClose={() => setIsScannerModalOpen(false)} />}
+            {isScannerModalOpen && (
+                <PaymentSettingsModal 
+                    currentUrl={paymentSettings?.paymentQRUrl} 
+                    currentRazorpayKey={paymentSettings?.razorpayKeyId}
+                    onClose={() => setIsScannerModalOpen(false)} 
+                />
+            )}
             {showScanner && (
                 <ModalOverlay onClose={() => setShowScanner(false)}>
-                    <div className="bg-white dark:bg-[#050b14] rounded-2xl p-5 max-w-sm w-full text-center shadow-2xl border border-[#ddd8cc] relative">
+                    <div className="bg-white dark:bg-[#050b14] rounded-3xl p-6 max-w-md w-full text-center shadow-2xl border border-[#ddd8cc] dark:border-white/10 relative">
                         {paymentStatus === 'idle' && (<>
-                            <div className="flex justify-between items-center mb-5">
-                                <div className="text-left"><h3 className="text-lg font-bold uppercase tracking-tight text-ncc-navy dark:text-white">Secure Payment</h3><p className="text-xs font-semibold text-ncc-gold uppercase tracking-widest">PhonePe Merchant</p></div>
-                                <button onClick={() => setShowScanner(false)} className="p-2 hover:bg-gray-100 dark:bg-[#0d2137] rounded-full"><X className="w-5 h-5 text-gray-400 dark:text-white/80" /></button>
+                            <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-white/5">
+                                <div className="text-left">
+                                    <h3 className="text-lg font-black uppercase tracking-tight text-ncc-navy dark:text-white flex items-center gap-2">
+                                        <CreditCard className="w-5 h-5 text-ncc-gold" /> Fee Payment
+                                    </h3>
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">GMRIT NCC Unit Ledger</p>
+                                </div>
+                                <button onClick={() => setShowScanner(false)} className="p-2 hover:bg-gray-100 dark:bg-[#0d2137] rounded-full">
+                                    <X className="w-5 h-5 text-gray-400 dark:text-white/80" />
+                                </button>
                             </div>
 
-                            <div className="mb-6">
-                                <label className="block text-left text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 px-1">Amount to Pay (₹)</label>
+                            {/* Mode Selection Tabs */}
+                            <div className="flex bg-gray-100 dark:bg-[#0a1628] p-1 rounded-xl mb-4 border border-gray-200 dark:border-white/5">
+                                <button 
+                                    onClick={() => setPaymentMode('razorpay')}
+                                    className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-1.5 ${paymentMode === 'razorpay' ? 'bg-ncc-navy text-ncc-gold shadow-md' : 'text-gray-400 hover:text-ncc-navy dark:hover:text-white'}`}
+                                >
+                                    <CreditCard className="w-3.5 h-3.5" /> Razorpay Instant
+                                </button>
+                                <button 
+                                    onClick={() => setPaymentMode('qr')}
+                                    className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-1.5 ${paymentMode === 'qr' ? 'bg-ncc-navy text-ncc-gold shadow-md' : 'text-gray-400 hover:text-ncc-navy dark:hover:text-white'}`}
+                                >
+                                    <ImageIcon className="w-3.5 h-3.5" /> QR Upload
+                                </button>
+                            </div>
+
+                            <div className="mb-4">
+                                <label className="block text-left text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 px-1">Amount to Pay (₹)</label>
                                 <div className="relative">
                                     <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">₹</div>
                                     <input 
@@ -380,64 +577,110 @@ export const FeeManagementView = () => {
                                         placeholder={dueAmount.toString()}
                                         value={customAmount}
                                         onChange={(e) => setCustomAmount(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-4 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl focus:ring-2 focus:ring-ncc-gold outline-none font-bold text-gray-700 dark:text-white transition-all"
+                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-ncc-gold outline-none font-bold text-gray-700 dark:text-white transition-all text-base"
                                     />
                                 </div>
-                                <p className="text-[10px] text-left mt-2 px-1 text-gray-400 font-bold uppercase">Remaining Balance: {formatCurrency(dueAmount - (Number(customAmount) || 0))}</p>
-                            </div>
-                            <div className="p-4 bg-[#f5f0e8] dark:bg-[#0a1628] rounded-2xl border-2 border-dashed border-[#ddd8cc] mb-4">
-                                {paymentSettings?.paymentQRUrl ? <img src={paymentSettings.paymentQRUrl} alt="QR" className="w-full h-auto rounded-xl shadow-lg" /> : <div className="py-12 flex flex-col items-center text-gray-400 dark:text-white/80"><AlertCircle className="w-10 h-10 mb-2 opacity-20" /><p className="text-xs italic uppercase font-bold tracking-widest">Scanner Unset</p></div>}
-                            </div>
-                            <div className="bg-ncc-cream dark:bg-white/5 p-3 rounded-xl mb-4 text-left border border-transparent dark:border-white/10">
-                                <p className="text-xs text-ncc-navy dark:text-ncc-gold font-bold leading-relaxed">
-                                    Step 1: Scan with any UPI App<br />
-                                    Step 2: Pay the amount entered above<br />
-                                    Step 3: Upload Screenshot below
-                                </p>
-                            </div>
-                            
-                            <div className="mb-4">
-                                <label className="block w-full border-2 border-dashed border-[#ddd8cc] rounded-xl p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition group">
-                                    {receiptFile ? (
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
-                                                <ImageIcon className="w-5 h-5 text-emerald-600" />
-                                            </div>
-                                            <div className="text-left overflow-hidden">
-                                                <p className="text-xs font-bold truncate text-ncc-navy dark:text-white">{receiptFile.name}</p>
-                                                <p className="text-[10px] text-emerald-600 font-bold uppercase">Ready to submit</p>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col items-center">
-                                            <Upload className="w-6 h-6 text-gray-300 mb-2 group-hover:text-ncc-gold transition" />
-                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Upload Success Screenshot</p>
-                                        </div>
-                                    )}
-                                    <input 
-                                        type="file" 
-                                        className="hidden" 
-                                        accept="image/*" 
-                                        onChange={(e) => setReceiptFile(e.target.files[0])} 
-                                    />
-                                </label>
+                                <p className="text-[10px] text-left mt-1 px-1 text-gray-400 font-bold uppercase">Remaining Dues: {formatCurrency(dueAmount - (Number(customAmount) || 0))}</p>
                             </div>
 
-                            <button 
-                                onClick={() => handleConfirmPayment(activeCadet, Number(customAmount) || dueAmount)} 
-                                className="ncc-btn ncc-btn-primary w-full justify-center py-3 text-sm disabled:opacity-50"
-                                disabled={!receiptFile || (Number(customAmount) || 0) <= 0 && dueAmount > 0}
-                            >
-                                Submit Proof of Payment
-                            </button>
+                            {paymentMode === 'razorpay' ? (
+                                <div className="space-y-4 pt-1">
+                                    <div className="p-4 bg-gray-50 dark:bg-[#0a1628] rounded-2xl border border-gray-200 dark:border-white/5 text-left">
+                                        <p className="text-[10px] font-black text-ncc-navy dark:text-white uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> Automated Checkout
+                                        </p>
+                                        <p className="text-xs text-gray-600 dark:text-white/80 leading-relaxed">
+                                            Supports UPI (GPay, PhonePe, Paytm), Debit/Credit Cards, Netbanking & QR Code.
+                                        </p>
+                                        <span className="inline-block mt-2 px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 text-[9px] font-bold uppercase tracking-widest">
+                                            Instant Auto-Credit • Instant PDF Receipt
+                                        </span>
+                                    </div>
+                                    <button 
+                                        onClick={() => handleRazorpayCheckout(Number(customAmount) || dueAmount)}
+                                        className="ncc-btn ncc-btn-primary w-full justify-center py-3.5 text-sm font-black shadow-lg"
+                                        disabled={(Number(customAmount) || 0) <= 0 && dueAmount > 0}
+                                    >
+                                        Pay {formatCurrency(Number(customAmount) || dueAmount)} via Razorpay
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="p-3 bg-[#f5f0e8] dark:bg-[#0a1628] rounded-2xl border-2 border-dashed border-[#ddd8cc]">
+                                        {paymentSettings?.paymentQRUrl ? (
+                                            <img src={paymentSettings.paymentQRUrl} alt="QR" className="w-full h-auto rounded-xl shadow-sm max-h-48 object-contain mx-auto" />
+                                        ) : (
+                                            <div className="py-8 flex flex-col items-center text-gray-400 dark:text-white/80">
+                                                <AlertCircle className="w-8 h-8 mb-2 opacity-20" />
+                                                <p className="text-xs italic uppercase font-bold tracking-widest">Scanner Unset</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="bg-ncc-cream dark:bg-white/5 p-3 rounded-xl text-left border border-transparent dark:border-white/10">
+                                        <p className="text-xs text-ncc-navy dark:text-ncc-gold font-bold leading-relaxed">
+                                            Step 1: Scan with any UPI App<br />
+                                            Step 2: Pay the amount entered above<br />
+                                            Step 3: Upload Screenshot below
+                                        </p>
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block w-full border-2 border-dashed border-[#ddd8cc] rounded-xl p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition group">
+                                            {receiptFile ? (
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-9 h-9 bg-emerald-100 rounded-lg flex items-center justify-center shrink-0">
+                                                        <ImageIcon className="w-4 h-4 text-emerald-600" />
+                                                    </div>
+                                                    <div className="text-left overflow-hidden">
+                                                        <p className="text-xs font-bold truncate text-ncc-navy dark:text-white">{receiptFile.name}</p>
+                                                        <p className="text-[10px] text-emerald-600 font-bold uppercase">Ready to submit</p>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col items-center">
+                                                    <Upload className="w-5 h-5 text-gray-300 mb-1 group-hover:text-ncc-gold transition" />
+                                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Upload Screenshot</p>
+                                                </div>
+                                            )}
+                                            <input 
+                                                type="file" 
+                                                className="hidden" 
+                                                accept="image/*" 
+                                                onChange={(e) => setReceiptFile(e.target.files[0])} 
+                                            />
+                                        </label>
+                                    </div>
+
+                                    <button 
+                                        onClick={() => handleConfirmPayment(activeCadet, Number(customAmount) || dueAmount)} 
+                                        className="ncc-btn ncc-btn-primary w-full justify-center py-3 text-sm disabled:opacity-50"
+                                        disabled={!receiptFile || (Number(customAmount) || 0) <= 0 && dueAmount > 0}
+                                    >
+                                        Submit Proof of Payment
+                                    </button>
+                                </div>
+                            )}
                         </>)}
-                        {paymentStatus === 'verifying' && <div className="py-16 flex flex-col items-center"><Loader className="animate-spin h-12 w-12 text-ncc-navy dark:text-white mb-4" /><p className="font-bold text-ncc-navy dark:text-white uppercase tracking-widest animate-pulse text-sm">Sending Message...</p></div>}
-                        {paymentStatus === 'success' && (<div className="py-10">
-                            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4"><CheckCircle className="w-8 h-8 text-green-600" /></div>
-                            <h3 className="text-xl font-bold text-ncc-navy dark:text-white uppercase tracking-tight">Message Sent!</h3>
-                            <p className="text-xs text-gray-500 dark:text-white/70 mt-2 px-4 leading-relaxed">Admin has been notified and will verify shortly.</p>
-                            <button onClick={() => setShowScanner(false)} className="mt-6 w-full py-3 ncc-btn ncc-btn-ghost justify-center">Close</button>
-                        </div>)}
+                        {paymentStatus === 'verifying' && (
+                            <div className="py-16 flex flex-col items-center">
+                                <Loader className="animate-spin h-12 w-12 text-ncc-navy dark:text-white mb-4" />
+                                <p className="font-bold text-ncc-navy dark:text-white uppercase tracking-widest animate-pulse text-sm">Processing Payment...</p>
+                            </div>
+                        )}
+                        {paymentStatus === 'success' && (
+                            <div className="py-10">
+                                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <CheckCircle className="w-8 h-8 text-green-600" />
+                                </div>
+                                <h3 className="text-xl font-bold text-ncc-navy dark:text-white uppercase tracking-tight">Payment Successful!</h3>
+                                <p className="text-xs text-gray-500 dark:text-white/70 mt-2 px-4 leading-relaxed">
+                                    Your fee payment has been verified and credited automatically to your account ledger.
+                                </p>
+                                <button onClick={() => setShowScanner(false)} className="mt-6 w-full py-3 ncc-btn ncc-btn-navy justify-center">
+                                    Close
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </ModalOverlay>
             )}

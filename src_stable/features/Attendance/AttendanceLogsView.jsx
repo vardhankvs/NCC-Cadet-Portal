@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, limit, doc, updateDoc, deleteField, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, limit, doc, getDoc, setDoc, updateDoc, deleteField, addDoc, serverTimestamp, writeBatch, where } from 'firebase/firestore';
 import { db } from '../../firebase/config.js';
-import { getCollectionRef, deleteItem } from '../../firebase/firestoreService.js';
+import { getCollectionRef, deleteItem, addNotification, checkAndSendLowAttendanceAlert } from '../../firebase/firestoreService.js';
 import { useDataContext } from '../../context/DataContext.jsx';
+import { useAuthContext } from '../../context/AuthContext.jsx';
 import { UserCheck, Clock, Calendar, Download, Search, Filter, Trash2, Plus, X as XIcon } from '../../components/Icons.jsx';
 import { toast } from 'react-toastify';
 import { LoadingIndicator } from '../../components/ui/LoadingIndicator.jsx';
 import * as XLSX from 'xlsx';
-import { formatDate } from '../../utils/dateUtils.js';
+import { formatDate, normalizeDate } from '../../utils/dateUtils.js';
 import { sendPushToCadets } from '../../firebase/pushNotifications.js';
 
 export const AttendanceLogsView = () => {
-    const { cadets } = useDataContext();
+    const { cadets, allCadets } = useDataContext();
+    const { userRole, userInstitutionId } = useAuthContext();
+    const cadetRoster = (allCadets && allCadets.length > 0) ? allCadets : (cadets || []);
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -29,82 +32,172 @@ export const AttendanceLogsView = () => {
     const [marking, setMarking] = useState(false);
     const [selectedHistoryIds, setSelectedHistoryIds] = useState([]);
 
-
+    const normalizeReg = (str) => String(str || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 
     useEffect(() => {
         const attRef = getCollectionRef('attendance');
         if (!attRef) return;
 
-        const q = query(
-            attRef,
-            orderBy('timestamp', 'desc'),
-            limit(500)
-        );
+        const q = query(attRef, limit(1000));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            setLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            let list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            // Filter for current institution or active cadets roster if restricted
+            if (userRole !== 'superadmin' && userRole !== 'battalion_admin' && userInstitutionId) {
+                const activeCadetRegs = new Set(
+                    cadetRoster.map(c => normalizeReg(c.enrollmentId || c.regimentalNumber)).filter(Boolean)
+                );
+                const activeCadetIds = new Set(cadetRoster.map(c => c.id).filter(Boolean));
+
+                list = list.filter(log => {
+                    if (log.institutionId === userInstitutionId) return true;
+                    if (log.cadetId && activeCadetIds.has(log.cadetId)) return true;
+                    const norm = normalizeReg(log.enrollmentId);
+                    if (norm && activeCadetRegs.has(norm)) return true;
+                    return false;
+                });
+            }
+
+            // Build a set of existing cadetId + normalized date combinations
+            const existingKeys = new Set();
+            list.forEach(l => {
+                const normD = normalizeDate(l.date);
+                if (l.cadetId) existingKeys.add(`${l.cadetId}_${normD}`);
+                const reg = normalizeReg(l.enrollmentId);
+                if (reg) existingKeys.add(`${reg}_${normD}`);
+            });
+
+            // Synthesize any missing records from cadet.attendance profile maps
+            const virtualLogs = [];
+            cadetRoster.forEach(cadet => {
+                if (!cadet.attendance) return;
+                const regId = cadet.enrollmentId || cadet.regimentalNumber || '';
+                const normReg = normalizeReg(regId);
+
+                Object.entries(cadet.attendance).forEach(([dateStr, status]) => {
+                    const isPresent = status && ['PRESENT', 'P', 'VERIFIED', 'LATE', 'ATTENDED', 'EXEMPT', '1'].includes(String(status).trim().toUpperCase());
+                    if (!isPresent) return;
+
+                    const normDate = normalizeDate(dateStr);
+                    const keyByCadetId = cadet.id ? `${cadet.id}_${normDate}` : null;
+                    const keyByReg = normReg ? `${normReg}_${normDate}` : null;
+
+                    const hasExisting = (keyByCadetId && existingKeys.has(keyByCadetId)) || (keyByReg && existingKeys.has(keyByReg));
+
+                    if (!hasExisting) {
+                        if (keyByCadetId) existingKeys.add(keyByCadetId);
+                        if (keyByReg) existingKeys.add(keyByReg);
+
+                        virtualLogs.push({
+                            id: `vlog-${cadet.id}-${normDate}`,
+                            cadetId: cadet.id,
+                            cadetName: cadet.name,
+                            enrollmentId: regId,
+                            certificate: cadet.certificate || cadet.currentCertificate || cadet.B || 'NA',
+                            division: regId.toUpperCase().includes('SW') ? 'SW' : 'SD',
+                            timestamp: { seconds: Math.floor(new Date(normDate).getTime() / 1000) || Math.floor(Date.now() / 1000) },
+                            markedBy: 'Verified (System)',
+                            institutionId: cadet.institutionId || userInstitutionId || 'gmrit',
+                            date: normDate,
+                            isVirtual: true
+                        });
+                    }
+                });
+            });
+
+            const combinedList = [...list, ...virtualLogs];
+
+            // Client-side sorting to avoid composite index requirements
+            combinedList.sort((a, b) => {
+                const timeA = a.timestamp?.seconds || (a.timestamp ? new Date(a.timestamp).getTime() / 1000 : 0);
+                const timeB = b.timestamp?.seconds || (b.timestamp ? new Date(b.timestamp).getTime() / 1000 : 0);
+                return timeB - timeA;
+            });
+            setLogs(combinedList);
+            setLoading(false);
+        }, (err) => {
+            console.error("Attendance logs snapshot notice:", err);
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [userRole, userInstitutionId, cadetRoster]);
 
     const handleManualMark = async () => {
         if (selectedCadetIds.length === 0) return toast.error("Please select at least one cadet.");
         
         setMarking(true);
         try {
-            const batch = writeBatch(db);
             const attRef = getCollectionRef('attendance');
             const cadetsRef = getCollectionRef('cadets');
+
+            let batch = writeBatch(db);
+            let opCount = 0;
+            let processedCount = 0;
 
             for (const cadetId of selectedCadetIds) {
                 const cadet = cadets.find(c => c.id === cadetId);
                 if (!cadet) continue;
 
-                // Check for duplicate locally first
-                const alreadyMarked = logs.find(l => l.cadetId === cadetId && l.date === manualDate);
-                if (alreadyMarked) continue;
+                const regId = cadet.enrollmentId || cadet.regimentalNumber || '';
+                const normRegId = normalizeReg(regId);
+                const division = regId.toUpperCase().includes('SW') ? 'SW' : 'SD';
+                const instId = userInstitutionId || cadet.institutionId || '14a-bn-srikakulam';
 
-                const division = cadet.enrollmentId.toUpperCase().includes('SW') ? 'SW' : 'SD';
+                // Check if a log entry already exists locally in logs state
+                const existingLog = logs.find(l => (l.cadetId === cadetId || normalizeReg(l.enrollmentId) === normRegId) && l.date === manualDate);
                 
-                // 1. Add Log
-                const logRef = doc(attRef);
+                // 1. Set/Update Log Entry
+                const logRef = existingLog ? doc(attRef, existingLog.id) : doc(attRef);
                 batch.set(logRef, {
                     cadetId: cadet.id,
                     cadetName: cadet.name,
-                    enrollmentId: cadet.enrollmentId,
-                    certificate: cadet.certificate || 'NA',
+                    enrollmentId: regId,
+                    certificate: cadet.certificate || cadet.currentCertificate || cadet.B || 'NA',
                     division: division,
                     timestamp: serverTimestamp(),
                     markedBy: 'ANO (Manual Bulk)',
-                    institutionId: cadet.institutionId || 'gmrit',
+                    institutionId: instId,
                     date: manualDate
-                });
+                }, { merge: true });
+                opCount++;
 
-                // 2. Update Cadet Profile
+                // 2. Update Cadet Profile document
                 const cadetDocRef = doc(cadetsRef, cadet.id);
                 batch.update(cadetDocRef, {
                     [`attendance.${manualDate}`]: 'Present',
                     updatedAt: serverTimestamp()
                 });
+                opCount++;
+
+                processedCount++;
+
+                // Chunk batch writes every 400 operations to respect Firestore's 500 max limit
+                if (opCount >= 400) {
+                    await batch.commit();
+                    batch = writeBatch(db);
+                    opCount = 0;
+                }
             }
 
-            await batch.commit();
+            if (opCount > 0) {
+                await batch.commit();
+            }
             
             // Send real-time notification
             try {
                 sendPushToCadets(selectedCadetIds, '✅ Attendance Marked', `Your attendance was marked for today's class.`, 'attendance');
             } catch (e) {
-                console.error(e);
+                console.error("Push failed:", e);
             }
 
-            toast.success(`Marked ${selectedCadetIds.length} cadets present.`);
+            toast.success(`Successfully marked ${processedCount} cadets present.`);
             setShowManualMark(false);
             setSelectedCadetIds([]);
         } catch (err) {
             console.error("Bulk mark error:", err);
-            toast.error("Failed to process manual attendance.");
+            toast.error("Failed to process manual attendance: " + err.message);
         } finally {
             setMarking(false);
         }
@@ -129,14 +222,71 @@ export const AttendanceLogsView = () => {
         if (!logToDelete) return;
 
         try {
-            // 1. Remove from Cadet document attendance map
-            const cadetRef = doc(getCollectionRef('cadets'), logToDelete.cadetId);
-            await updateDoc(cadetRef, {
-                [`attendance.${logToDelete.date}`]: deleteField()
-            });
+            // 1. Remove from Cadet document attendance map (inspect for any date format key variants)
+            if (logToDelete.cadetId) {
+                const cadetRef = doc(getCollectionRef('cadets'), logToDelete.cadetId);
+                const cadetSnap = await getDoc(cadetRef);
+                const updates = {};
+                const targetNorm = normalizeDate(logToDelete.date);
+                
+                if (cadetSnap.exists()) {
+                    const cadetData = cadetSnap.data();
+                    const attMap = cadetData.attendance || {};
+                    const keysToRemove = Object.keys(attMap).filter(k => normalizeDate(k) === targetNorm || k === logToDelete.date);
+                    if (keysToRemove.length > 0) {
+                        keysToRemove.forEach(k => {
+                            updates[`attendance.${k}`] = deleteField();
+                        });
+                    } else {
+                        updates[`attendance.${logToDelete.date}`] = deleteField();
+                    }
+                } else {
+                    updates[`attendance.${logToDelete.date}`] = deleteField();
+                }
+                await updateDoc(cadetRef, updates);
+            }
 
-            // 2. Delete original log
-            await deleteItem('attendance', id);
+            // 2. Delete original log if it exists in collection
+            if (!logToDelete.isVirtual) {
+                await deleteItem('attendance', id);
+            }
+
+            // 3. Send real-time Absent notification & in-app warning
+            if (logToDelete.cadetId) {
+                const title = "⚠️ Attendance Alert: Marked Absent";
+                const dateStr = formatDate(logToDelete.date);
+                const body = `Your attendance record for ${dateStr} was removed. You are marked ABSENT for today's class. Please contact your ANO if you have a valid leave.`;
+                try {
+                    sendPushToCadets([logToDelete.cadetId], title, body, 'attendance');
+                    const cadet = cadets.find(c => c.id === logToDelete.cadetId || c.enrollmentId === logToDelete.enrollmentId);
+                    addNotification(
+                        logToDelete.cadetId,
+                        title,
+                        body,
+                        'warning',
+                        logToDelete.institutionId || cadet?.institutionId || 'gmrit',
+                        logToDelete.enrollmentId || cadet?.enrollmentId
+                    );
+                    if (cadet) {
+                        const cadetAtt = { ...(cadet.attendance || {}) };
+                        delete cadetAtt[logToDelete.date];
+                        let presentCount = 0;
+                        Object.values(cadetAtt).forEach(s => {
+                            const str = String(s).trim().toUpperCase();
+                            if (str === 'PRESENT' || str === 'P' || str === 'VERIFIED' || str === 'LATE' || str === 'ATTENDED' || str === 'EXEMPT' || str === '1') {
+                                presentCount++;
+                            }
+                        });
+                        const totalPeriods = Object.keys(cadetAtt).length;
+                        const updatedPercentage = totalPeriods > 0 ? (presentCount / totalPeriods) * 100 : 0;
+                        const certLevel = cadet.certificate || cadet.currentCertificate || cadet.B || 'B1';
+                        checkAndSendLowAttendanceAlert(cadet.id, updatedPercentage, certLevel, null, cadet.institutionId || 'gmrit', cadet.enrollmentId);
+                    }
+                } catch (e) {
+                    console.error("Push failed:", e);
+                }
+            }
+
             toast.success("Record deleted successfully.");
         } catch (err) {
             console.error("Delete error:", err);
@@ -149,39 +299,91 @@ export const AttendanceLogsView = () => {
         
         setLoading(true);
         try {
-            const batch = writeBatch(db);
             const cadetsRef = getCollectionRef('cadets');
             const attRef = getCollectionRef('attendance');
             
+            let batch = writeBatch(db);
+            let opCount = 0;
+            const deletedLogs = [];
+
             for (const id of selectedHistoryIds) {
                 const log = logs.find(l => l.id === id);
                 if (!log) continue;
+                deletedLogs.push(log);
                 
-                // Remove from cadet attendance map
-                const cadetDocRef = doc(cadetsRef, log.cadetId);
-                batch.update(cadetDocRef, {
-                    [`attendance.${log.date}`]: deleteField()
-                });
+                // Remove date from cadet attendance map
+                if (log.cadetId) {
+                    const cadetDocRef = doc(cadetsRef, log.cadetId);
+                    const cadet = cadetRoster.find(c => c.id === log.cadetId);
+                    const attMap = cadet?.attendance || {};
+                    const targetNorm = normalizeDate(log.date);
+                    const keysToRemove = Object.keys(attMap).filter(k => normalizeDate(k) === targetNorm || k === log.date);
+
+                    const updates = {};
+                    if (keysToRemove.length > 0) {
+                        keysToRemove.forEach(k => {
+                            updates[`attendance.${k}`] = deleteField();
+                        });
+                    } else {
+                        updates[`attendance.${log.date}`] = deleteField();
+                    }
+                    batch.update(cadetDocRef, updates);
+                    opCount++;
+                }
                 
                 // Delete the log
-                const logDocRef = doc(attRef, id);
-                batch.delete(logDocRef);
+                if (!log.isVirtual) {
+                    const logDocRef = doc(attRef, id);
+                    batch.delete(logDocRef);
+                    opCount++;
+                }
+
+                // Commit in chunks of 400 ops to avoid Firestore limits
+                if (opCount >= 400) {
+                    await batch.commit();
+                    batch = writeBatch(db);
+                    opCount = 0;
+                }
             }
             
-            await batch.commit();
+            if (opCount > 0) {
+                await batch.commit();
+            }
+
+            // Send real-time Absent notification & in-app warning to all affected cadets
+            for (const log of deletedLogs) {
+                if (log.cadetId) {
+                    const title = "⚠️ Attendance Alert: Marked Absent";
+                    const dateStr = formatDate(log.date);
+                    const body = `Your attendance record for ${dateStr} was removed. You are marked ABSENT for today's class. Contact your ANO if you have a valid leave.`;
+                    try {
+                        sendPushToCadets([log.cadetId], title, body, 'attendance');
+                        const cadet = cadets.find(c => c.id === log.cadetId || c.enrollmentId === log.enrollmentId);
+                        addNotification(
+                            log.cadetId,
+                            title,
+                            body,
+                            'warning',
+                            log.institutionId || cadet?.institutionId || 'gmrit',
+                            log.enrollmentId || cadet?.enrollmentId
+                        );
+                    } catch (e) { console.error("Push failed:", e); }
+                }
+            }
+
             toast.success(`Deleted ${selectedHistoryIds.length} records.`);
             setSelectedHistoryIds([]);
         } catch (err) {
             console.error("Bulk delete error:", err);
-            toast.error("Failed to perform bulk deletion.");
+            toast.error("Failed to perform bulk deletion: " + err.message);
         } finally {
             setLoading(false);
         }
     };
 
     const filteredLogs = logs.filter(log => {
-        // Enforce date filter first (User requirement: total on this specific date)
-        if (filterDate && log.date !== filterDate) return false;
+        // Enforce date filter first using normalized date comparison
+        if (filterDate && normalizeDate(log.date) !== normalizeDate(filterDate)) return false;
 
         // Determine cert/div (use log value or fallback to joining with cadet data)
         const logCert = log.certificate || cadets.find(c => c.id === log.cadetId)?.certificate || 'NA';
@@ -403,14 +605,25 @@ export const AttendanceLogsView = () => {
                             <button key={cert} onClick={() => setSelectedCert(cert)} className={`ncc-filter-btn ${selectedCert === cert ? 'active' : ''}`}>{cert}</button>
                         ))}
                     </div>
-                    <div className="relative w-full sm:w-48">
-                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-white/80" />
-                        <input 
-                            type="date" 
-                            className="ncc-input pl-10"
-                            value={filterDate}
-                            onChange={e => setFilterDate(e.target.value)}
-                        />
+                    <div className="relative w-full sm:w-56 flex items-center gap-1">
+                        <div className="relative flex-1">
+                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-white/80" />
+                            <input 
+                                type="date" 
+                                className="ncc-input pl-10 text-xs"
+                                value={filterDate}
+                                onChange={e => setFilterDate(e.target.value)}
+                            />
+                        </div>
+                        {filterDate && (
+                            <button 
+                                onClick={() => setFilterDate('')}
+                                className="px-2.5 py-2 text-[10px] font-black bg-gray-200 dark:bg-white/10 text-gray-700 dark:text-white rounded-lg hover:bg-gray-300 transition uppercase"
+                                title="Show All Dates"
+                            >
+                                All
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

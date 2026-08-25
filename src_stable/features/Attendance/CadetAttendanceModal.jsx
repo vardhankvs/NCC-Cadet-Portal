@@ -4,14 +4,48 @@ import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
 import { X, Calendar, User, CheckCircle, XCircle } from '../../components/Icons.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
 
-const formatHistoryDate = (dateString) => {
-    const dateObj = new Date(dateString + 'T00:00:00');
-    if (isNaN(dateObj.getTime())) return { date: dateString, day: 'N/A' };
-    const datePart = formatDate(dateObj);
-    const dayPart = dateObj.toLocaleDateString('en-IN', {
-        weekday: 'long',
-    });
-    return { date: datePart, day: dayPart.replace(/,/g, '') };
+const isPresentStatus = (status) => {
+    if (!status) return false;
+    const s = String(status).trim().toUpperCase();
+    return s === 'PRESENT' || s === 'P' || s === 'VERIFIED' || s === 'LATE' || s === 'ATTENDED' || s === 'EXEMPT' || s === 'TRUE' || s === '1';
+};
+
+const formatHistoryDate = (dateInput) => {
+    if (!dateInput) return { date: 'N/A', day: 'N/A' };
+    
+    let year, month, day;
+    let str = String(dateInput).trim();
+
+    // Match YYYY-MM-DD
+    const ymdMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    if (ymdMatch) {
+        year = parseInt(ymdMatch[1], 10);
+        month = parseInt(ymdMatch[2], 10) - 1;
+        day = parseInt(ymdMatch[3], 10);
+    } else {
+        // Match DD-MM-YYYY or DD/MM/YYYY
+        const dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+        if (dmyMatch) {
+            day = parseInt(dmyMatch[1], 10);
+            month = parseInt(dmyMatch[2], 10) - 1;
+            year = parseInt(dmyMatch[3], 10);
+        }
+    }
+
+    let dateObj;
+    if (year !== undefined && month !== undefined && day !== undefined) {
+        dateObj = new Date(year, month, day);
+    } else {
+        dateObj = new Date(dateInput);
+    }
+
+    if (isNaN(dateObj.getTime())) {
+        return { date: str, day: 'N/A' };
+    }
+
+    const formattedDate = formatDate(dateObj);
+    const dayName = dateObj.toLocaleDateString('en-IN', { weekday: 'long' });
+    return { date: formattedDate, day: dayName };
 };
 
 export const CadetAttendanceModal = ({ cadet, onClose, totalPeriods }) => {
@@ -20,10 +54,11 @@ export const CadetAttendanceModal = ({ cadet, onClose, totalPeriods }) => {
     );
 
     const presentCount = attendanceHistory.filter(
-        ([, status]) => status === 'Present'
+        ([, status]) => isPresentStatus(status)
     ).length;
     
-    const percentage = totalPeriods > 0 ? ((presentCount / totalPeriods) * 100).toFixed(2) : 0;
+    const actualTotalPeriods = totalPeriods || attendanceHistory.length;
+    const percentage = actualTotalPeriods > 0 ? ((presentCount / actualTotalPeriods) * 100).toFixed(2) : 0;
 
     return (
         <ModalOverlay>
@@ -52,7 +87,7 @@ export const CadetAttendanceModal = ({ cadet, onClose, totalPeriods }) => {
                     <div className="grid grid-cols-3 gap-3 mb-6 flex-shrink-0">
                         <div className="bg-white dark:bg-[#050b14] p-3 rounded-2xl border border-[#ddd8cc] text-center shadow-sm">
                             <p className="text-[8px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest mb-0.5">Total</p>
-                            <p className="text-xl font-black text-ncc-navy dark:text-white">{totalPeriods}</p>
+                            <p className="text-xl font-black text-ncc-navy dark:text-white">{actualTotalPeriods}</p>
                         </div>
                         <div className="bg-white dark:bg-[#050b14] p-3 rounded-2xl border border-[#ddd8cc] text-center shadow-sm">
                             <p className="text-[8px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest mb-0.5">Present</p>
@@ -83,7 +118,7 @@ export const CadetAttendanceModal = ({ cadet, onClose, totalPeriods }) => {
                                     ) : (
                                         attendanceHistory.map(([dateKey, status]) => {
                                             const { date, day } = formatHistoryDate(dateKey);
-                                            const isPresent = status === 'Present';
+                                            const isPresent = isPresentStatus(status);
                                             return (
                                                 <tr key={dateKey} className="transition-colors">
                                                     <td className="px-5 py-3 text-[11px] font-bold text-ncc-navy dark:text-white">{day}</td>
@@ -91,9 +126,9 @@ export const CadetAttendanceModal = ({ cadet, onClose, totalPeriods }) => {
                                                     <td className="px-5 py-3 text-right">
                                                         <div className="flex items-center justify-end gap-1.5">
                                                             <span className={`text-[10px] font-black uppercase ${isPresent ? 'text-emerald-600' : 'text-red-600'}`}>
-                                                                {status}
+                                                                {String(status).toUpperCase() === 'ABSENT' ? 'ABSENT' : String(status).toUpperCase()}
                                                             </span>
-                                                            {isPresent ? <CheckCircle className="w-3 h-3 text-emerald-600" /> : <XCircle className="w-3 h-3 text-red-600" />}
+                                                            {isPresent ? <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> : <XCircle className="w-3.5 h-3.5 text-red-600" />}
                                                         </div>
                                                     </td>
                                                 </tr>

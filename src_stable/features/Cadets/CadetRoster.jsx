@@ -23,6 +23,9 @@ import { BulkImportModal } from './BulkImportModal.jsx';
 import { CertificateUploadModal } from './CertificateUploadModal.jsx';
 import { toast } from 'react-toastify';
 import { formatDate } from '../../utils/dateUtils.js';
+import { useAuthContext } from '../../context/AuthContext.jsx';
+import { getMaskedCadet } from '../../utils/maskUtils.js';
+import { CadetProfileModal } from '../Ranks/CadetProfileModal.jsx';
 
 
 import jsPDF from 'jspdf';
@@ -41,6 +44,7 @@ const formatDateForInput = (dateStr) => {
 };
 
 export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
+    const { userRole, userEnrollmentId } = useAuthContext();
     const [selectedCertificate, setSelectedCertificate] = useState('All');
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [searchTerm, setSearchTerm] = useState('');
@@ -53,6 +57,7 @@ export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
     const [promotionOption, setPromotionOption] = useState('');
     const [selectedIds, setSelectedIds] = useState([]);
     const [certModalCadet, setCertModalCadet] = useState(null);
+    const [selectedCadetForModal, setSelectedCadetForModal] = useState(null);
 
     const downloadTemplate = () => {
         const headers = ['Name','Regimental Number','JNTU NO','Rank','CERT','Father Name','Mother Name','Year','Branch','Aadhaar Number','Phone number (Personal)','Phone Number (Parents)','Address (Present)','Address (Permanent) If both present & Permanent are Same Just Ignore','Hosteler / Days scholar','ECA/CCA','Date of Birth','Email ID (Personal)','Email ID (College Mail)','Blood Group'];
@@ -273,8 +278,28 @@ export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
             const q = searchTerm.toLowerCase();
             list = list.filter((c) => c.name?.toLowerCase().includes(q) || (c.enrollmentId || c.regimentalNumber || '').toLowerCase().includes(q) || c.jntuNo?.toLowerCase().includes(q));
         }
-        return list;
-    }, [cadets, selectedCertificate, selectedCategory, searchTerm]);
+        return list.map(c => {
+            const masked = getMaskedCadet(c, userRole, userEnrollmentId);
+            const rawAtt = c.attendance || {};
+            let presentCount = 0;
+            Object.values(rawAtt).forEach(s => {
+                const str = String(s).trim().toUpperCase();
+                if (str === 'PRESENT' || str === 'P' || str === 'VERIFIED' || str === 'LATE' || str === 'ATTENDED' || str === '1') {
+                    presentCount++;
+                }
+            });
+            const totalPeriods = Object.keys(rawAtt).length;
+            const pct = totalPeriods > 0 ? parseFloat(((presentCount / totalPeriods) * 100).toFixed(2)) : 0;
+            return {
+                ...masked,
+                presentCount: c.presentCount ?? presentCount,
+                totalPeriods: c.totalPeriods ?? totalPeriods,
+                attendancePresentCount: c.attendancePresentCount ?? presentCount,
+                attendanceTotalPeriods: c.attendanceTotalPeriods ?? totalPeriods,
+                attendancePercentage: c.attendancePercentage ?? pct
+            };
+        });
+    }, [cadets, selectedCertificate, selectedCategory, searchTerm, userRole, userEnrollmentId]);
 
     const handleSelectAll = (e) => { if (e.target.checked) setSelectedIds(filteredCadets.map((c) => c.id)); else setSelectedIds([]); };
     const handleSelectOne = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]);
@@ -385,43 +410,75 @@ export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
                                             <input type="checkbox" className="rounded" onChange={handleSelectAll}
                                                 checked={filteredCadets.length > 0 && selectedIds.length === filteredCadets.length} />
                                         </th>
-                                        {['#','Name','Reg. No','JNTU No','Father','Mother','Cert','Year','Branch','Aadhaar','Ph. Personal','Ph. Parents','Addr. Present','Addr. Perm.','Hosteler','ECA/CCA','DOB','Email (P)','Email (C)','Blood','Actions'].map((h) => (
+                                        {[
+                                            '#',
+                                            'Name',
+                                            'Reg. No',
+                                            'JNTU No',
+                                            'Rank',
+                                            'Cert',
+                                            'Year',
+                                            'Father Name',
+                                            'Mother Name',
+                                            'Branch',
+                                            'Aadhaar',
+                                            'Phone (Personal)',
+                                            'Phone (Parents)',
+                                            'Address (Present)',
+                                            'Address (Permanent)',
+                                            'Hosteler/Scholar',
+                                            'ECA/CCA',
+                                            'DOB',
+                                            'Email (Personal)',
+                                            'Email (College)',
+                                            'Blood Group',
+                                            'Actions'
+                                        ].map((h) => (
                                             <th key={h} className="ncc-th">{h}</th>
                                         ))}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {filteredCadets.map((cadet, index) => {
+                                        const unmaskedCadet = cadets.find(c => c.id === cadet.id) || cadet;
                                         const cert = cadet.certificate || cadet.B;
                                         const certCls = cert === 'C' ? 'cert-c' : cert === 'B2' ? 'cert-b2' : cert ? 'cert-b1' : '';
                                         return (
-                                            <tr key={cadet.id} className={`ncc-tr dark:hover:bg-white/5 ${selectedIds.includes(cadet.id) ? 'ncc-tr-selected' : ''}`}>
-                                                <td className="ncc-td text-center"><input type="checkbox" checked={selectedIds.includes(cadet.id)} onChange={() => handleSelectOne(cadet.id)} className="rounded" /></td>
+                                            <tr
+                                                key={cadet.id}
+                                                onClick={() => setSelectedCadetForModal(unmaskedCadet)}
+                                                className={`ncc-tr dark:hover:bg-white/5 cursor-pointer ${selectedIds.includes(cadet.id) ? 'ncc-tr-selected' : ''}`}
+                                            >
+                                                <td className="ncc-td text-center" onClick={e => e.stopPropagation()}>
+                                                    <input type="checkbox" checked={selectedIds.includes(cadet.id)} onChange={() => handleSelectOne(cadet.id)} className="rounded" />
+                                                </td>
                                                 <td className="ncc-td text-gray-400 dark:text-white/80">{index + 1}</td>
                                                 <td className="ncc-td font-semibold text-ncc-navy dark:text-white whitespace-nowrap">{cadet.name}</td>
                                                 <td className="ncc-td font-mono text-xs whitespace-nowrap">{cadet.enrollmentId || cadet.regimentalNumber}</td>
-                                                <td className="ncc-td text-xs">{cadet.jntuNo || '—'}</td>
-                                                <td className="ncc-td whitespace-nowrap text-xs">{cadet.fatherName || '—'}</td>
-                                                <td className="ncc-td whitespace-nowrap text-xs">{cadet.motherName || '—'}</td>
+                                                <td className="ncc-td whitespace-nowrap">{cadet.jntuNo || '—'}</td>
+                                                <td className="ncc-td">
+                                                    <span className="bg-ncc-navy/5 dark:bg-white/10 px-1.5 py-0.5 rounded text-[10px] font-bold">{cadet.rank || 'CDT'}</span>
+                                                </td>
                                                 <td className="ncc-td">{cert ? <span className={certCls}>{cert}</span> : '—'}</td>
                                                 <td className="ncc-td text-xs">{cadet.year || '—'}</td>
-                                                <td className="ncc-td text-xs">{cadet.branch || '—'}</td>
-                                                <td className="ncc-td text-xs">{cadet.aadhaarNumber || '—'}</td>
-                                                <td className="ncc-td text-xs">{cadet.phonePersonal || cadet.phone || '—'}</td>
-                                                <td className="ncc-td text-xs">{cadet.phoneParents || '—'}</td>
-                                                <td className="ncc-td text-xs truncate max-w-[120px]">{cadet.addressPresent || '—'}</td>
-                                                <td className="ncc-td text-xs truncate max-w-[120px]">{cadet.addressPermanent || '—'}</td>
-                                                <td className="ncc-td text-xs">{cadet.hostelerType || '—'}</td>
-                                                <td className="ncc-td text-xs">{cadet.ecaCca || '—'}</td>
-                                                <td className="ncc-td text-xs whitespace-nowrap">{formatDate(cadet.dob)}</td>
-                                                <td className="ncc-td text-xs">{cadet.personalEmail || '—'}</td>
-                                                <td className="ncc-td text-xs">{cadet.collegeEmail || '—'}</td>
-                                                <td className="ncc-td"><span className="font-bold text-red-600 text-xs">{cadet.bloodGroup || '—'}</span></td>
-                                                <td className="ncc-td text-right whitespace-nowrap">
-                                                    <button onClick={() => setEditingCadet({ ...cadet, dob: formatDateForInput(cadet.dob) })} className="inline-flex p-1.5 rounded-lg hover:bg-ncc-navy/10 transition">
+                                                <td className="ncc-td text-xs whitespace-nowrap">{cadet.fatherName || '—'}</td>
+                                                <td className="ncc-td text-xs whitespace-nowrap">{cadet.motherName || '—'}</td>
+                                                <td className="ncc-td text-xs whitespace-nowrap">{cadet.branch || '—'}</td>
+                                                <td className="ncc-td text-xs font-mono whitespace-nowrap">{cadet.aadhaarNumber || '—'}</td>
+                                                <td className="ncc-td text-xs font-mono whitespace-nowrap">{cadet.phonePersonal || cadet.phone || '—'}</td>
+                                                <td className="ncc-td text-xs font-mono whitespace-nowrap">{cadet.phoneParents || '—'}</td>
+                                                <td className="ncc-td text-xs whitespace-nowrap">{cadet.addressPresent || '—'}</td>
+                                                <td className="ncc-td text-xs whitespace-nowrap">{cadet.addressPermanent || '—'}</td>
+                                                <td className="ncc-td text-xs whitespace-nowrap">{cadet.hostelerType || '—'}</td>
+                                                <td className="ncc-td text-xs whitespace-nowrap">{cadet.ecaCca || '—'}</td>
+                                                <td className="ncc-td text-xs whitespace-nowrap">{formatDate(cadet.dob) || '—'}</td>
+                                                <td className="ncc-td text-xs whitespace-nowrap">{cadet.personalEmail || '—'}</td>
+                                                <td className="ncc-td text-xs whitespace-nowrap">{cadet.collegeEmail || '—'}</td>
+                                                <td className="ncc-td text-xs font-semibold text-center">{cadet.bloodGroup || '—'}</td>
+                                                <td className="ncc-td text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                                                    <button onClick={() => setEditingCadet({ ...unmaskedCadet, dob: formatDateForInput(unmaskedCadet.dob) })} className="inline-flex p-1.5 rounded-lg hover:bg-ncc-navy/10 transition">
                                                         <Edit className="w-3.5 h-3.5 text-ncc-navy dark:text-white" />
                                                     </button>
-
                                                     <button onClick={() => setItemToDelete({ type: 'cadets', id: cadet.id, name: cadet.name })} className="inline-flex p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition ml-0.5">
                                                         <Trash2 className="w-3.5 h-3.5 text-red-500" />
                                                     </button>
@@ -439,6 +496,15 @@ export const CadetRoster = ({ cadets, tenant, userInstitutionId }) => {
                     </>
                 )}
             </div>
+            {selectedCadetForModal && (
+                <CadetProfileModal
+                    cadet={selectedCadetForModal}
+                    attendancePct={selectedCadetForModal.attendancePercentage ?? 0}
+                    attendancePresentCount={selectedCadetForModal.attendancePresentCount ?? 0}
+                    attendanceTotalPeriods={selectedCadetForModal.attendanceTotalPeriods ?? 0}
+                    onClose={() => setSelectedCadetForModal(null)}
+                />
+            )}
         </>
     );
 };

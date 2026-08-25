@@ -275,3 +275,53 @@ exports.logoutFromAllDevices = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('internal', error.message);
     }
 });
+
+/**
+ * Trigger: onUserUpdated
+ * Syncs email and password updates from Firestore users collection back to Firebase Auth.
+ */
+exports.onUserUpdated = functions.firestore
+    .document('artifacts/default-app-id/public/data/users/{uid}')
+    .onUpdate(async (change, context) => {
+        const before = change.before.data();
+        const after = change.after.data();
+        const uid = context.params.uid;
+
+        const updateParams = {};
+
+        // If email changed
+        if (after.email && after.email.trim().toLowerCase() !== (before.email || '').trim().toLowerCase()) {
+            updateParams.email = after.email.trim().toLowerCase();
+        }
+
+        // If passwordUpdate is provided
+        if (after.passwordUpdate && after.passwordUpdate !== before.passwordUpdate) {
+            updateParams.password = after.passwordUpdate;
+        }
+
+        if (Object.keys(updateParams).length > 0) {
+            try {
+                await admin.auth().updateUser(uid, updateParams);
+                functions.logger.info(`Firebase Auth credentials synced successfully for user: ${uid}`);
+
+                // Clean up passwordUpdate from Firestore to avoid storing plain-text password
+                if (after.passwordUpdate) {
+                    await change.after.ref.update({
+                        passwordUpdate: admin.firestore.FieldValue.delete()
+                    });
+                }
+            } catch (error) {
+                functions.logger.error(`Failed to sync credentials for user ${uid}:`, error);
+                
+                // Write error message and clean passwordUpdate
+                const errorPayload = {
+                    authUpdateError: error.message
+                };
+                if (after.passwordUpdate) {
+                    errorPayload.passwordUpdate = admin.firestore.FieldValue.delete();
+                }
+                await change.after.ref.update(errorPayload);
+            }
+        }
+        return null;
+    });

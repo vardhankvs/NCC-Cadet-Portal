@@ -13,10 +13,23 @@ const appId = 'default-app-id'; // Corrected appId to match config
 async function seedUnits() {
   const units = [
     {
+      subdomain: '14a-bn-srikakulam',
+      unitName: '14(A) BN NCC, Srikakulam',
+      collegeName: 'Battalion Headquarters',
+      location: 'Srikakulam',
+      isBattalion: true,
+      heroBg: 'https://images.unsplash.com/photo-1599708153386-62e257e10884?auto=format&fit=crop&q=80&w=2000',
+      logo: 'https://firebasestorage.googleapis.com/v0/b/gmrit-ncc-fb1df.appspot.com/o/assets%2Fncc_logo.png?alt=media',
+      primaryColor: '#1B3A6B',
+      secondaryColor: '#B8830E',
+      motto: 'Unity and Discipline'
+    },
+    {
       subdomain: 'gmrit',
       unitName: '14(A) BN NCC',
       collegeName: 'GMR Institute of Technology',
       location: 'Rajam, Srikakulam',
+      battalionId: '14a-bn-srikakulam',
       heroBg: 'https://firebasestorage.googleapis.com/v0/b/gmrit-ncc-fb1df.appspot.com/o/assets%2Fhero_bg.png?alt=media', // Use your 4K asset URL
       logo: 'https://firebasestorage.googleapis.com/v0/b/gmrit-ncc-fb1df.appspot.com/o/assets%2Fncc_logo.png?alt=media',
       primaryColor: '#1B3A6B',
@@ -28,6 +41,7 @@ async function seedUnits() {
       unitName: 'ANITS NCC Unit',
       collegeName: 'Anil Neerukonda Institute of Technology and Sciences',
       location: 'Visakhapatnam',
+      battalionId: '14a-bn-srikakulam',
       heroBg: 'https://images.unsplash.com/photo-1599708153386-62e257e10884?auto=format&fit=crop&q=80&w=2000', // Sharp placeholder for now
       logo: 'https://www.anits.edu.in/images/logo.png',
       primaryColor: '#800000', // ANITS Maroon
@@ -39,6 +53,7 @@ async function seedUnits() {
       unitName: 'MVGR NCC Unit',
       collegeName: 'Maharaj Vijayaram Gajapathi Raj College of Engineering',
       location: 'Vizianagaram',
+      battalionId: '14a-bn-srikakulam',
       heroBg: 'https://images.unsplash.com/photo-1541339907198-e08756ebafe1?auto=format&fit=crop&q=80&w=2000', // Sharp placeholder for now
       logo: 'https://www.mvgrce.com/sites/default/files/logo_0.png',
       primaryColor: '#004a99', // MVGR Blue

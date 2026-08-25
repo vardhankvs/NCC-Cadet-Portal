@@ -13,6 +13,7 @@ import {
     Calendar,
     BookOpen,
     Mail,
+    Phone,
     Heart,
     Menu,
     X,
@@ -27,6 +28,7 @@ import {
 } from './Icons.jsx';
 
 import { ThemeToggle } from './ui/ThemeToggle';
+import { AIAssistant } from '../features/Engagement/AIAssistant.jsx';
 import { useTheme } from '../context/ThemeContext';
 import { useTenant } from '../context/TenantContext';
 import { useInView } from 'react-intersection-observer';
@@ -260,7 +262,7 @@ export const LandingPage = ({ onGetStarted, user }) => {
                             <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center text-green-600 font-bold">🌳</div>
                             <h4 class="font-black text-ncc-navy dark:text-white text-xl">Green Campus Initiative</h4>
                         </div>
-                        <p class="text-gray-600 dark:text-gray-300 leading-relaxed">As part of our commitment to the environment, cadets successfully planted and adopted 200+ native saplings across the GMRIT campus, creating a sustainable green lung for future generations.</p>
+                        <p class="text-gray-600 dark:text-gray-300 leading-relaxed">As part of our commitment to the environment, cadets successfully planted and adopted 200+ native saplings across Srikakulam, creating a sustainable green lung for future generations.</p>
                     </div>
                     <div class="group p-6 bg-gray-50 dark:bg-[#0a1628] rounded-3xl border border-transparent hover:border-ncc-gold/20 transition-all">
                         <div class="flex items-center gap-4 mb-4">
@@ -492,7 +494,7 @@ export const LandingPage = ({ onGetStarted, user }) => {
     };
 
     return (
-        <div className={`min-h-screen selection:bg-ncc-gold/30 transition-colors duration-1000 ${isDarkMode ? 'dark' : ''}`} style={{ background: 'var(--bg-page)', color: 'var(--text-main)' }}>
+        <div className={`min-h-screen selection:bg-ncc-gold/30 transition-colors duration-1000 overflow-x-hidden ${isDarkMode ? 'dark' : ''}`} style={{ background: 'var(--bg-page)', color: 'var(--text-main)' }}>
             {/* --- ELITE TOP PROGRESS BAR --- */}
             <div 
                 className="fixed top-0 left-0 h-1 bg-gradient-to-r from-ncc-gold via-white to-ncc-gold z-[1000] transition-all duration-300"
@@ -533,7 +535,7 @@ export const LandingPage = ({ onGetStarted, user }) => {
                         </div>
                         <div>
                             <h1 className="text-lg md:text-xl font-display font-black leading-none tracking-tight" style={{ color: scrolled ? 'var(--text-main)' : 'white' }}>14(A) BN NCC</h1>
-                            <p className="text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-ncc-gold font-black mt-1">GMRIT Srikakulam</p>
+                            <p className="text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-ncc-gold font-black mt-1">Srikakulam</p>
                         </div>
                     </div>
 
@@ -622,7 +624,7 @@ export const LandingPage = ({ onGetStarted, user }) => {
                         </h2>
                         
                         <p className="text-base md:text-lg text-white font-bold leading-relaxed max-w-lg drop-shadow-2xl">
-                            {tenant?.unitName || '14(A) Battalion'} NCC at {tenant?.collegeName || 'GMRIT'}. Join the mission of character building and selfless service to the nation.
+                            Official portal of {tenant?.unitName || '14(A) BN NCC'}, Srikakulam. Join the mission of character building and selfless service to the nation.
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-4 pt-4">
@@ -668,7 +670,7 @@ export const LandingPage = ({ onGetStarted, user }) => {
                         </div>
                         
                         <p className="text-gray-500 dark:text-gray-400 leading-relaxed text-xl font-medium">
-                            The 14(A) Battalion NCC unit at GMR Institute of Technology is dedicated to providing a platform for students to develop their personality, character, and leadership skills. We follow the core motto: <span className="text-ncc-navy dark:text-white font-black">Unity and Discipline</span>.
+                            The 14(A) Battalion NCC unit, Srikakulam is dedicated to providing a platform for students to develop their personality, character, and leadership skills. We follow the core motto: <span className="text-ncc-navy dark:text-white font-black">Unity and Discipline</span>.
                         </p>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -870,7 +872,7 @@ export const LandingPage = ({ onGetStarted, user }) => {
                         <p className="text-ncc-gold font-black uppercase tracking-[0.3em] text-[10px]">The Cadet Journey</p>
                         <h3 className="text-4xl md:text-5xl font-display font-black text-ncc-navy dark:text-white leading-tight">Beyond the <br className="hidden md:block" />Classroom Walls</h3>
                         <p className="text-gray-500 dark:text-gray-400 text-base font-medium leading-relaxed">
-                            NCC at GMRIT isn't just an extra-curricular; it's a transformative life experience. We take you from being a student to becoming a motivated human resource.
+                            NCC isn't just an extra-curricular; it's a transformative life experience. We take you from being a student to becoming a motivated human resource.
                         </p>
                         <ul className="space-y-3">
                             {[
@@ -1228,7 +1230,7 @@ export const LandingPage = ({ onGetStarted, user }) => {
                     
                     <div className="space-y-4 reveal">
                         {[
-                            { q: "How can I join the NCC at GMRIT?", a: "Enrollment typically happens at the beginning of the first year of B.Tech. Keep an eye on campus announcements for the registration link and physical selection dates." },
+                            { q: "How can I join the 14(A) BN NCC?", a: "Enrollment typically happens at the beginning of the academic year. Keep an eye on unit announcements or contact your institution's Associate NCC Officer (ANO) for selection dates." },
                             { q: "Is there any age limit for joining?", a: "The age limit for Senior Division (SD) and Senior Wing (SW) is 26 years." },
                             { q: "What are the benefits of C-Certificate?", a: "C-certificate holders get significant bonus marks in defense exams (CDS, AFCAT) and a direct entry for SSB interviews in many wings of the Armed Forces." },
                             { q: "Are there any physical requirements?", a: "Yes, basic physical fitness is required, including running and basic exercises. A medical fitness certificate is mandatory for selection." }
@@ -1326,7 +1328,16 @@ export const LandingPage = ({ onGetStarted, user }) => {
                                 </div>
                                 <div className="space-y-0.5">
                                     <h4 className="font-bold text-ncc-navy dark:text-white text-lg">Our Unit Office</h4>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400 font-medium leading-relaxed">14(A) BN NCC Office, GMRIT Campus, Razam.</p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 font-medium leading-relaxed">14(A) Bn NCC Headquarters, Ramakrishna Nagar, Srikakulam, Andhra Pradesh - 532001.</p>
+                                </div>
+                            </div>
+                            <div className="flex gap-4 group">
+                                <div className="w-14 h-14 bg-white dark:bg-[#050b14] border border-gray-100 dark:border-white/10 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg group-hover:bg-ncc-gold group-hover:rotate-6 transition-all duration-500">
+                                    <Phone className="w-6 h-6 text-ncc-gold group-hover:text-white transition-colors" />
+                                </div>
+                                <div className="space-y-0.5">
+                                    <h4 className="font-bold text-ncc-navy dark:text-white text-lg">Call Us</h4>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 font-medium leading-relaxed">08942-223234</p>
                                 </div>
                             </div>
                             <div className="flex gap-4 group">
@@ -1335,7 +1346,7 @@ export const LandingPage = ({ onGetStarted, user }) => {
                                 </div>
                                 <div className="space-y-0.5">
                                     <h4 className="font-bold text-ncc-navy dark:text-white text-lg">Email Us</h4>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400 font-medium leading-relaxed">gmritncc1@gmail.com</p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 font-medium leading-relaxed">14abnnccsklm@gmail.com</p>
                                 </div>
                             </div>
                         </div>
@@ -1343,10 +1354,7 @@ export const LandingPage = ({ onGetStarted, user }) => {
 
                     <div className="lg:col-span-2 rounded-3xl overflow-hidden shadow-2xl border-[8px] border-white dark:border-white/10 h-[450px] relative reveal" style={{ transitionDelay: '300ms' }}>
                         <iframe 
-                            src={isDarkMode 
-                                ? "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3800.7496515822394!2d83.65819777508316!3d18.466455582570054!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3a3bfe38a6a6833b%3A0x6b47c0b0f4384a3c!2sGMR%20Institute%20of%20Technology!5e0!3m2!1sen!2sin!4v1715000000000!5m1!1e4"
-                                : "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3800.7496515822394!2d83.65819777508316!3d18.466455582570054!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3a3bfe38a6a6833b%3A0x6b47c0b0f4384a3c!2sGMR%20Institute%20of%20Technology!5e0!3m2!1sen!2sin!4v1715000000000!5m2!1sen!2sin"
-                            }
+                            src="https://maps.google.com/maps?q=14(A)%20Battalion%20NCC%20Ramakrishna%20Nagar%20Srikakulam&t=&z=15&ie=UTF8&iwloc=&output=embed"
                             width="100%" 
                             height="100%" 
                             style={{ border: 0 }} 
@@ -1414,7 +1422,7 @@ export const LandingPage = ({ onGetStarted, user }) => {
                         <div className="flex items-center gap-5">
                             <img src={nccLogo} className="w-16 h-16 object-contain" alt="Logo" />
                             <div>
-                                <p className="text-xl font-black text-ncc-navy dark:text-white uppercase tracking-tight">14(A) BN NCC @ GMRIT</p>
+                                <p className="text-xl font-black text-ncc-navy dark:text-white uppercase tracking-tight">14(A) BN NCC Srikakulam</p>
                                 <p className="text-[11px] text-gray-400 font-bold tracking-[0.2em] uppercase">Unity & Discipline Since Establishment</p>
                             </div>
                         </div>
@@ -1435,12 +1443,12 @@ export const LandingPage = ({ onGetStarted, user }) => {
                                 <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-ncc-navy dark:bg-white group-hover:w-full transition-all duration-300" />
                             </button>
                             <a 
-                                href="https://gmrit.edu.in/" 
+                                href="https://indiancc.nic.in/" 
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 className="hover:text-ncc-navy dark:text-white dark:hover:text-white transition-all relative group"
                             >
-                                GMRIT Main Site
+                                Official NCC Site
                                 <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-ncc-navy dark:bg-white group-hover:w-full transition-all duration-300" />
                             </a>
                         </div>
@@ -1463,7 +1471,7 @@ export const LandingPage = ({ onGetStarted, user }) => {
             {/* Sidebar Content */}
             <div 
                 className={`fixed top-0 right-0 h-full w-[85%] max-w-sm bg-[#0A1628] z-[110] lg:hidden transition-transform duration-500 ease-out shadow-[-20px_0_50px_rgba(0,0,0,0.5)] flex flex-col ${
-                    isMenuOpen ? 'translate-x-0' : 'translate-x-full'
+                    isMenuOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
                 }`}
                 style={{ borderLeft: '1px solid rgba(255,255,255,0.1)' }}
             >
@@ -1474,7 +1482,7 @@ export const LandingPage = ({ onGetStarted, user }) => {
                             <img src={nccLogo} className="w-10 h-10" alt="Logo" />
                             <div className="flex flex-col">
                                 <h2 className="text-white font-display font-black text-lg leading-none">14(A) BN</h2>
-                                <p className="text-ncc-gold text-[9px] font-black uppercase tracking-widest mt-1">GMRIT UNIT</p>
+                                <p className="text-ncc-gold text-[9px] font-black uppercase tracking-widest mt-1">BATTALION HQ</p>
                             </div>
                         </div>
                         <button 
@@ -1627,6 +1635,9 @@ export const LandingPage = ({ onGetStarted, user }) => {
                     </motion.div>
                 </div>
             )}
+
+            {/* Floating Vanguard AI Assistant Widget */}
+            <AIAssistant />
 
             <style dangerouslySetInnerHTML={{ __html: `
                 .dark {

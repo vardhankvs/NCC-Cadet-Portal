@@ -18,7 +18,7 @@ import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
 
 export const TutorialsHub = () => {
     const { currentUser, userRole, userEnrollmentId } = useAuthContext();
-    const isAdmin = userRole === 'admin' || userRole === 'officer';
+    const isAdmin = Boolean(userRole && userRole.toLowerCase() !== 'cadet');
     
     const [tutorials, setTutorials] = useState([]);
     const [loading, setLoading] = useState(true);

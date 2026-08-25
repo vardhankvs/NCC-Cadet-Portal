@@ -18,7 +18,7 @@ export const Header = () => {
                 </div>
                 {/* --- END PLACEHOLDER --- */}
                 <h1 className="text-3xl font-extrabold text-indigo-700">
-                    GMRIT NCC
+                    14(A) BN NCC
                 </h1>
             </div>
 

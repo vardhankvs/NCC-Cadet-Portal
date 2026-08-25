@@ -82,6 +82,7 @@ export const UnitAnalytics = ({ onDrillDown, onTabChange }) => {
 
         let sd = 0, sw = 0;
         let b1_total = 0, b1_sd = 0, b1_sw = 0;
+        let b2_total = 0, b2_sd = 0, b2_sw = 0;
         let c_total = 0, c_sd = 0, c_sw = 0;
         const certs = { 'A': 0, 'B1': 0, 'B2': 0, 'C': 0 };
 
@@ -95,6 +96,7 @@ export const UnitAnalytics = ({ onDrillDown, onTabChange }) => {
             if (isSW) sw++;
 
             if (cert === 'B1') { b1_total++; if (isSD) b1_sd++; if (isSW) b1_sw++; }
+            else if (cert === 'B2') { b2_total++; if (isSD) b2_sd++; if (isSW) b2_sw++; }
             else if (cert === 'C') { c_total++; if (isSD) c_sd++; if (isSW) c_sw++; }
 
             if (certs[cert] !== undefined) certs[cert]++;
@@ -127,7 +129,7 @@ export const UnitAnalytics = ({ onDrillDown, onTabChange }) => {
             ? Math.round((financialStats.totalCollected / financialStats.totalExpected) * 100) 
             : 0;
 
-        return { total: activeCadets.length, sd, sw, b1_total, b1_sd, b1_sw, c_total, c_sd, c_sw, rankChartData, certChartData, grievanceStats, financialStats };
+        return { total: activeCadets.length, sd, sw, b1_total, b1_sd, b1_sw, b2_total, b2_sd, b2_sw, c_total, c_sd, c_sw, rankChartData, certChartData, grievanceStats, financialStats };
     }, [cadets, grievances]);
 
     const CERT_COLORS = ['#64748b', '#10b981', '#3b82f6', '#d4af37'];
@@ -162,7 +164,7 @@ export const UnitAnalytics = ({ onDrillDown, onTabChange }) => {
             </header>
 
             {/* Strength Breakdown — Premium insight cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
 
                 {/* Unique Visitor Tracking */}
                 <Tilt perspective={1000} scale={1.02} transitionSpeed={1000} className="h-full">
@@ -279,6 +281,27 @@ export const UnitAnalytics = ({ onDrillDown, onTabChange }) => {
                     <div className="space-y-4 relative z-10">
                         <StatRow label="SD" value={stats.b1_sd} total={stats.b1_total} color="#059669" onClick={() => onDrillDown('B1', 'SD')} />
                         <StatRow label="SW" value={stats.b1_sw} total={stats.b1_total} color="#34d399" onClick={() => onDrillDown('B1', 'SW')} />
+                    </div>
+                </div>
+
+                {/* B2 Certificate */}
+                <div 
+                    onClick={() => onDrillDown('B2')}
+                    className="bg-white dark:bg-[#050b14] p-8 rounded-3xl border border-[#ddd8cc] shadow-sm relative overflow-hidden hover:shadow-lg transition-all duration-300 group cursor-pointer"
+                >
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 via-indigo-500 to-blue-400"></div>
+                    <div className="absolute -bottom-8 -right-8 w-32 h-32 bg-blue-50 rounded-full group-hover:scale-150 transition-transform duration-700"></div>
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-md">
+                            <Award className="w-5 h-5 text-white" />
+                        </div>
+                        <h3 className="text-xs font-black text-gray-400 dark:text-white/80 uppercase tracking-[0.2em]">B2 Certificate</h3>
+                    </div>
+                    <p className="text-6xl font-black text-blue-600 leading-none mb-1">{stats.b2_total}</p>
+                    <p className="text-xs text-gray-400 dark:text-white/80 font-bold uppercase tracking-widest mb-8">B2 Cadets</p>
+                    <div className="space-y-4 relative z-10">
+                        <StatRow label="SD" value={stats.b2_sd} total={stats.b2_total} color="#2563eb" onClick={() => onDrillDown('B2', 'SD')} />
+                        <StatRow label="SW" value={stats.b2_sw} total={stats.b2_total} color="#60a5fa" onClick={() => onDrillDown('B2', 'SW')} />
                     </div>
                 </div>
 

@@ -22,7 +22,7 @@ const TYPE_COLORS = {
 export const TrainingCalendarView = () => {
     const { userRole } = useAuthContext();
     const { events = [], cadets = [] } = useDataContext();
-    const isAdmin = userRole === 'admin' || userRole === 'officer';
+    const isAdmin = Boolean(userRole && userRole.toLowerCase() !== 'cadet');
     const [currentDate, setCurrentDate] = useState(new Date());
     const [isAddingEvent, setIsAddingEvent] = useState(false);
     const [selectedDate, setSelectedDate] = useState(null);

@@ -6,6 +6,7 @@ import { query, where, onSnapshot, doc, addDoc, updateDoc, serverTimestamp } fro
 import { toast } from 'react-toastify';
 import { ShieldCheck, Target, MapPin, CheckCircle } from '../../components/Icons.jsx';
 import { sendPushToUser } from '../../firebase/pushNotifications.js';
+import { playNccNotificationSound } from '../../utils/notificationSound.js';
 
 // Haversine formula to calculate distance in metres
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -49,26 +50,27 @@ export const AttendanceVerification = () => {
     const lastSeenRequestId = useRef(null);
     const checkingGpsRef = useRef(false);
 
-    // Listen for pending attendance requests for this cadet
+    // Listen for real-time pending attendance requests for this cadet (must be created within last 3 minutes)
     useEffect(() => {
         if (!currentCadet?.enrollmentId) return;
         const ref = getCollectionRef('pending_attendance');
         if (!ref) return;
 
-        // Query by enrollmentId only
         const q = query(ref, where('enrollmentId', '==', currentCadet.enrollmentId));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             if (!snapshot.empty) {
                 const now = Date.now();
-                // Find a pending document created in the last 15 minutes
+                // Find a fresh pending document created in the last 3 minutes
                 const pendingDoc = snapshot.docs.find(doc => {
                     const data = doc.data();
                     if (data.status !== 'pending') return false;
                     
-                    if (!data.createdAt) return true; // Optimistic fresh request
+                    if (!data.createdAt) {
+                        return doc.metadata.hasPendingWrites; // Only accept if client just created it
+                    }
                     const createdAtMs = data.createdAt.toMillis ? data.createdAt.toMillis() : data.createdAt.seconds * 1000;
                     const diffMins = (now - createdAtMs) / 1000 / 60;
-                    return diffMins <= 15;
+                    return diffMins <= 3;
                 });
 
                 if (pendingDoc) {
@@ -144,6 +146,8 @@ export const AttendanceVerification = () => {
                         setGpsVerifiedLocation(cadetLocation);
                         setShowVerificationUI(true);
                         lastSeenRequestId.current = pendingRequest.id;
+                        // 🔊 Play branded NCC sound for in-app verification alert
+                        playNccNotificationSound();
 
                         if (isFromPush) {
                             // Automatically mark attendance since they clicked the action button on the push notification
@@ -174,8 +178,34 @@ export const AttendanceVerification = () => {
                             );
                         }
                     } else {
-                        toast.error(`Distance Check Failed: Too far from Parade Ground (${Math.round(dist)}m). Must be within 5000m.`);
-                        // Don't show the verification UI or toast if distance check fails
+                        // IP Geolocation Mismatch Fallback: Show warning toast with In-Person Override option
+                        setGpsVerifiedLocation(cadetLocation);
+                        setShowVerificationUI(true);
+                        lastSeenRequestId.current = pendingRequest.id;
+
+                        toast.warning(
+                            <div className="flex flex-col gap-2 p-1">
+                                <strong className="block mb-0.5 text-xs">⚠️ Location Distance Warning ({Math.round(dist / 1000)} km)</strong>
+                                <p className="text-[11px] leading-tight text-gray-200">
+                                    Device GPS / Network IP mismatch detected. If you are standing near your ANO on the Parade Ground, tap below to confirm:
+                                </p>
+                                <div className="flex gap-2 mt-1">
+                                    <button
+                                        onClick={() => { toast.dismiss('dist-warning-toast'); handleMarkAttendanceTap(cadetLocation); }}
+                                        className="bg-amber-500 hover:bg-amber-600 text-ncc-navy font-bold py-1.5 px-3 rounded text-xs shadow-md transition-colors flex-1"
+                                    >
+                                        ✅ Confirm In-Person Attendance
+                                    </button>
+                                    <button
+                                        onClick={() => { toast.dismiss('dist-warning-toast'); }}
+                                        className="bg-gray-700 text-white font-bold py-1.5 px-2.5 rounded text-xs shadow-sm hover:bg-gray-600 transition-colors"
+                                    >
+                                        Dismiss
+                                    </button>
+                                </div>
+                            </div>,
+                            { autoClose: false, closeOnClick: false, position: 'top-center', toastId: 'dist-warning-toast' }
+                        );
                     }
                 },
                 (error) => {

@@ -1,10 +1,11 @@
 // src/features/Profile/CadetProfileView.jsx
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { useDataContext } from '../../context/DataContext.jsx';
-import { ShieldCheck, Award, Calendar as CalendarIcon, Mail, Phone, List, Briefcase, MapPin, Droplet, CheckCircle, Shield, Download, X } from '../../components/Icons.jsx';
+import { ShieldCheck, Award, Calendar as CalendarIcon, Mail, Phone, List, Briefcase, MapPin, Droplet, CheckCircle, Shield, Download, X, GraduationCap, Lock } from '../../components/Icons.jsx';
 import { format } from 'date-fns';
 import { generateCertificateApplicationPDF } from '../../utils/pdfGenerator.js';
+import { saveStaff } from '../../firebase/firestoreService.js';
 
 import { QRCodeCanvas } from 'qrcode.react';
 
@@ -13,21 +14,216 @@ import { formatDate } from '../../utils/dateUtils.js';
 
 
 export const CadetProfileView = () => {
-    const { userEnrollmentId } = useAuthContext();
-    const { cadets, loading } = useDataContext();
+    const { userEnrollmentId, user, userRole, userInstitutionId } = useAuthContext();
+    const { cadets, staff, loading } = useDataContext();
     const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+    const [imgError, setImgError] = useState(false);
 
+    const isStaff = userRole === 'admin' || userRole === 'officer';
+
+    const currentStaff = useMemo(() => {
+        if (!isStaff || !user || !Array.isArray(staff) || staff.length === 0) return null;
+        return staff.find((s) => (s.email || '').toLowerCase() === (user.email || '').toLowerCase());
+    }, [isStaff, staff, user]);
+
+    const effectiveStaff = useMemo(() => {
+        if (!isStaff || !user) return null;
+        if (currentStaff) return currentStaff;
+        return {
+            name: user.displayName || 'Associate NCC Officer',
+            rank: userRole === 'admin' ? 'Unit Administrator' : 'ANO',
+            email: user.email || 'N/A',
+            phone: 'N/A',
+            institutionId: userInstitutionId || 'gmrit',
+            dob: '',
+            doj: '',
+            address: '',
+            academicProfile: '',
+            professionalExperience: '',
+            photoUrl: ''
+        };
+    }, [isStaff, user, currentStaff, userRole, userInstitutionId]);
 
     const currentCadet = useMemo(() => {
-        if (!userEnrollmentId || !Array.isArray(cadets) || cadets.length === 0) return null;
+        if (isStaff || !userEnrollmentId || !Array.isArray(cadets) || cadets.length === 0) return null;
         return cadets.find((c) => (c.enrollmentId || '').toLowerCase() === (userEnrollmentId || '').toLowerCase());
-    }, [cadets, userEnrollmentId]);
+    }, [isStaff, cadets, userEnrollmentId]);
+
+    const isCAndCampDeficient = useMemo(() => {
+        if (!currentCadet) return false;
+        const cert = currentCadet.certificate || currentCadet.B || '';
+        const campCount = (currentCadet.campsAttended || []).length;
+        return cert === 'C' && campCount < 2;
+    }, [currentCadet]);
 
     if (loading) return null;
 
-    if (!currentCadet) return (
-        <div className="ncc-card p-6 text-center text-red-600 text-sm">Could not find your profile. Please contact an administrator.</div>
-    );
+    if (isStaff) {
+        if (!effectiveStaff) {
+            return (
+                <div className="ncc-card p-6 text-center text-gray-500 text-sm">
+                    No profile details available.
+                </div>
+            );
+        }
+
+        const initials = effectiveStaff.name ? effectiveStaff.name.split(' ').map((s) => s[0] || '').join('').slice(0, 2).toUpperCase() : 'NA';
+        const profileImage = effectiveStaff.photoURL || effectiveStaff.photoUrl || null;
+        const experience = effectiveStaff.professionalExperience ? effectiveStaff.professionalExperience.split('\n').filter(l => l.trim()).map(line => {
+            const parts = line.split('|').map(s => s.trim());
+            return { designation: parts[0] || '---', employer: parts[1] || '---', length: parts[2] || '---' };
+        }) : [];
+        const academic = effectiveStaff.academicProfile ? effectiveStaff.academicProfile.split('\n').filter(l => l.trim()).map(line => {
+            const parts = line.split('|').map(s => s.trim());
+            return { qualification: parts[0] || '---', university: parts[1] || '---', result: parts[2] || '---' };
+        }) : [];
+
+        return (
+            <>
+                <div className="ncc-card overflow-hidden">
+                    {/* ── Profile Header ── */}
+                    <div className="bg-ncc-navy p-5 sm:p-8 flex flex-col sm:flex-row sm:items-end justify-between gap-5">
+                        <div className="flex items-end gap-5">
+                            <div 
+                                className="w-20 h-20 sm:w-28 sm:h-28 rounded-full ring-4 ring-ncc-gold/60 overflow-hidden bg-ncc-navy/40 flex items-center justify-center text-2xl sm:text-4xl font-bold text-white shrink-0 relative group cursor-pointer"
+                                onClick={() => profileImage && !imgError && setIsImageModalOpen(true)}
+                            >
+                                {profileImage && !imgError ? (
+                                    <>
+                                        <img src={profileImage} alt="" onError={() => setImgError(true)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <span className="text-[10px] font-bold tracking-widest uppercase">View</span>
+                                        </div>
+                                    </>
+                                ) : <span>{initials}</span>}
+                            </div>
+                            <div className="min-w-0 pb-1">
+                                <h2 className="font-display text-xl sm:text-2xl font-bold text-white truncate">{effectiveStaff.name}</h2>
+                                <p className="font-mono text-xs text-white/50 mt-0.5">{effectiveStaff.email}</p>
+                                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                    {effectiveStaff.rank && <span className="text-ncc-gold text-xs font-semibold uppercase tracking-widest">{effectiveStaff.rank}</span>}
+                                    {effectiveStaff.institutionId && (
+                                        <span className="inline-block text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 bg-white/10 text-white rounded-md">
+                                            {effectiveStaff.institutionId}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── Detail Rows ── */}
+                    <div className="divide-y divide-[#ddd8cc] dark:divide-white/10">
+                        <DetailRow label="Designation / Rank" value={effectiveStaff.rank} icon={Award} />
+                        <DetailRow label="Institution ID" value={effectiveStaff.institutionId} icon={Briefcase} />
+                        <DetailRow label="Email" value={effectiveStaff.email} icon={Mail} />
+                        <DetailRow label="Phone" value={effectiveStaff.phone} icon={Phone} />
+                        <DetailRow label="Date of Birth" value={formatDate(effectiveStaff.dob, '—')} icon={CalendarIcon} />
+                        <DetailRow label="Date of Joining" value={formatDate(effectiveStaff.doj, '—')} icon={CalendarIcon} />
+                        <DetailRow label="Address" value={effectiveStaff.address} icon={MapPin} />
+                    </div>
+                </div>
+
+                {/* Academic Profile */}
+                {academic.length > 0 && (
+                    <div className="ncc-card overflow-hidden mt-6">
+                        <div className="bg-[#f5f0e8] dark:bg-[#0A1628] px-5 py-4 border-b border-[#ddd8cc] dark:border-white/10 flex items-center justify-between">
+                            <h3 className="text-sm font-bold uppercase tracking-widest text-ncc-navy dark:text-white flex items-center gap-2">
+                                <GraduationCap className="w-4 h-4 text-ncc-gold" /> Academic Profile
+                            </h3>
+                        </div>
+                        <div className="p-0 overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                                <thead className="bg-[#fcfbfa] dark:bg-white/5 text-[10px] font-black text-gray-400 dark:text-white/60 uppercase tracking-widest">
+                                    <tr>
+                                        <th className="px-5 py-3">Qualification</th>
+                                        <th className="px-5 py-3">University</th>
+                                        <th className="px-5 py-3">Class/Result</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                                    {academic.map((item, idx) => (
+                                        <tr key={idx} className="dark:text-white/80 hover:bg-[#f5f0e8]/20 dark:hover:bg-white/3 transition-colors">
+                                            <td className="px-5 py-3.5 font-bold">{item.qualification}</td>
+                                            <td className="px-5 py-3.5 font-medium opacity-80">{item.university}</td>
+                                            <td className="px-5 py-3.5">
+                                                <span className="px-2 py-0.5 bg-ncc-gold/10 text-ncc-gold font-black rounded">
+                                                    {item.result}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* Professional Experience */}
+                {experience.length > 0 && (
+                    <div className="ncc-card overflow-hidden mt-6">
+                        <div className="bg-[#f5f0e8] dark:bg-[#0A1628] px-5 py-4 border-b border-[#ddd8cc] dark:border-white/10 flex items-center justify-between">
+                            <h3 className="text-sm font-bold uppercase tracking-widest text-ncc-navy dark:text-white flex items-center gap-2">
+                                <Briefcase className="w-4 h-4 text-ncc-gold" /> Professional Experience
+                            </h3>
+                        </div>
+                        <div className="p-0 overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                                <thead className="bg-[#fcfbfa] dark:bg-white/5 text-[10px] font-black text-gray-400 dark:text-white/60 uppercase tracking-widest">
+                                    <tr>
+                                        <th className="px-5 py-3">Designation</th>
+                                        <th className="px-5 py-3">Employer</th>
+                                        <th className="px-5 py-3">Service Length</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                                    {experience.map((item, idx) => (
+                                        <tr key={idx} className="dark:text-white/80 hover:bg-[#f5f0e8]/20 dark:hover:bg-white/3 transition-colors">
+                                            <td className="px-5 py-3.5 font-bold">{item.designation}</td>
+                                            <td className="px-5 py-3.5 font-medium opacity-80">{item.employer}</td>
+                                            <td className="px-5 py-3.5 font-black text-ncc-navy dark:text-ncc-gold">{item.length}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* Image Modal */}
+                {isImageModalOpen && profileImage && !imgError && (
+                    <div 
+                        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+                        onClick={() => setIsImageModalOpen(false)}
+                    >
+                        <div className="relative max-w-2xl w-full max-h-[90vh] flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                            <button 
+                                onClick={() => setIsImageModalOpen(false)}
+                                className="absolute -top-12 right-0 sm:-right-12 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                            <img 
+                                src={profileImage} 
+                                alt="Profile" 
+                                className="w-auto h-auto max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain ring-4 ring-white/20"
+                            />
+                        </div>
+                    </div>
+                )}
+
+
+            </>
+        );
+    }
+
+    if (!isStaff && !currentCadet) {
+        return (
+            <div className="ncc-card p-6 text-center text-[#9c8965] dark:text-[#ccbda0] text-sm bg-[#fcfbfa] dark:bg-[#08121f] border border-[#ddd8cc] dark:border-white/10 rounded-lg">
+                Cadet profile record not found for Enrollment ID: <span className="font-mono font-bold">{userEnrollmentId || 'N/A'}</span>.
+            </div>
+        );
+    }
 
     const initials = currentCadet.name ? currentCadet.name.split(' ').map((s) => s[0] || '').join('').slice(0, 2).toUpperCase() : 'NA';
     const profileImage = currentCadet.photoURL || currentCadet.photoUrl || null;
@@ -64,11 +260,17 @@ export const CadetProfileView = () => {
                     <div className="ml-auto mb-1 flex flex-col sm:flex-row gap-2 shrink-0">
                         <button 
                             onClick={() => generateCertificateApplicationPDF(currentCadet)} 
-                            className="ncc-btn bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border-2 border-ncc-gold ncc-btn-sm flex items-center gap-2 hover:bg-ncc-gold hover:text-white transition-all shadow-lg"
+                            disabled={isCAndCampDeficient}
+                            className={`ncc-btn ncc-btn-sm flex items-center gap-2 transition-all shadow-lg ${
+                                isCAndCampDeficient
+                                    ? 'bg-red-500/10 text-red-500 dark:bg-red-500/20 dark:text-red-400 border border-red-500/20 cursor-not-allowed opacity-80'
+                                    : 'bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border-2 border-ncc-gold hover:bg-ncc-gold hover:text-white'
+                            }`}
+                            title={isCAndCampDeficient ? "Blocked: C certificate requires at least 2 camps." : "Download Exam Form"}
                         >
-                            <Download className="w-3.5 h-3.5" /> Exam Form
+                            {isCAndCampDeficient ? <Lock className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
+                            {isCAndCampDeficient ? 'Exam Form Locked' : 'Exam Form'}
                         </button>
-
                     </div>
 
                 </div>

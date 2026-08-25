@@ -1,14 +1,33 @@
-// src/features/Engagement/CadetNotifications.jsx
 import React, { useState } from 'react';
 import { useDataContext } from '../../context/DataContext.jsx';
 import { useAuthContext } from '../../context/AuthContext.jsx';
-import { Bell, Calendar, User, Info, AlertTriangle, Shield } from '../../components/Icons.jsx';
+import { Bell, Calendar, User, Info, AlertTriangle, Shield, Trash2 } from '../../components/Icons.jsx';
 import { requestNotificationPermission } from '../../firebase/messagingService';
+import { getCollectionRef } from '../../firebase/firestoreService.js';
+import { doc, deleteDoc } from 'firebase/firestore';
 import { toast } from 'react-toastify';
 
 export const UnitAlerts = () => {
-    const { announcements, notifications, loading } = useDataContext();
+    const { notifications, loading, cadets } = useDataContext();
     const { userEnrollmentId, user, userRole } = useAuthContext();
+
+    const currentCadet = cadets.find(c => 
+        (c.enrollmentId && userEnrollmentId && c.enrollmentId.toUpperCase() === userEnrollmentId.toUpperCase()) ||
+        c.id === user?.uid
+    );
+
+    const handleDismissNotif = async (noteId) => {
+        try {
+            const notifRef = getCollectionRef('notifications');
+            if (notifRef && noteId) {
+                await deleteDoc(doc(notifRef, noteId));
+                toast.success('Notification dismissed.');
+            }
+        } catch (err) {
+            console.error('Error dismissing notification:', err);
+            toast.error('Failed to dismiss notification.');
+        }
+    };
 
     if (loading) return <div className="p-8 text-center text-text-dim italic">Scanning unit logs...</div>;
 
@@ -23,8 +42,12 @@ export const UnitAlerts = () => {
 
             const isPersonal = !!(n.userId || n.enrollmentId);
             if (!isPersonal) return true; // broadcast — show to all
-            // Personal: only show to this cadet
-            return n.enrollmentId === userEnrollmentId || n.userId === userEnrollmentId;
+            
+            // Personal: check against userEnrollmentId, user.uid, or currentCadet.id
+            const matchesEnrollment = n.enrollmentId && userEnrollmentId && n.enrollmentId.toUpperCase() === userEnrollmentId.toUpperCase();
+            const matchesUserId = n.userId && (n.userId === userEnrollmentId || n.userId === user?.uid || (currentCadet && n.userId === currentCadet.id));
+            
+            return matchesEnrollment || matchesUserId;
         })
         .map(n => ({
             ...n,
@@ -36,22 +59,23 @@ export const UnitAlerts = () => {
         }));
     
     const allNotes = [...unitBroadcasts].sort((a, b) => {
-        const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-        const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        const timeA = a.timestamp ? new Date(a.timestamp).getTime() : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0);
+        const timeB = b.timestamp ? new Date(b.timestamp).getTime() : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0);
         return timeB - timeA;
     });
-
 
     const [permissionStatus, setPermissionStatus] = useState('Notification' in window ? Notification.permission : 'denied');
 
     return (
         <div className="space-y-6 max-w-3xl mx-auto py-4">
-            <header className="mb-8">
-                <h2 className="text-2xl font-display font-black text-main flex items-center gap-3">
-                    <Megaphone className="w-7 h-7 text-ncc-navy dark:text-ncc-gold" />
-                    Unit Communications
-                </h2>
-                <p className="text-text-dim mt-1">Official instructions, announcements, and emergency alerts</p>
+            <header className="mb-8 flex items-center justify-between">
+                <div>
+                    <h2 className="text-2xl font-display font-black text-main flex items-center gap-3">
+                        <Megaphone className="w-7 h-7 text-ncc-navy dark:text-ncc-gold" />
+                        Unit Communications
+                    </h2>
+                    <p className="text-text-dim mt-1">Official instructions, announcements, and emergency alerts</p>
+                </div>
             </header>
 
             {permissionStatus !== 'granted' && 'Notification' in window && (
@@ -92,18 +116,18 @@ export const UnitAlerts = () => {
             ) : (
                 <div className="space-y-4">
                     {allNotes.map((note, idx) => (
-                        <div key={note.id || idx} className={`ncc-card p-5 group transition-all reveal slide-up ${note.displayType === 'personal' ? 'border-l-4 border-l-ncc-gold' : ''}`}>
+                        <div key={note.id || idx} className={`ncc-card p-5 group transition-all reveal slide-up relative ${note.displayType === 'personal' ? 'border-l-4 border-l-ncc-gold' : ''}`}>
                             <div className="flex items-start gap-4">
                                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                                    note.isUrgent || note.type === 'error' ? 'bg-ncc-red/10 text-ncc-red' : 
+                                    note.isUrgent || note.type === 'error' || note.type === 'warning' ? 'bg-ncc-red/10 text-ncc-red' : 
                                     note.displayType === 'personal' ? 'bg-ncc-gold/10 text-ncc-gold' :
                                     'bg-ncc-navy/5 text-ncc-navy dark:bg-white/5 dark:text-ncc-gold'
                                 }`}>
-                                    {note.isUrgent ? <AlertTriangle className="w-6 h-6" /> : 
+                                    {note.isUrgent || note.type === 'warning' ? <AlertTriangle className="w-6 h-6 text-amber-500" /> : 
                                      note.displayType === 'personal' ? <Shield className="w-6 h-6" /> :
                                      <Megaphone className="w-6 h-6" />}
                                 </div>
-                                <div className="flex-1 min-w-0">
+                                <div className="flex-1 min-w-0 pr-6">
                                     <div className="flex items-center justify-between gap-2 mb-1">
                                         <h3 className="font-bold text-main group-hover:text-ncc-gold transition-colors truncate">
                                             {note.title}
@@ -111,13 +135,13 @@ export const UnitAlerts = () => {
                                         <span className={`text-[10px] font-bold whitespace-nowrap px-3 py-1 rounded-full shadow-sm ${
                                             note.displayType === 'emergency' ? 'bg-ncc-red text-white' : 'bg-ncc-navy text-white dark:bg-ncc-gold dark:text-ncc-navy'
                                         }`}>
-                                            {note.timestamp ? new Date(note.timestamp).toLocaleDateString() : 'Today'}
+                                            {note.timestamp ? new Date(note.timestamp).toLocaleDateString() : (note.createdAt?.seconds ? new Date(note.createdAt.seconds * 1000).toLocaleDateString() : 'Today')}
                                         </span>
                                     </div>
                                     <p className="text-text-dim text-sm leading-relaxed">
                                         {note.content || note.message}
                                     </p>
-                                    <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border-main text-[10px] font-bold uppercase tracking-widest text-text-dim">
+                                    <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-border-main text-[10px] font-bold uppercase tracking-widest text-text-dim">
                                         <div className="flex items-center gap-1.5">
                                             <User className="w-3 h-3" />
                                             {note.sender || (note.displayType === 'personal' ? 'System Verification' : 'Unit Admin')}
@@ -128,6 +152,15 @@ export const UnitAlerts = () => {
                                         </div>
                                     </div>
                                 </div>
+                                {note.id && (
+                                    <button
+                                        onClick={() => handleDismissNotif(note.id)}
+                                        className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition"
+                                        title="Dismiss Alert"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     ))}

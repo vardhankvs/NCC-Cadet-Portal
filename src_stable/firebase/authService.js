@@ -1,10 +1,12 @@
 // src/firebase/authService.js
-import { auth, db, appId } from './config.js';
+import { auth, db, appId, firebaseConfig } from './config.js';
+import { initializeApp, deleteApp } from 'firebase/app';
 import {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
     signOut,
     sendPasswordResetEmail,
+    getAuth,
 } from 'firebase/auth';
 import {
     collection,
@@ -13,60 +15,225 @@ import {
     getDocs,
     setDoc,
     doc,
+    getDoc,
     addDoc,
     serverTimestamp,
 } from 'firebase/firestore';
-import { generateAdminOTP } from './firestoreService.js';
+import { generateUserOTP, generateAnoBiometricSession } from './firestoreService.js';
 import emailjs from '@emailjs/browser';
 
 const getUsersRef = () =>
     collection(db, 'artifacts', appId, 'public', 'data', 'users');
 
 /**
- * Step 1 of admin 2FA login:
- * Verify credentials with Firebase Auth, then immediately sign out,
- * generate a 6-digit OTP, store it in Firestore, and send via email queue.
- * Returns { uid, email } so the UI can show the OTP input step.
+ * Step 1 of Cadet / Admin 2FA login:
+ * Verify credentials with Firebase Auth, lookup target email (Cadet personal email from bulk import),
+ * generate a 6-digit OTP, store it in Firestore, and send via EmailJS.
+ * Returns { uid, email, authEmail } so UI can render OTP modal.
  */
-export const loginAdminWithOTP = async (email, password) => {
-    // 1. Verify credentials
-    const credential = await signInWithEmailAndPassword(auth, email, password);
-    const uid = credential.user.uid;
-    const userEmail = credential.user.email;
+export const loginUserWithOTP = async (emailOrEnrollId, password, activeTab) => {
+    let authEmail = emailOrEnrollId ? emailOrEnrollId.trim() : '';
+    let targetOtpEmail = authEmail;
+    let uid = null;
 
-    // 2. Generate & store OTP in Firestore (Must be done WHILE logged in to pass security rules)
-    const otp = await generateAdminOTP(uid, userEmail);
+    if (activeTab === 'cadet') {
+        if (!emailOrEnrollId) throw new Error('Regimental / Enrollment ID is required for Cadet login.');
+        const cleanId = emailOrEnrollId.trim().toUpperCase();
 
-    // 3. Send the OTP email via EmailJS
+        const usersRef = getUsersRef();
+        const q = query(usersRef, where('enrollmentId', '==', cleanId));
+        const userSnapshot = await getDocs(q);
+
+        if (userSnapshot.empty) {
+            throw new Error(`Regimental Number "${cleanId}" not found or not registered.`);
+        }
+
+        const userData = userSnapshot.docs[0].data();
+        authEmail = userData.email;
+
+        if (!authEmail) {
+            throw new Error('User profile error. Please contact unit administrator.');
+        }
+
+        // Authenticate password
+        const credential = await signInWithEmailAndPassword(auth, authEmail, password);
+        uid = credential.user.uid;
+
+        // Lookup Cadet Personal Email (from bulk import / profile in cadets collection)
+        try {
+            const cadetsRef = collection(db, 'artifacts', appId, 'public', 'data', 'cadets');
+            const cadetQuery = query(cadetsRef, where('enrollmentId', '==', cleanId));
+            const cadetSnap = await getDocs(cadetQuery);
+            if (!cadetSnap.empty) {
+                const cadetData = cadetSnap.docs[0].data();
+                const pEmail = (cadetData.personalEmail || cadetData.email || '').toString().trim();
+                const isValidPersonal = pEmail && pEmail !== '-' && pEmail !== 'N/A' && !pEmail.endsWith('@ncc-14a.web');
+                if (isValidPersonal) {
+                    targetOtpEmail = pEmail;
+                } else if (cadetData.collegeEmail && cadetData.collegeEmail !== '-' && cadetData.collegeEmail !== 'N/A') {
+                    targetOtpEmail = cadetData.collegeEmail.trim();
+                } else {
+                    targetOtpEmail = authEmail;
+                }
+            }
+        } catch (err) {
+            console.error('Error retrieving cadet personal email for OTP:', err);
+            targetOtpEmail = authEmail;
+        }
+
+    } else {
+        // Admin / Staff Login
+        if (!authEmail) throw new Error('Email is required for login.');
+        const credential = await signInWithEmailAndPassword(auth, authEmail, password);
+        uid = credential.user.uid;
+        targetOtpEmail = credential.user.email;
+    }
+
+    // Generate & store OTP in Firestore while signed in
+    const otp = await generateUserOTP(uid, targetOtpEmail);
+
+    // Dispatch OTP via EmailJS
     try {
         const expiresTime = new Date(Date.now() + 10 * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        
         await emailjs.send(
-            'service_hk68vnz', // Service ID
-            'template_5a7vqzw', // Template ID
+            'service_hk68vnz',
+            'template_5a7vqzw',
             {
-                email: userEmail,
+                email: targetOtpEmail,
                 passcode: otp,
                 time: expiresTime
             },
-            'iCSap5JY6cLaHx2wc' // Public Key
+            'iCSap5JY6cLaHx2wc'
         );
-        console.log('OTP Email sent successfully via EmailJS');
+        console.log(`2FA OTP Email sent to ${targetOtpEmail} via EmailJS`);
     } catch (e) {
         console.error('EmailJS Error:', e);
-        // Dev fallback — log OTP if email fails
-        console.warn(`[DEV OTP] Admin ${userEmail}: ${otp}`);
+        console.warn(`[DEV OTP] Target ${targetOtpEmail}: ${otp}`);
     }
 
-    // 4. Sign out immediately — user is NOT considered logged in yet for the dashboard
+    // Sign out immediately until OTP verification
     await signOut(auth);
 
-    return { uid, email: userEmail };
+    return { uid, email: targetOtpEmail, authEmail };
+};
+
+/**
+ * Backward compatibility alias for Admin OTP login
+ */
+export const loginAdminWithOTP = (email, password) => loginUserWithOTP(email, password, 'admin');
+
+/**
+ * Triggers the operating system's native default fingerprint / biometric prompt (Windows Hello, Touch ID, Android biometrics)
+ */
+export const triggerNativeOsFingerprintPrompt = async (anoEmail) => {
+    if (!window.PublicKeyCredential) {
+        throw new Error('Biometric Fingerprint Authentication is not supported by this browser.');
+    }
+
+    try {
+        const isAvailable = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        if (!isAvailable) {
+            console.warn('Platform authenticator availability check returned false; attempting WebAuthn prompt anyway.');
+        }
+    } catch (e) {
+        console.warn('Authenticator availability check skipped:', e);
+    }
+
+    const cleanEmail = (anoEmail || 'ano@ncc.unit').trim().toLowerCase();
+    const challenge = new Uint8Array(32);
+    window.crypto.getRandomValues(challenge);
+
+    let domain = window.location.hostname;
+    if (domain === 'localhost' || domain.includes('127.0.0.1')) {
+        domain = 'localhost';
+    }
+
+    // Primary: Prompt native OS to register/authenticate platform fingerprint credential (Windows Hello / Touch ID / Android)
+    const createOptions = {
+        publicKey: {
+            challenge,
+            rp: {
+                name: "14(A) BN NCC Portal",
+                id: domain,
+            },
+            user: {
+                id: Uint8Array.from(cleanEmail, c => c.charCodeAt(0)),
+                name: cleanEmail,
+                displayName: `ANO (${cleanEmail})`,
+            },
+            pubKeyCredParams: [
+                { alg: -7, type: "public-key" },  // ES256
+                { alg: -257, type: "public-key" } // RS256
+            ],
+            authenticatorSelection: {
+                authenticatorAttachment: "platform", // Forces native OS biometric sensor (Windows Hello / Touch ID)
+                userVerification: "required",        // Require fingerprint/face
+            },
+            timeout: 60000,
+        }
+    };
+
+    try {
+        // Launches native OS default fingerprint prompt!
+        return await navigator.credentials.create(createOptions);
+    } catch (createErr) {
+        console.warn('create failed, trying get:', createErr);
+
+        // If user explicitly cancelled the native OS popup
+        if (createErr.name === 'NotAllowedError' && createErr.message?.toLowerCase().includes('cancel')) {
+            throw new Error('OS Fingerprint prompt was cancelled by user.');
+        }
+
+        // Secondary fallback: Try fetching existing assertion from native OS authenticator
+        try {
+            const getOptions = {
+                publicKey: {
+                    challenge,
+                    rpId: domain,
+                    userVerification: 'required',
+                    timeout: 60000,
+                }
+            };
+            return await navigator.credentials.get(getOptions);
+        } catch (getErr) {
+            console.error('OS Fingerprint get error:', getErr);
+            if (getErr.name === 'NotAllowedError') {
+                throw new Error('OS Fingerprint prompt was cancelled or not recognized. Please scan your fingerprint on the Windows Hello / Touch ID popup.');
+            }
+            throw new Error(createErr.message || getErr.message || 'Native OS Fingerprint Authentication failed.');
+        }
+    }
+};
+
+/**
+ * ANO Biometric Fingerprint login:
+ * Validate password credentials with Firebase Auth, then immediately launch the OS default fingerprint prompt (Windows Hello / Touch ID / Android).
+ * If OS fingerprint scan fails or is cancelled, sign out immediately so user is NOT logged in.
+ */
+export const loginAnoWithBiometrics = async (email, password) => {
+    if (!email) throw new Error('Email address is required for ANO login.');
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 1. Validate password credentials with Firebase Auth
+    const credential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    const anoEmail = credential.user.email || cleanEmail;
+
+    // 2. Trigger native OS default fingerprint prompt directly (Windows Hello / Touch ID / Android)
+    try {
+        await triggerNativeOsFingerprintPrompt(anoEmail);
+    } catch (bioErr) {
+        // If native OS fingerprint fails or is cancelled, sign out immediately so user is NOT logged in!
+        await signOut(auth);
+        throw bioErr;
+    }
+
+    // 3. Native OS Fingerprint scan passed — user is now logged in!
+    return credential.user;
 };
 
 export const loginUser = async (email, password, enrollmentId, activeTab) => {
-    if (activeTab === 'admin') {
-        if (!email) throw new Error('Email is required for admin login.');
+    if (activeTab === 'admin' || activeTab === 'ano') {
+        if (!email) throw new Error('Email is required for login.');
         return await signInWithEmailAndPassword(auth, email, password);
     }
 
@@ -100,24 +267,115 @@ export const loginUser = async (email, password, enrollmentId, activeTab) => {
     }
 };
 
+const getActiveTenantId = () => {
+    try {
+        const hostname = window.location.hostname;
+        let subdomain = 'gmrit';
+        if (hostname !== 'localhost' && !hostname.includes('firebaseapp.com') && !hostname.includes('web.app')) {
+            const parts = hostname.split('.');
+            if (parts.length >= 3) {
+                subdomain = parts[0];
+            }
+        } else {
+            const params = new URLSearchParams(window.location.search);
+            subdomain = params.get('unit') || 'gmrit';
+        }
+        return subdomain;
+    } catch (e) {
+        return '14a-bn-srikakulam';
+    }
+};
+
 export const signupUser = async (email, password, enrollmentId, activeTab, name) => {
     const usersRef = getUsersRef();
 
     if (activeTab === 'admin') {
         if (!email) throw new Error('Email is required for admin signup.');
 
-        const userCredential = await createUserWithEmailAndPassword(
-            auth,
-            email,
-            password
-        );
-        const newUser = userCredential.user;
+        const institutionId = getActiveTenantId();
+        const cleanEmail = email.trim().toLowerCase();
 
-        await setDoc(doc(usersRef, newUser.uid), {
-            role: 'admin',
-            email: newUser.email,
-            institutionId: '14a-bn-srikakulam', // Multi-Tenancy: Default to 14a-bn-srikakulam
-        });
+        // Security check: Verify if the email is pre-authorized to register as an admin
+        let isAuthorized = false;
+
+        // 1. Battalion Admins are allowed to bootstrap/bypass
+        if (institutionId === '14a-bn-srikakulam') {
+            isAuthorized = true;
+        } else {
+            // 2. Check if email matches the college unit's contactEmail
+            try {
+                const unitsRef = collection(db, 'artifacts', appId, 'public', 'data', 'units');
+                const unitSnap = await getDoc(doc(unitsRef, institutionId));
+                if (unitSnap.exists() && unitSnap.data().contactEmail?.trim().toLowerCase() === cleanEmail) {
+                    isAuthorized = true;
+                }
+            } catch (err) {
+                console.error('Error checking unit contactEmail:', err);
+            }
+
+            // 3. Check if email matches an existing staff member in this unit
+            if (!isAuthorized) {
+                try {
+                    const staffRef = collection(db, 'artifacts', appId, 'public', 'data', 'staff');
+                    const staffQuery = query(staffRef, where('institutionId', '==', institutionId), where('email', '==', cleanEmail));
+                    const staffSnap = await getDocs(staffQuery);
+                    if (!staffSnap.empty) {
+                        isAuthorized = true;
+                    }
+                } catch (err) {
+                    console.error('Error checking staff authorization:', err);
+                }
+            }
+        }
+
+        if (!isAuthorized) {
+            throw new Error(
+                `Registration Blocked: Email "${email}" is not pre-authorized as an ANO/Staff for this college. ` +
+                `Please contact the Battalion Administrator (14(A) BN NCC SKLM) to register.`
+            );
+        }
+
+        try {
+            const userCredential = await createUserWithEmailAndPassword(
+                auth,
+                cleanEmail,
+                password
+            );
+            const newUser = userCredential.user;
+
+            await setDoc(doc(usersRef, newUser.uid), {
+                role: 'admin',
+                email: newUser.email,
+                institutionId: institutionId,
+            }, { merge: true });
+        } catch (authErr) {
+            if (authErr.code === 'auth/email-already-in-use') {
+                // If pre-authorized ANO account already existed in Firebase Auth (e.g. from previous deleted profile),
+                // automatically reclaim and assign the new password & custom claims via backend Admin API
+                const apiUrl = typeof window !== 'undefined' && window.location?.hostname?.includes('vercel.app') 
+                    ? '/api/updateUserCredentials' 
+                    : 'https://ncc-portal-redesign.vercel.app/api/updateUserCredentials';
+
+                const res = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'reclaim',
+                        currentEmail: cleanEmail,
+                        newPassword: password,
+                        institutionId: institutionId,
+                        role: 'admin'
+                    })
+                });
+
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    throw new Error(data?.error || 'This email address is already in use by another account.');
+                }
+            } else {
+                throw authErr;
+            }
+        }
     } else if (activeTab === 'cadet') {
         if (!enrollmentId)
             throw new Error('Enrollment ID is required for cadet signup.');
@@ -236,4 +494,79 @@ export const initiateCadetPasswordReset = async (enrollmentId) => {
 
     await sendPasswordResetEmail(auth, userEmail, actionCodeSettings);
     return userEmail;
+};
+
+/**
+ * Creates an ANO account (Firebase Auth and Firestore users document)
+ * using a secondary App instance so that the active administrator is not signed out.
+ */
+export const createANOAccount = async (email, password, institutionId) => {
+    if (!email || !password || !institutionId) {
+        throw new Error('Email, password, and institution association are required.');
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 1. Initialize temporary app to avoid signing out the current logged-in admin
+    const tempApp = initializeApp(firebaseConfig, `tempApp_${Date.now()}`);
+    const tempAuth = getAuth(tempApp);
+
+    try {
+        let authUid = null;
+        try {
+            // 2. Create the user account in Firebase Auth
+            const credential = await createUserWithEmailAndPassword(tempAuth, cleanEmail, password);
+            authUid = credential.user.uid;
+            await signOut(tempAuth);
+        } catch (createErr) {
+            if (createErr.code === 'auth/email-already-in-use') {
+                // Pre-authorized ANO account already existed in Auth; reclaim via Admin API
+                const apiUrl = typeof window !== 'undefined' && window.location?.hostname?.includes('vercel.app') 
+                    ? '/api/updateUserCredentials' 
+                    : 'https://ncc-portal-redesign.vercel.app/api/updateUserCredentials';
+
+                const res = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'reclaim',
+                        currentEmail: cleanEmail,
+                        newPassword: password,
+                        institutionId: institutionId,
+                        role: 'admin'
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    authUid = data.uid;
+                } else {
+                    throw createErr;
+                }
+            } else {
+                throw createErr;
+            }
+        }
+
+        // 4. Create or update the Firestore user profile document
+        if (authUid) {
+            const usersRef = getUsersRef();
+            await setDoc(doc(usersRef, authUid), {
+                role: 'admin',
+                email: cleanEmail,
+                institutionId: institutionId,
+            }, { merge: true });
+        }
+
+        // 5. Clean up temporary app instance
+        await deleteApp(tempApp);
+        
+        return authUid;
+    } catch (error) {
+        try {
+            await deleteApp(tempApp);
+        } catch (e) {
+            console.error('Error cleaning up tempApp:', e);
+        }
+        throw error;
+    }
 };

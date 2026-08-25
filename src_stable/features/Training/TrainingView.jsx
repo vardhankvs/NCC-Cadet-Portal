@@ -12,7 +12,7 @@ import { formatDate } from '../../utils/dateUtils.js';
 
 export const TrainingView = () => {
     const { userRole, userEnrollmentId } = useAuthContext();
-    const isAdmin = userRole?.toLowerCase() === 'admin' || userRole?.toLowerCase() === 'officer';
+    const isAdmin = Boolean(userRole && userRole.toLowerCase() !== 'cadet');
     const { materials, quizzes, cadets } = useDataContext();
     const [activeTab, setActiveTab] = useState('library');
     const [activeQuiz, setActiveQuiz] = useState(null);
@@ -30,7 +30,7 @@ export const TrainingView = () => {
     const categories = ['Common Subjects', 'Specialized Subjects', 'Weapon Training', 'Drill Manuals', 'Miscellaneous'];
 
     useEffect(() => {
-        if (userRole === 'admin' && viewingResults) {
+        if (isAdmin && viewingResults) {
             const q = query(getCollectionRef('quiz_results'), where('quizId', '==', viewingResults.id));
             const unsubscribe = onSnapshot(q, (snapshot) => {
                 setQuizResults(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -326,7 +326,7 @@ export const TrainingView = () => {
                                             </p>
                                         </div>
                                         <div className="mt-auto pt-4 border-t border-gray-100 dark:border-white/5 flex flex-col gap-3">
-                                            {userRole === 'admin' ? (
+                                            {isAdmin ? (
                                                 <div className="flex gap-2">
                                                     <button 
                                                         onClick={() => setViewingResults(quiz)}

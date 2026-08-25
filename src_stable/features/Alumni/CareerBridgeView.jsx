@@ -9,6 +9,7 @@ import { deleteJobOpportunity } from '../../firebase/firestoreService.js';
 
 export const CareerBridgeView = () => {
     const { user, userRole } = useAuthContext();
+    const isWriteAllowed = userRole === 'superadmin' || userRole === 'battalion_admin';
     const { cadets = [], jobs = [], alumni = [] } = useDataContext();
     const [activeTab, setActiveTab] = useState('jobs');
     const [searchTerm, setSearchTerm] = useState('');
@@ -56,7 +57,7 @@ export const CareerBridgeView = () => {
                             Mentors
                         </button>
                     </div>
-                    {userRole === 'admin' && activeTab === 'jobs' && (
+                    {isWriteAllowed && activeTab === 'jobs' && (
                         <button onClick={() => { setEditingJob(null); setShowJobForm(true); }} className="ncc-btn ncc-btn-primary whitespace-nowrap">
                             <Plus className="w-4 h-4" /> Add Opportunity
                         </button>
@@ -101,7 +102,7 @@ export const CareerBridgeView = () => {
                                         <div className="flex items-center gap-2 text-gray-400 dark:text-white/80 text-xs mt-1 font-bold uppercase">
                                             <MapPin className="w-3 h-3" /> {job.location}
                                         </div>
-                                    {userRole === 'admin' && (
+                                    {isWriteAllowed && (
                                         <div className="absolute top-6 right-6 flex gap-2">
                                             <button 
                                                 onClick={() => { setEditingJob(job); setShowJobForm(true); }}

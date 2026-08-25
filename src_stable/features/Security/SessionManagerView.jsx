@@ -36,11 +36,13 @@ function formatTime(isoString) {
 }
 
 export const SessionManagerView = () => {
-    const { user } = useAuthContext();
+    const { user, userRole } = useAuthContext();
     const [sessions, setSessions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [terminating, setTerminating] = useState(null);
     const [showAll, setShowAll] = useState(false);
+
+    const isBattalionAdmin = userRole === 'superadmin' || userRole === 'battalion_admin';
 
     const fetchSessions = async () => {
         setLoading(true);
@@ -56,6 +58,10 @@ export const SessionManagerView = () => {
     useEffect(() => { fetchSessions(); }, [showAll]);
 
     const handleTerminate = async (sessionId, email) => {
+        if (!isBattalionAdmin) {
+            alert('Unauthorized: Only Battalion Admins can terminate other sessions.');
+            return;
+        }
         if (!window.confirm(`Force logout session for ${email}?`)) return;
         setTerminating(sessionId);
         try {
@@ -159,7 +165,7 @@ export const SessionManagerView = () => {
                                         </div>
                                     </div>
                                 </div>
-                                {isActive && !isCurrentUser && (
+                                {isActive && !isCurrentUser && isBattalionAdmin && (
                                     <button
                                         onClick={() => handleTerminate(session.id, session.email)}
                                         disabled={terminating === session.id}

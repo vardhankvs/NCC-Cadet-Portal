@@ -12,13 +12,13 @@ export const appId =
 
 // ── Firebase config ──────────────────────────────────────────────────────────
 const fallbackConfig = {
-  apiKey: "AIzaSyBSiQ3PlCHIhljwQR5uWgma465yFohMRfI",
-  authDomain: "gmrit-ncc-fb1df.firebaseapp.com",
-  projectId: "gmrit-ncc-fb1df",
-  storageBucket: "gmrit-ncc-fb1df.firebasestorage.app",
-  messagingSenderId: "218480065073",
-  appId: "1:218480065073:web:52a908b9996d0773ba7310",
-  measurementId: "G-8LBCG7FRM0"
+    apiKey: 'AIzaSyBSiQ3PlCHIhljwQR5uWgma465yFohMRfI',
+    authDomain: 'gmrit-ncc-fb1df.firebaseapp.com',
+    projectId: 'gmrit-ncc-fb1df',
+    storageBucket: 'gmrit-ncc-fb1df.firebasestorage.app',
+    messagingSenderId: '218480065073',
+    appId: '1:218480065073:web:52a908b9996d0773ba7310',
+    measurementId: 'G-8LBCG7FRM0',
 };
 
 // Resolve config — prefer runtime-injected string, fall back to hardcoded.
@@ -53,7 +53,9 @@ if (firebaseConfig?.projectId) {
         try {
             messaging = getMessaging(app);
         } catch (e) {
-            console.warn('Firebase Messaging not supported in this environment');
+            console.warn(
+                'Firebase Messaging not supported in this environment'
+            );
         }
     } catch (e) {
         console.error('Firebase init error:', e);
@@ -62,4 +64,4 @@ if (firebaseConfig?.projectId) {
     console.error('Firebase init skipped: invalid config.');
 }
 
-export { auth, db, storage, messaging, functions };
+export { auth, db, storage, messaging, functions, firebaseConfig };
