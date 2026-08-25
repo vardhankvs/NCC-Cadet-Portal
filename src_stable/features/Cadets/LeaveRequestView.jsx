@@ -35,9 +35,9 @@ const compressImageToBase64 = (file, maxWidth = 800, quality = 0.6) => {
 };
 
 export const LeaveRequestView = () => {
-    const { userRole, userEnrollmentId, user, hasPermission } = useAuthContext();
-    const isCadet = userRole === 'cadet';
-    const isAdminView = !isCadet && (userRole === 'admin' || userRole === 'superadmin' || userRole === 'battalion_admin' || userRole === 'officer' || userRole === 'ano' || hasPermission('leave_requests'));
+    const { userRole, userEnrollmentId, user, hasPermission, isDelegatedCadet, userInstitutionId, userName } = useAuthContext();
+    const isCadet = userRole === 'cadet' && !isDelegatedCadet;
+    const isAdminView = !isCadet && (userRole === 'admin' || userRole === 'superadmin' || userRole === 'battalion_admin' || userRole === 'officer' || userRole === 'ano' || isDelegatedCadet || hasPermission('leave_requests'));
     const { cadets } = useDataContext();
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -98,15 +98,10 @@ export const LeaveRequestView = () => {
         
         const q = searchQuery.toLowerCase();
         return requests.filter(req => {
-            const startFormatted = req.startDate ? req.startDate.split('-').reverse().join('-') : '';
-            const endFormatted = req.endDate ? req.endDate.split('-').reverse().join('-') : '';
-
-            return (req.type || '').toLowerCase().includes(q) || 
-                   (req.startDate || '').includes(q) || 
-                   startFormatted.includes(q) ||
-                   (req.endDate || '').includes(q) ||
-                   endFormatted.includes(q) ||
-                   (req.timestamp || '').includes(q);
+            const matchReason = (req.reason || '').toLowerCase().includes(q);
+            const matchType = (req.type || '').toLowerCase().includes(q);
+            const matchStatus = (req.status || '').toLowerCase().includes(q);
+            return matchReason || matchType || matchStatus;
         });
     }, [requests, isAdminView, searchQuery]);
 
@@ -119,13 +114,16 @@ export const LeaveRequestView = () => {
     });
 
     useEffect(() => {
+        setLoading(true);
         let q;
         if (isAdminView) {
             q = query(getCollectionRef('leave_requests'));
         } else {
-            const cadId = (userEnrollmentId || currentCadet?.enrollmentId || user?.uid || '').toString().trim().toUpperCase();
-            if (cadId) {
-                q = query(getCollectionRef('leave_requests'), where('cadetId', '==', cadId));
+            const cid = userEnrollmentId || currentCadet?.enrollmentId;
+            if (cid) {
+                q = query(getCollectionRef('leave_requests'), where('cadetId', '==', cid));
+            } else if (user?.uid) {
+                q = query(getCollectionRef('leave_requests'), where('userId', '==', user.uid));
             } else {
                 q = query(getCollectionRef('leave_requests'));
             }
@@ -181,6 +179,30 @@ export const LeaveRequestView = () => {
         if (remarks === null) return;
         
         try {
+            if (isDelegatedCadet) {
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'leave_requests',
+                    moduleName: 'Leave Requests',
+                    actionType: 'update',
+                    targetDocId: id,
+                    title: `Leave Action (${status.toUpperCase()}) for ${req?.cadetName || 'Cadet'}`,
+                    payload: {
+                        requestId: id,
+                        status,
+                        adminRemarks: remarks,
+                        attendanceStatus,
+                        req
+                    }
+                });
+                toast.success(`Leave decision submitted for ANO verification!`);
+                return;
+            }
+
             const docRef = doc(getCollectionRef('leave_requests'), id);
             await updateDoc(docRef, {
                 status,

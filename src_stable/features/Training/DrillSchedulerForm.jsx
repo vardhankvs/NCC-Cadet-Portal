@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { saveEvent } from '../../firebase/firestoreService.js';
+import { submitDelegatedTask } from '../../firebase/delegationWorkflowService.js';
+import { useAuthContext } from '../../context/AuthContext.jsx';
 import { sendEventReminderPush } from '../../firebase/pushNotifications.js';
 import { toast } from 'react-toastify';
 import { Shield, Clock, MapPin, Users, X, Calendar, Bell } from '../../components/Icons.jsx';
@@ -20,6 +22,7 @@ const PRIORITY_LEVELS = [
 ];
 
 export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
+    const { isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
@@ -48,6 +51,33 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
         }
         setLoading(true);
         try {
+            if (isDelegatedCadet) {
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'training_calendar',
+                    moduleName: 'Training Calendar',
+                    actionType: 'create',
+                    title: `Drill: ${formData.name} (${formData.type})`,
+                    payload: {
+                        name: formData.name,
+                        date: formData.date,
+                        location: formData.location,
+                        time: formData.time,
+                        endTime: formData.endTime,
+                        description: `[${formData.type}] ${formData.description || ''} | Time: ${formData.time}-${formData.endTime} | Dress: ${formData.dresscode} | Strength: ${formData.reportingStrength || 'All'} | Priority: ${formData.priority} | Instructions: ${formData.specialInstructions || 'Nil'}`,
+                        type: formData.type,
+                        reminderEnabled: formData.reminderEnabled,
+                        reminderMinutes: Number(formData.reminderMinutes),
+                    }
+                });
+                toast.success('Training drill submitted for ANO verification!');
+                onClose();
+                return;
+            }
+
             await saveEvent({
                 name: formData.name,
                 date: formData.date,
@@ -297,7 +327,7 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
                                     ← Back
                                 </button>
                                 <button type="submit" disabled={loading} className="flex-1 ncc-btn ncc-btn-primary py-3.5">
-                                    {loading ? 'Scheduling...' : '✓ Confirm & Schedule'}
+                                    {loading ? 'Scheduling...' : (isDelegatedCadet ? '✓ Submit for ANO Verification' : '✓ Confirm & Schedule')}
                                 </button>
                             </div>
                         </div>

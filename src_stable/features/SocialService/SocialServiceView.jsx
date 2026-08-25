@@ -30,7 +30,7 @@ import { generateNominalRollPDF } from '../../utils/pdfGenerator.js';
 
 
 export const SocialServiceView = () => {
-    const { userRole, userEnrollmentId, userName, userInstitutionId } = useAuthContext();
+    const { userRole, isDelegatedCadet, userEnrollmentId, userName, userInstitutionId, user } = useAuthContext();
     const { cadets, socialActivities, loading } = useDataContext();
     
     const [showAddForm, setShowAddForm] = useState(false);
@@ -116,6 +116,36 @@ export const SocialServiceView = () => {
         e.preventDefault();
         setProcessing(true);
         try {
+            if (isDelegatedCadet) {
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'social',
+                    moduleName: 'Social Activities',
+                    actionType: editingActivityId ? 'update' : 'create',
+                    targetDocId: editingActivityId || null,
+                    title: `Social Activity: ${newActivity.title} (${newActivity.type})`,
+                    payload: {
+                        ...newActivity,
+                        id: editingActivityId || null
+                    }
+                });
+                toast.success("Social activity submitted for ANO verification!");
+                setShowAddForm(false);
+                setEditingActivityId(null);
+                setNewActivity({
+                    title: '',
+                    type: 'Swachh Bharat',
+                    date: new Date().toISOString().split('T')[0],
+                    location: '',
+                    description: ''
+                });
+                return;
+            }
+
             if (editingActivityId) {
                 const activityRef = doc(getCollectionRef('social_activities'), editingActivityId);
                 await updateDoc(activityRef, {

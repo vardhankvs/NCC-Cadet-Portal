@@ -4,13 +4,14 @@ import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay.jsx';
 import { X, Loader, Shield, Users, Calendar, GraduationCap, ChevronDown } from '../../components/Icons.jsx';
 import { saveAnnouncement } from '../../firebase/firestoreService.js';
+import { submitDelegatedTask } from '../../firebase/delegationWorkflowService.js';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { useDataContext } from '../../context/DataContext.jsx';
 import { toast } from 'react-toastify';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const AnnouncementForm = ({ onClose, initialData = null }) => {
-    const { userRole } = useAuthContext();
+    const { userRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
     const { units = [] } = useDataContext();
 
     const isBattalionAdmin = userRole === 'superadmin' || userRole === 'battalion_admin';
@@ -57,6 +58,42 @@ export const AnnouncementForm = ({ onClose, initialData = null }) => {
         setFormError(null);
         if (!title || !content) {
             setFormError('Title and Content are required.');
+            return;
+        }
+
+        // Delegated Cadet workflow: Submit for ANO Verification
+        if (isDelegatedCadet) {
+            setLoading(true);
+            try {
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'announcements',
+                    moduleName: 'Notice Board',
+                    actionType: initialData ? 'update' : 'create',
+                    targetDocId: initialData?.id || null,
+                    title: `Notice: ${title}`,
+                    payload: {
+                        title,
+                        content,
+                        targetCertificate,
+                        targetDivision,
+                        noticeDate,
+                        senderRole: 'cadet_delegated',
+                        targetAudience: 'cadets',
+                        targetCollege: 'All',
+                        id: initialData?.id || null
+                    }
+                });
+                toast.success('Draft notice submitted! Sent to Institution ANO for verification.');
+                onClose();
+            } catch (e) {
+                setFormError(`Failed to submit notice for verification: ${e.message}`);
+            } finally {
+                setLoading(false);
+            }
             return;
         }
 
@@ -109,10 +146,14 @@ export const AnnouncementForm = ({ onClose, initialData = null }) => {
                     <div>
                         <h2 className="flex items-center text-2xl font-display font-black text-ncc-navy dark:text-white uppercase tracking-tight">
                             <Shield className="mr-3 h-8 w-8 text-ncc-gold" />
-                            {initialData ? 'Edit Notice' : (isBattalionAdmin ? 'Post Notice to ANOs' : 'Post Notice to Cadets')}
+                            {isDelegatedCadet
+                                ? (initialData ? 'Edit Draft Notice (Delegated)' : 'Draft Notice (Delegated Command)')
+                                : (initialData ? 'Edit Notice' : (isBattalionAdmin ? 'Post Notice to ANOs' : 'Post Notice to Cadets'))}
                         </h2>
                         <p className="text-[10px] font-bold text-gray-400 dark:text-white/60 uppercase tracking-widest mt-1">
-                            {isBattalionAdmin ? 'Battalion HQ → College ANOs' : 'College ANO → Cadets'}
+                            {isDelegatedCadet 
+                                ? 'Submissions require verification by your Institution ANO'
+                                : (isBattalionAdmin ? 'Battalion HQ → College ANOs' : 'College ANO → Cadets')}
                         </p>
                     </div>
                     <button
@@ -329,11 +370,13 @@ export const AnnouncementForm = ({ onClose, initialData = null }) => {
                         )}
                         {loading
                             ? 'Processing...'
-                            : initialData
-                                ? 'Update Notice'
-                                : isBattalionAdmin
-                                    ? 'Publish to ANOs'
-                                    : 'Publish to Cadets'
+                            : isDelegatedCadet
+                                ? 'Submit for ANO Verification'
+                                : initialData
+                                    ? 'Update Notice'
+                                    : isBattalionAdmin
+                                        ? 'Publish to ANOs'
+                                        : 'Publish to Cadets'
                         }
                     </button>
                 </div>

@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { X } from '../../components/Icons.jsx';
 import { saveInventoryItem } from '../../firebase/firestoreService.js';
+import { submitDelegatedTask } from '../../firebase/delegationWorkflowService.js';
+import { useAuthContext } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
 
 export const InventoryForm = ({ item, onClose }) => {
+    const { isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
     const [formData, setFormData] = useState({
         name: '',
         category: 'Clothing',
@@ -27,6 +30,27 @@ export const InventoryForm = ({ item, onClose }) => {
 
         setIsSubmitting(true);
         try {
+            if (isDelegatedCadet) {
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'inventory',
+                    moduleName: 'Quartermaster Stock',
+                    actionType: item ? 'update' : 'create',
+                    targetDocId: item ? item.id : null,
+                    title: `Stock: ${formData.name} (${formData.category})`,
+                    payload: {
+                        ...formData,
+                        id: item ? item.id : null
+                    }
+                });
+                toast.success('Inventory item submitted for ANO verification!');
+                onClose();
+                return;
+            }
+
             await saveInventoryItem(formData, item ? item.id : null);
             toast.success(item ? 'Item updated!' : 'Item added!');
             onClose();
@@ -116,7 +140,11 @@ export const InventoryForm = ({ item, onClose }) => {
                             disabled={isSubmitting}
                             className="ncc-btn ncc-btn-primary"
                         >
-                            {isSubmitting ? 'Saving...' : 'Save Item'}
+                            {isSubmitting 
+                                ? 'Saving...' 
+                                : isDelegatedCadet 
+                                ? 'Submit for ANO Verification' 
+                                : (item ? 'Save Changes' : 'Add Item')}
                         </button>
                     </div>
                 </form>

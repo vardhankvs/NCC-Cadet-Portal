@@ -116,6 +116,10 @@ import { AppRatingPrompt } from './features/Engagement/AppRatingPrompt.jsx';
 import { CollegesView } from './features/Administration/CollegesView.jsx';
 // CampAttendanceView is now embedded inside CampsView
 import { TimetableView } from './features/Timetable/TimetableView.jsx';
+import { DelegatedCommandBanner } from './components/delegation/DelegatedCommandBanner.jsx';
+import { CadetSubmissionsDrawer } from './components/delegation/CadetSubmissionsDrawer.jsx';
+import { useDelegatedSubmissions, MODULE_NAMES } from './firebase/delegationWorkflowService.js';
+
 
 
 // ─── NCC Logo mark ─────────────────────────────────────────────────────────
@@ -506,13 +510,41 @@ export function Dashboard() {
 
     // AuthContext to pass down dynamically
     const authContext = useAuthContext();
+    const isDelegatedAdmin = userRole !== 'admin' && activeTab.startsWith('admin_') && (userDelegatedModules || []).includes(activeTab.replace('admin_', ''));
+    const delegatedModuleId = activeTab.startsWith('admin_') ? activeTab.replace('admin_', '') : null;
+
     const overriddenAuth = useMemo(() => {
-        const isDelegatedAdmin = userRole !== 'admin' && activeTab.startsWith('admin_') && (userDelegatedModules || []).includes(activeTab.replace('admin_', ''));
         if (isDelegatedAdmin) {
-            return { ...authContext, userRole: 'admin', actualRole: userRole };
+            return {
+                ...authContext,
+                userRole: 'admin',
+                actualRole: userRole,
+                isDelegatedCadet: true,
+                delegatedModuleId
+            };
         }
         return authContext;
-    }, [authContext, activeTab, userRole, userDelegatedModules]);
+    }, [authContext, isDelegatedAdmin, userRole, delegatedModuleId]);
+
+    // Delegated task submission subscriptions
+    const { 
+        submissions: cadetSubmissions, 
+        loading: cadetSubmissionsLoading, 
+        pendingCount: cadetDelegatedPendingCount, 
+        changesRequestedCount: cadetDelegatedChangesCount 
+    } = useDelegatedSubmissions(
+        userInstitutionId, 
+        userRole === 'cadet' ? userEnrollmentId : null
+    );
+
+    // ANO-level submissions query
+    const { 
+        pendingCount: anoPendingSubmissionsCount 
+    } = useDelegatedSubmissions(
+        userRole !== 'cadet' ? userInstitutionId : null
+    );
+
+    const [showCadetSubmissionsDrawer, setShowCadetSubmissionsDrawer] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [chatInitialCadetId, setChatInitialCadetId] = useState(null);
     const [birthdayChecked, setBirthdayChecked] = useState(false);
@@ -528,6 +560,7 @@ export function Dashboard() {
         localStorage.setItem(`ncc_showcase_${userRole}`, 'true');
         setShowShowcase(false);
     };
+
 
     const handleTabClick = useCallback((tabId) => {
         window.history.pushState({ tab: tabId }, '', `?tab=${tabId}`);
@@ -1202,6 +1235,22 @@ export function Dashboard() {
                                         </select>
                                     </div>
                                 )}
+                                {isAdminRole && anoPendingSubmissionsCount > 0 && (
+                                    <button
+                                        onClick={() => {
+                                            window.history.pushState({ tab: 'delegations' }, '', `?tab=delegations&subtab=verifications`);
+                                            setActiveTab('delegations');
+                                        }}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition animate-pulse"
+                                        title="Cadet Tasks Pending Verification"
+                                    >
+                                        <Shield className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                                        <span className="hidden md:inline">Verifications:</span>
+                                        <span className="bg-ncc-red text-white text-[10px] px-1.5 py-0.5 rounded-full font-black">
+                                            {anoPendingSubmissionsCount}
+                                        </span>
+                                    </button>
+                                )}
                                 <ThemeToggle />
                                 {userRole === 'cadet' && (
                                     <button 
@@ -1366,7 +1415,27 @@ export function Dashboard() {
                         <div className={`ncc-page mx-auto ${fullWidthTabs.includes(activeTab) || fullWidthTabs.includes(activeTab.replace('admin_', '')) ? 'w-full max-w-none px-4 sm:px-6' : (wideTabs.includes(activeTab) || (activeTab.startsWith('admin_') && wideTabs.includes(activeTab.replace('admin_', '')))) ? 'max-w-7xl' : 'max-w-2xl'}`}>
                             <AuthContext.Provider value={overriddenAuth}>
                                 <AttendanceVerification />
+                                {activeTab.startsWith('admin_') && (
+                                    <DelegatedCommandBanner
+                                        moduleId={activeTab.replace('admin_', '')}
+                                        moduleName={availableTabs.find(t => t.id === activeTab)?.name || 'Admin Module'}
+                                        cadetName={userName}
+                                        pendingCount={cadetDelegatedPendingCount}
+                                        changesRequestedCount={cadetDelegatedChangesCount}
+                                        onOpenSubmissions={() => setShowCadetSubmissionsDrawer(true)}
+                                    />
+                                )}
                                 {renderTabContent()}
+                                <CadetSubmissionsDrawer
+                                    isOpen={showCadetSubmissionsDrawer}
+                                    onClose={() => setShowCadetSubmissionsDrawer(false)}
+                                    submissions={cadetSubmissions}
+                                    loading={cadetSubmissionsLoading}
+                                    onResubmitTask={(sub) => {
+                                        setShowCadetSubmissionsDrawer(false);
+                                        handleTabClick('admin_' + sub.moduleId);
+                                    }}
+                                />
                             </AuthContext.Provider>
                         </div>
                     )}

@@ -1,13 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import { X, ChevronRight, ChevronLeft, Users, GraduationCap } from '../../components/Icons.jsx';
 import { saveCamp } from '../../firebase/firestoreService.js';
+import { submitDelegatedTask } from '../../firebase/delegationWorkflowService.js';
 import { useDataContext } from '../../context/DataContext.jsx';
+import { useAuthContext } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 const CAMP_TYPES = ['ATC', 'CATC', 'EBSB', 'RDC', 'TSC', 'NSC', 'VSC', 'SNIC', 'ALC', 'BLC', 'Trekking', 'Other'];
 
 export const CampForm = ({ onClose, initialData = null }) => {
+    const { isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
     const { units = [] } = useDataContext();
     const colleges = useMemo(() => units.filter(u => !u.isBattalion), [units]);
 
@@ -67,6 +70,29 @@ export const CampForm = ({ onClose, initialData = null }) => {
                     if (n > 0) cleanVacancies[k] = n;
                 }
             });
+
+            if (isDelegatedCadet) {
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'camps',
+                    moduleName: 'Camps & Deployments',
+                    actionType: initialData ? 'update' : 'create',
+                    targetDocId: initialData?.id || null,
+                    title: `Camp: ${formData.name} (${formData.type})`,
+                    payload: {
+                        ...formData,
+                        vacancies: cleanVacancies,
+                        disallowedColleges,
+                        id: initialData?.id || null
+                    }
+                });
+                toast.success('Camp draft submitted! Sent to Institution ANO for verification.');
+                onClose();
+                return;
+            }
 
             await saveCamp({ ...formData, vacancies: cleanVacancies, disallowedColleges }, initialData?.id || null);
             toast.success(initialData ? 'Camp updated successfully!' : 'Camp created successfully!');
@@ -305,7 +331,7 @@ export const CampForm = ({ onClose, initialData = null }) => {
                             >
                                 {isSubmitting
                                     ? (initialData ? 'Updating...' : 'Creating...')
-                                    : (initialData ? '✓ Update Camp' : '✓ Publish Camp')}
+                                    : (isDelegatedCadet ? '✓ Submit for ANO Verification' : (initialData ? '✓ Update Camp' : '✓ Publish Camp'))}
                             </button>
                         </div>
                     </div>

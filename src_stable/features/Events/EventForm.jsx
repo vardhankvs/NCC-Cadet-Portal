@@ -3,12 +3,15 @@ import React, { useState } from 'react';
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay.jsx';
 import { X, Loader, Calendar, MapPin, AlignLeft, Flag, Shield } from '../../components/Icons.jsx';
 import { saveEvent } from '../../firebase/firestoreService.js';
+import { submitDelegatedTask } from '../../firebase/delegationWorkflowService.js';
+import { useAuthContext } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 import { ImageIcon, List } from '../../components/Icons.jsx';
 
 export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGallery, onManageRoster }) => {
+    const { isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
     const [formData, setFormData] = useState({
         name: currentEvent?.name || '',
         date: currentEvent?.date
@@ -30,6 +33,34 @@ export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGalle
         setFormError(null);
         if (!formData.name || !formData.date) {
             setFormError('Event name and date are required.');
+            return;
+        }
+
+        if (isDelegatedCadet) {
+            setLoading(true);
+            try {
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'events',
+                    moduleName: 'Events & Drills',
+                    actionType: isEditMode ? 'update' : 'create',
+                    targetDocId: currentEvent?.id || null,
+                    title: `Event: ${formData.name}`,
+                    payload: {
+                        ...formData,
+                        id: currentEvent?.id || null
+                    }
+                });
+                toast.success('Event draft submitted! Sent to Institution ANO for verification.');
+                onSaveSuccess();
+            } catch (e) {
+                setFormError(`Failed to submit event: ${e.message}`);
+            } finally {
+                setLoading(false);
+            }
             return;
         }
 
@@ -179,7 +210,13 @@ export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGalle
                     ) : (
                         <Flag className="mr-2 h-4 w-4" />
                     )}
-                    {loading ? 'Processing...' : isEditMode ? 'Update Event Details' : 'Add Event to Calendar'}
+                    {loading 
+                        ? 'Processing...' 
+                        : isDelegatedCadet
+                        ? 'Submit for ANO Verification'
+                        : isEditMode 
+                        ? 'Update Event Details' 
+                        : 'Add Event to Calendar'}
                 </button>
             </div>
         </form>

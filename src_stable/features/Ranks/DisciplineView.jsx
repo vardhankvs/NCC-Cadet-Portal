@@ -1,17 +1,20 @@
 // src/features/Ranks/DisciplineView.jsx
 import React, { useState, useMemo } from 'react';
 import { useDataContext } from '../../context/DataContext.jsx';
+import { useAuthContext } from '../../context/AuthContext.jsx';
 import { 
     Trophy, AlertTriangle, Search, TrendingUp, TrendingDown, 
     Star, Award, Shield, Loader, X, CheckCircle, Info, History
 } from '../../components/Icons.jsx';
 import { updateCadetPoints } from '../../firebase/firestoreService.js';
+import { submitDelegatedTask } from '../../firebase/delegationWorkflowService.js';
 import { toast } from 'react-toastify';
 import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
 import { sendPushToUser } from '../../firebase/pushNotifications.js';
 
 export const DisciplineView = () => {
+    const { userRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
     const { cadets, loading } = useDataContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCadet, setSelectedCadet] = useState(null);
@@ -49,6 +52,31 @@ export const DisciplineView = () => {
         e.preventDefault();
         setUpdating(true);
         try {
+            if (isDelegatedCadet) {
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'discipline',
+                    moduleName: 'Discipline & Merits',
+                    actionType: 'create',
+                    targetDocId: selectedCadet.id,
+                    title: `Update ${pointType.toUpperCase()} points for ${selectedCadet.name}`,
+                    payload: {
+                        cadetId: selectedCadet.id,
+                        cadetName: selectedCadet.name,
+                        enrollmentId: selectedCadet.enrollmentId,
+                        type: pointType,
+                        points: newAmount,
+                        reason: remark
+                    }
+                });
+                toast.success(`${pointType === 'merit' ? 'Merit' : 'Discipline'} update submitted for ANO verification!`);
+                setIsEditModalOpen(false);
+                return;
+            }
+
             await updateCadetPoints(selectedCadet.id, pointType, newAmount, remark);
             toast.success(`${pointType === 'merit' ? 'Merit' : 'Discipline'} updated!`);
             sendPushToUser(
@@ -281,7 +309,9 @@ export const DisciplineView = () => {
                                     ) : (
                                         <>
                                             <CheckCircle className="w-5 h-5 relative z-10" /> 
-                                            <span className="relative z-10">Authenticate Update</span>
+                                            <span className="relative z-10">
+                                                {isDelegatedCadet ? 'Submit for ANO Verification' : 'Authenticate Update'}
+                                            </span>
                                         </>
                                     )}
                                 </button>

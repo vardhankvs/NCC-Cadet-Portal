@@ -1,10 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { useDataContext } from '../../context/DataContext.jsx';
+import { useAuthContext } from '../../context/AuthContext.jsx';
 import { getCollectionRef } from '../../firebase/firestoreService.js';
 import { doc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { toast } from 'react-toastify';
-import { Shield, Search, Save, User, Check } from '../../components/Icons.jsx';
+import { Shield, Search, Save, User, Check, Clock, CheckCircle } from '../../components/Icons.jsx';
 import { sendPushToAll, sendPushToUser } from '../../firebase/pushNotifications.js';
+import { AnoTaskVerificationHub } from '../../components/delegation/AnoTaskVerificationHub.jsx';
+import { useDelegatedSubmissions } from '../../firebase/delegationWorkflowService.js';
 
 const DELEGABLE_MODULES = [
     { id: 'hall_of_fame', name: 'Unit Excellence', category: 'Headquarters' },
@@ -28,8 +31,16 @@ const DELEGABLE_MODULES = [
     { id: 'grievances', name: 'Grievances', category: 'Engagement' }
 ];
 
-export const DutyRoster = () => {
+export const DutyRoster = ({ initialSubTab = null }) => {
+    const { userInstitutionId, userName } = useAuthContext();
     const { cadets } = useDataContext();
+    const { pendingCount } = useDelegatedSubmissions(userInstitutionId);
+
+    const [activeSection, setActiveSection] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('subtab') === 'verifications' || initialSubTab === 'verifications' ? 'verifications' : 'delegations';
+    });
+
     const [searchQuery, setSearchQuery] = useState('');
     const [filterCert, setFilterCert] = useState('C');
     const [filterDiv, setFilterDiv] = useState('All');
@@ -141,23 +152,65 @@ export const DutyRoster = () => {
                 <div>
                     <h2 className="text-xl sm:text-2xl font-display font-black text-ncc-navy dark:text-white flex items-center gap-3">
                         <Shield className="w-7 h-7 sm:w-8 sm:h-8 text-ncc-gold" />
-                        Chain of Command
+                        Chain of Command & Cadet Verification
                     </h2>
-                    <p className="text-gray-500 dark:text-white/70 text-xs sm:text-sm">Delegate administrative access to senior cadets.</p>
+                    <p className="text-gray-500 dark:text-white/70 text-xs sm:text-sm">
+                        Manage cadet access permissions and verify delegated administrative task submissions.
+                    </p>
                 </div>
-                {selectedCadet && (
-                    <button 
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="hidden md:flex bg-ncc-navy text-white px-6 py-3 rounded-xl font-bold items-center gap-2 hover:bg-ncc-navy-mid transition-all shadow-lg shadow-ncc-navy/20 disabled:opacity-50"
-                    >
-                        <Save className="w-5 h-5" />
-                        {isSaving ? 'Saving...' : 'Save Delegations'}
-                    </button>
-                )}
+
+                <div className="flex items-center gap-2">
+                    {/* Top Switcher between Delegations & Verifications */}
+                    <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-2xl border border-gray-200 dark:border-white/10">
+                        <button
+                            onClick={() => setActiveSection('delegations')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                                activeSection === 'delegations'
+                                    ? 'bg-ncc-navy text-white shadow-md'
+                                    : 'text-gray-600 dark:text-white/70 hover:bg-gray-200 dark:hover:bg-white/10'
+                            }`}
+                        >
+                            <Shield className="w-4 h-4 text-ncc-gold" />
+                            <span>1. Access Delegations</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveSection('verifications')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                                activeSection === 'verifications'
+                                    ? 'bg-ncc-navy text-white shadow-md'
+                                    : 'text-gray-600 dark:text-white/70 hover:bg-gray-200 dark:hover:bg-white/10'
+                            }`}
+                        >
+                            <CheckSquare className="w-4 h-4 text-ncc-gold" />
+                            <span>2. Task Verifications</span>
+                            {pendingCount > 0 && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-ncc-red text-white animate-pulse">
+                                    {pendingCount}
+                                </span>
+                            )}
+                        </button>
+                    </div>
+
+                    {activeSection === 'delegations' && selectedCadet && (
+                        <button 
+                            onClick={handleSave}
+                            disabled={isSaving}
+                            className="hidden md:flex bg-ncc-navy text-white px-5 py-2.5 rounded-xl font-bold items-center gap-2 hover:bg-ncc-navy-mid transition-all shadow-lg shadow-ncc-navy/20 disabled:opacity-50 text-xs"
+                        >
+                            <Save className="w-4 h-4" />
+                            {isSaving ? 'Saving...' : 'Save Delegations'}
+                        </button>
+                    )}
+                </div>
             </header>
 
-            {/* Mobile Segmented Tab Switcher */}
+            {activeSection === 'verifications' ? (
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                    <AnoTaskVerificationHub institutionId={userInstitutionId} anoName={userName || 'Institution ANO'} />
+                </div>
+            ) : (
+                <>
+                    {/* Mobile Segmented Tab Switcher */}
             <div className="lg:hidden flex bg-gray-100 dark:bg-white/5 p-1 rounded-2xl border border-gray-200 dark:border-white/10 shrink-0">
                 <button
                     onClick={() => setMobileTab('cadets')}
@@ -358,6 +411,8 @@ export const DutyRoster = () => {
                         {isSaving ? 'Saving...' : 'Save'}
                     </button>
                 </div>
+            )}
+                </>
             )}
         </div>
     );

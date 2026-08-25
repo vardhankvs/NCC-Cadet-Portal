@@ -6,10 +6,11 @@ import { generateNominalRollPDF } from '../../utils/pdfGenerator.js';
 import { useDataContext } from '../../context/DataContext.jsx';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { addCadetsToCampBulk, updateCampRoster, logCampAchievement, addCampAchievementsBulk, deleteCamp, removeCampAchievement, updateCampAchievement, removeCadetFromCamp } from '../../firebase/firestoreService.js';
+import { submitDelegatedTask } from '../../firebase/delegationWorkflowService.js';
 import { toast } from 'react-toastify';
 
 export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
-    const { userRole, userInstitutionId } = useAuthContext();
+    const { userRole, userInstitutionId, isDelegatedCadet, userEnrollmentId, userName, user } = useAuthContext();
     const isBattalionAdmin = userRole === 'superadmin' || userRole === 'battalion_admin';
     const isANO = userRole === 'admin' || userRole === 'officer';
     const { cadets, camps, units = [] } = useDataContext();
@@ -154,6 +155,32 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
         }
         try {
             const cadetsToAdd = unassignedCadets.filter(c => selectedCandidateIds.includes(c.id));
+
+            if (isDelegatedCadet) {
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'camps',
+                    moduleName: 'Camps & Deployments',
+                    actionType: 'update',
+                    targetDocId: camp.id,
+                    title: `Assign ${cadetsToAdd.length} Cadets to Camp: ${camp.name}`,
+                    payload: {
+                        action: 'add_candidates',
+                        campId: camp.id,
+                        campName: camp.name,
+                        cadetIds: selectedCandidateIds,
+                        status: candidateStatus
+                    }
+                });
+                toast.success(`Cadet camp assignment submitted for ANO verification!`);
+                setSelectedCandidateIds([]);
+                setShowAddCadets(false);
+                return;
+            }
+
             await addCadetsToCampBulk(camp.id, cadetsToAdd, candidateStatus);
             toast.success(`Successfully added ${cadetsToAdd.length} cadets to roster!`);
             setSelectedCandidateIds([]);
@@ -180,6 +207,30 @@ export const CampDetailsModal = ({ camp, onClose, onEditCamp }) => {
     const handleAddAchievement = async () => {
         if (!achievementTarget || !achievementText.trim()) return;
         try {
+            if (isDelegatedCadet) {
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'camps',
+                    moduleName: 'Camps & Deployments',
+                    actionType: 'update',
+                    targetDocId: camp.id,
+                    title: `Camp Award in ${camp.name}: ${achievementText.trim()}`,
+                    payload: {
+                        action: 'log_achievement',
+                        campId: camp.id,
+                        cadetId: achievementTarget,
+                        achievement: achievementText.trim()
+                    }
+                });
+                toast.success(`Camp achievement submitted for ANO verification!`);
+                setAchievementTarget(null);
+                setAchievementText('');
+                return;
+            }
+
             await logCampAchievement(camp.id, achievementTarget, achievementText.trim());
             toast.success("Achievement logged!");
             setAchievementTarget(null);

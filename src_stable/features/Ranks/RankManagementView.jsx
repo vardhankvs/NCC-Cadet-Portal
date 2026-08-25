@@ -4,6 +4,7 @@ import { useDataContext } from '../../context/DataContext.jsx';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { Search, Award, TrendingUp, Filter, UserCheck, Shield, Clock, GraduationCap, Users, ChevronLeft } from '../../components/Icons.jsx';
 import { updateCadetRank } from '../../firebase/firestoreService.js';
+import { submitDelegatedTask } from '../../firebase/delegationWorkflowService.js';
 import { toast } from 'react-toastify';
 import { formatDate } from '../../utils/dateUtils.js';
 import { sendPushToUser } from '../../firebase/pushNotifications.js';
@@ -11,7 +12,7 @@ import { sendPushToUser } from '../../firebase/pushNotifications.js';
 const ranks = ['CDT', 'LCPL', 'CPL', 'SGT', 'CQMS', 'CSM', 'JUO', 'SUO'];
 
 export const RankManagementView = () => {
-    const { userRole } = useAuthContext();
+    const { userRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
     const { cadets, units, loading, selectedCollege, setSelectedCollege } = useDataContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [filterRank, setFilterRank] = useState('All');
@@ -81,6 +82,33 @@ export const RankManagementView = () => {
         if (!selectedCadet || !newRank) return;
         setProcessing(true);
         try {
+            if (isDelegatedCadet) {
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'rank_mgmt',
+                    moduleName: 'Ranks & Promotions',
+                    actionType: 'update',
+                    targetDocId: selectedCadet.id,
+                    title: `Promote ${selectedCadet.name} to ${newRank}`,
+                    payload: {
+                        cadetId: selectedCadet.id,
+                        cadetName: selectedCadet.name,
+                        enrollmentId: selectedCadet.enrollmentId,
+                        currentRank: selectedCadet.rank || 'CDT',
+                        newRank,
+                        reason
+                    }
+                });
+                toast.success(`Rank promotion submitted for ANO verification!`);
+                setSelectedCadet(null);
+                setNewRank('');
+                setReason('Merit-based promotion');
+                return;
+            }
+
             await updateCadetRank(selectedCadet.id, newRank, reason);
             toast.success(`${selectedCadet.name} promoted to ${newRank}`);
             sendPushToUser(
@@ -340,7 +368,7 @@ export const RankManagementView = () => {
                                 >
                                     {processing ? 'Processing...' : (
                                         <>
-                                            <Shield className="w-4 h-4" /> Confirm Promotion
+                                            <Shield className="w-4 h-4" /> {isDelegatedCadet ? 'Submit for ANO Verification' : 'Confirm Promotion'}
                                         </>
                                     )}
                                 </button>
