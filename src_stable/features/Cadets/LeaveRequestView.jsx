@@ -36,7 +36,8 @@ const compressImageToBase64 = (file, maxWidth = 800, quality = 0.6) => {
 
 export const LeaveRequestView = () => {
     const { userRole, userEnrollmentId, user, hasPermission } = useAuthContext();
-    const isAdminView = userRole === 'admin' || hasPermission('leave_requests');
+    const isCadet = userRole === 'cadet';
+    const isAdminView = !isCadet && (userRole === 'admin' || userRole === 'superadmin' || userRole === 'battalion_admin' || userRole === 'officer' || userRole === 'ano' || hasPermission('leave_requests'));
     const { cadets } = useDataContext();
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -88,7 +89,7 @@ export const LeaveRequestView = () => {
             filtered[cid] = group;
         }
         return filtered;
-    }, [requests, userRole, cadets, searchQuery, filterCert, filterDiv]);
+    }, [requests, isAdminView, cadets, searchQuery, filterCert, filterDiv]);
 
     // Filter requests for cadet view
     const filteredCadetRequests = React.useMemo(() => {
@@ -107,7 +108,7 @@ export const LeaveRequestView = () => {
                    endFormatted.includes(q) ||
                    (req.timestamp || '').includes(q);
         });
-    }, [requests, userRole, searchQuery]);
+    }, [requests, isAdminView, searchQuery]);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -118,9 +119,17 @@ export const LeaveRequestView = () => {
     });
 
     useEffect(() => {
-        const q = isAdminView 
-            ? query(getCollectionRef('leave_requests'))
-            : query(getCollectionRef('leave_requests'), where('cadetId', '==', userEnrollmentId));
+        let q;
+        if (isAdminView) {
+            q = query(getCollectionRef('leave_requests'));
+        } else {
+            const cadId = (userEnrollmentId || currentCadet?.enrollmentId || user?.uid || '').toString().trim().toUpperCase();
+            if (cadId) {
+                q = query(getCollectionRef('leave_requests'), where('cadetId', '==', cadId));
+            } else {
+                q = query(getCollectionRef('leave_requests'));
+            }
+        }
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -128,10 +137,13 @@ export const LeaveRequestView = () => {
             data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             setRequests(data);
             setLoading(false);
+        }, (err) => {
+            console.error('Leave requests subscription error:', err);
+            setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [userRole, userEnrollmentId]);
+    }, [isAdminView, userEnrollmentId, currentCadet?.enrollmentId, user?.uid]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -277,7 +289,7 @@ export const LeaveRequestView = () => {
                     )}
                 </div>
 
-                {userRole === 'admin' && req.status === 'pending' && (
+                {isAdminView && req.status === 'pending' && (
                     <div className="flex flex-col gap-2 min-w-[200px]">
                         <button 
                             onClick={() => handleAction(req.id, 'approved', req, 'Present')}
@@ -305,26 +317,43 @@ export const LeaveRequestView = () => {
         </div>
     );
 
-    if (loading) return <div className="p-20 text-center animate-pulse text-ncc-navy dark:text-white">Loading applications...</div>;
+    if (loading) return <div className="p-20 text-center animate-pulse text-ncc-navy dark:text-white font-bold">Loading applications...</div>;
 
     return (
         <div className="max-w-5xl mx-auto space-y-6 fade-in p-4 lg:p-0">
-            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h2 className="text-2xl font-display font-black text-ncc-navy dark:text-white flex items-center gap-3">
-                        <Calendar className="w-8 h-8 text-ncc-navy dark:text-white" />
-                        Leave & Permissions
-                    </h2>
-                    <p className="text-gray-500 dark:text-white/70 text-sm">Digital leave application and approval system.</p>
+            <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 sm:p-8 bg-gradient-to-r from-ncc-navy via-[#1a365d] to-ncc-navy dark:from-[#050b14] dark:via-[#0a1628] dark:to-[#050b14] rounded-[2.5rem] shadow-xl relative overflow-hidden mb-6">
+                <div className="absolute top-0 right-0 w-72 h-72 bg-ncc-gold/15 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
+                <div className="absolute bottom-0 left-0 w-56 h-56 bg-ncc-red/10 rounded-full blur-3xl translate-y-1/3 -translate-x-1/4" />
+                <div className="absolute inset-0 bg-[url('/noise.png')] opacity-20 mix-blend-overlay"></div>
+
+                <div className="relative z-10">
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 shadow-inner">
+                            <Calendar className="w-7 h-7 text-ncc-gold" />
+                        </div>
+                        <div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-ncc-gold">
+                                {isCadet ? 'CADET PORTAL' : '14(A) BN NCC HEADQUARTERS'}
+                            </span>
+                            <h2 className="text-2xl sm:text-3xl font-display font-black text-white">
+                                {isCadet ? 'Apply Leave & Permissions' : 'Leave & Permissions Desk'}
+                            </h2>
+                        </div>
+                    </div>
+                    <p className="text-white/70 text-xs sm:text-sm">
+                        {isCadet ? 'Submit parade leave, academic exam exemption, or duty permission requests directly to your ANO.' : 'Review, approve, and manage cadet parade leave and duty applications.'}
+                    </p>
                 </div>
-                {(!isAdminView) && (
-                    <button 
-                        onClick={() => setShowForm(!showForm)}
-                        className="bg-ncc-navy text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-ncc-navy-mid transition-all shadow-lg shadow-ncc-navy/20"
-                    >
-                        {showForm ? <XCircle className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                        {showForm ? 'Cancel' : 'New Application'}
-                    </button>
+                {!isAdminView && (
+                    <div className="relative z-10">
+                        <button 
+                            onClick={() => setShowForm(!showForm)}
+                            className="px-6 py-3.5 bg-ncc-gold text-ncc-navy font-bold rounded-2xl flex items-center gap-2 hover:bg-white hover:scale-105 transition-all shadow-[0_0_20px_rgba(184,131,14,0.3)] group"
+                        >
+                            {showForm ? <XCircle className="w-5 h-5" /> : <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />}
+                            {showForm ? 'Cancel Application' : '+ Apply Leave'}
+                        </button>
+                    </div>
                 )}
             </header>
 
@@ -444,11 +473,23 @@ export const LeaveRequestView = () => {
 
             <div className="grid grid-cols-1 gap-4">
                 {requests.length === 0 ? (
-                    <div className="bg-white dark:bg-[#050b14] p-20 text-center rounded-3xl border border-dashed border-gray-300">
-                        <FileText className="w-16 h-16 text-gray-100 mx-auto mb-4" />
-                        <p className="text-gray-400 dark:text-white/80 font-bold italic">No leave applications found.</p>
+                    <div className="bg-white dark:bg-[#050b14] p-16 text-center rounded-[2.5rem] border border-dashed border-[#ddd8cc] dark:border-white/10">
+                        <div className="w-16 h-16 bg-ncc-navy/10 dark:bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-4 text-ncc-navy dark:text-ncc-gold">
+                            <Calendar className="w-8 h-8" />
+                        </div>
+                        <h4 className="text-lg font-bold text-ncc-navy dark:text-white mb-1">
+                            {isCadet ? 'No Leave Applications' : 'No Leave Requests Found'}
+                        </h4>
+                        <p className="text-gray-500 dark:text-white/60 text-sm max-w-md mx-auto mb-6">
+                            {isCadet ? "You haven't submitted any leave or duty exemption requests yet." : 'There are currently no active or pending leave applications from cadets.'}
+                        </p>
+                        {isCadet && !showForm && (
+                            <button onClick={() => setShowForm(true)} className="px-6 py-3.5 bg-ncc-gold text-ncc-navy font-bold rounded-2xl hover:bg-white hover:scale-105 transition-all shadow-[0_0_20px_rgba(184,131,14,0.3)] inline-flex items-center gap-2">
+                                <Plus className="w-5 h-5" /> Apply For Leave
+                            </button>
+                        )}
                     </div>
-                ) : userRole === 'admin' ? (
+                ) : isAdminView ? (
                     Object.entries(groupedRequests).map(([cadetId, group]) => (
                         <div key={cadetId} className="bg-white dark:bg-[#050b14] rounded-3xl border border-[#ddd8cc] shadow-sm overflow-hidden">
                             <button 

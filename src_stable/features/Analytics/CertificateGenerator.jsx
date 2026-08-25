@@ -101,59 +101,59 @@ export const CertificateGenerator = ({ initialCertFilter = 'All' }) => {
                 minAttendanceLimit: Number(minAttendanceB)
             }, { merge: true });
 
-            // Dispatch real-time low-attendance alerts to cadets falling below newly saved rules
-            const { checkAndSendLowAttendanceAlert } = await import('../../firebase/firestoreService.js');
-            const activeCadets = (cadets || []).filter(c => c.status !== 'alumni');
-            
-            let notifiedCount = 0;
-            for (const cadet of activeCadets) {
-                // Find precomputed summary if available, else check cadet object
-                const summary = attendanceData?.individualSummaries?.find(s => 
-                    s.id === cadet.id || (s.enrollmentId && cadet.enrollmentId && s.enrollmentId.toUpperCase() === cadet.enrollmentId.toUpperCase())
-                );
+            toast.success(`Exam eligibility criteria saved (B Cert: ${minAttendanceB}%, C Cert: ${minAttendanceC}%).`);
+            setSavingConfig(false);
 
-                let att = null;
-                if (summary && typeof summary.percentage === 'number') {
-                    att = summary.percentage;
-                } else if (typeof cadet.attendancePercentage === 'number') {
-                    att = cadet.attendancePercentage;
-                } else if (cadet.attendance && typeof cadet.attendance === 'object') {
-                    const entries = Object.values(cadet.attendance);
-                    if (entries.length > 0) {
-                        let pCount = 0;
-                        entries.forEach(s => {
-                            const str = String(s).trim().toUpperCase();
-                            if (str === 'PRESENT' || str === 'P' || str === 'VERIFIED' || str === 'LATE' || str === 'ATTENDED' || str === '1') {
-                                pCount++;
-                            }
-                        });
-                        att = (pCount / entries.length) * 100;
+            // Dispatch real-time low-attendance alerts in background without hanging the save UI
+            (async () => {
+                try {
+                    const { checkAndSendLowAttendanceAlert } = await import('../../firebase/firestoreService.js');
+                    const activeCadets = (cadets || []).filter(c => c.status !== 'alumni');
+                    
+                    const lowAttQueue = [];
+                    for (const cadet of activeCadets) {
+                        const summary = attendanceData?.individualSummaries?.find(s => 
+                            s.id === cadet.id || (s.enrollmentId && cadet.enrollmentId && s.enrollmentId.toUpperCase() === cadet.enrollmentId.toUpperCase())
+                        );
+
+                        let att = null;
+                        if (summary && typeof summary.percentage === 'number') {
+                            att = summary.percentage;
+                        } else if (typeof cadet.attendancePercentage === 'number') {
+                            att = cadet.attendancePercentage;
+                        }
+
+                        const certRaw = String(cadet.currentCertificate || cadet.certificate || cadet.B || '').toUpperCase().trim();
+                        const isCCert = (certRaw === 'C' || cadet.year === '3RD YEAR' || cadet.year === '3RD');
+                        const targetLimit = isCCert ? Number(minAttendanceC) : Number(minAttendanceB);
+                        const certTag = isCCert ? 'C' : 'B';
+
+                        if (att !== null && att < targetLimit) {
+                            lowAttQueue.push({ cadet, att, certTag, targetLimit });
+                        }
                     }
+
+                    // Process in parallel batches of 10
+                    for (let i = 0; i < lowAttQueue.length; i += 10) {
+                        const batch = lowAttQueue.slice(i, i + 10);
+                        await Promise.allSettled(batch.map(item => 
+                            checkAndSendLowAttendanceAlert(
+                                item.cadet.id,
+                                item.att,
+                                item.certTag,
+                                item.targetLimit,
+                                item.cadet.institutionId || 'gmrit',
+                                item.cadet.enrollmentId
+                            )
+                        ));
+                    }
+                } catch (bgErr) {
+                    console.warn('Background low attendance notice dispatch error:', bgErr);
                 }
-
-                const certRaw = String(cadet.currentCertificate || cadet.certificate || cadet.B || '').toUpperCase().trim();
-                const isCCert = (certRaw === 'C' || cadet.year === '3RD YEAR' || cadet.year === '3RD');
-                const targetLimit = isCCert ? Number(minAttendanceC) : Number(minAttendanceB);
-                const certTag = isCCert ? 'C' : 'B';
-
-                if (att !== null && att < targetLimit) {
-                    await checkAndSendLowAttendanceAlert(
-                        cadet.id,
-                        att,
-                        certTag,
-                        targetLimit,
-                        cadet.institutionId || 'gmrit',
-                        cadet.enrollmentId
-                    );
-                    notifiedCount++;
-                }
-            }
-
-            toast.success(`Eligibility rules saved (B: ${minAttendanceB}%, C: ${minAttendanceC}%). Real-time low attendance alerts sent to ${notifiedCount} cadet(s).`);
+            })();
         } catch (err) {
             console.error('Error saving config:', err);
             toast.error('Failed to update eligibility rules.');
-        } finally {
             setSavingConfig(false);
         }
     };
