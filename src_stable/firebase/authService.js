@@ -1,6 +1,6 @@
 // src/firebase/authService.js
 import { auth, db, appId, firebaseConfig } from './config.js';
-import { initializeApp, deleteApp } from 'firebase/app';
+import { initializeApp, deleteApp, getApps } from 'firebase/app';
 import {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
@@ -25,9 +25,17 @@ import emailjs from '@emailjs/browser';
 const getUsersRef = () =>
     collection(db, 'artifacts', appId, 'public', 'data', 'users');
 
+// Isolated Auth instance for Step 1 credential validation so main onAuthStateChanged does not fire prematurely
+const getTempAuth = () => {
+    const tempAppName = 'tempAuth2FAApp';
+    const app = getApps().find(a => a.name === tempAppName) || initializeApp(firebaseConfig, tempAppName);
+    return getAuth(app);
+};
+
 /**
- * Step 1 of Cadet / Admin 2FA login:
- * Verify credentials with Firebase Auth, lookup target email (Cadet personal email from bulk import),
+ * Step 1 of Cadet / ANO / Admin 2FA login:
+ * Verify credentials with Firebase Auth (isolated so user is not prematurely logged in),
+ * lookup target email (Cadet personal email from bulk import / ANO email),
  * generate a 6-digit OTP, store it in Firestore, and send via EmailJS.
  * Returns { uid, email, authEmail } so UI can render OTP modal.
  */
@@ -35,6 +43,7 @@ export const loginUserWithOTP = async (emailOrEnrollId, password, activeTab) => 
     let authEmail = emailOrEnrollId ? emailOrEnrollId.trim() : '';
     let targetOtpEmail = authEmail;
     let uid = null;
+    const tempAuth = getTempAuth();
 
     if (activeTab === 'cadet') {
         if (!emailOrEnrollId) throw new Error('Regimental / Enrollment ID is required for Cadet login.');
@@ -55,8 +64,8 @@ export const loginUserWithOTP = async (emailOrEnrollId, password, activeTab) => 
             throw new Error('User profile error. Please contact unit administrator.');
         }
 
-        // Authenticate password
-        const credential = await signInWithEmailAndPassword(auth, authEmail, password);
+        // Authenticate password on isolated tempAuth
+        const credential = await signInWithEmailAndPassword(tempAuth, authEmail, password);
         uid = credential.user.uid;
 
         // Lookup Cadet Personal Email (from bulk import / profile in cadets collection)
@@ -82,10 +91,10 @@ export const loginUserWithOTP = async (emailOrEnrollId, password, activeTab) => 
         }
 
     } else {
-        // Admin / Staff Login
+        // Admin / ANO / Staff Login
         if (!authEmail) throw new Error('Email address is required for login.');
         const cleanEmail = authEmail.trim().toLowerCase();
-        const credential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+        const credential = await signInWithEmailAndPassword(tempAuth, cleanEmail, password);
         uid = credential.user.uid;
         targetOtpEmail = (credential.user.email || cleanEmail).trim().toLowerCase();
     }
@@ -94,7 +103,7 @@ export const loginUserWithOTP = async (emailOrEnrollId, password, activeTab) => 
         targetOtpEmail = authEmail.trim().toLowerCase();
     }
 
-    // Generate & store OTP in Firestore while signed in
+    // Generate & store OTP in Firestore
     const otp = await generateUserOTP(uid, targetOtpEmail);
 
     // Dispatch OTP via EmailJS
@@ -123,8 +132,8 @@ export const loginUserWithOTP = async (emailOrEnrollId, password, activeTab) => 
         console.warn(`[OTP Backup] Target ${targetOtpEmail}: ${otp}`);
     }
 
-    // Sign out temporary session until OTP verification
-    await signOut(auth);
+    // Sign out isolated tempAuth
+    await signOut(tempAuth).catch(() => {});
 
     return { uid, email: targetOtpEmail, authEmail };
 };
