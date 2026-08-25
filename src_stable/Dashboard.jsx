@@ -742,9 +742,10 @@ export function Dashboard() {
     }, [loading, userRole, userEnrollmentId, cadets, birthdayChecked]);
 
     // ── Push Notifications: Permission Request & Token Registration ──────────
-    // Always attempt to register on login so stale/rotated tokens are refreshed.
+    const pushRegisteredRef = useRef(null);
     useEffect(() => {
-        if (loading || !authContext.user) return;
+        if (loading || !authContext.user?.uid) return;
+        if (pushRegisteredRef.current === authContext.user.uid) return;
 
         // Determine if we can find their specific profile document in cadets or staff
         let userProfile = null;
@@ -758,13 +759,15 @@ export function Dashboard() {
         const collectionName = userRole === 'cadet' ? 'cadets' : (userRole === 'admin' || userRole === 'officer' ? 'staff' : 'users');
         const docId = userProfile?.id || authContext.user.uid;
 
+        pushRegisteredRef.current = authContext.user.uid;
+
         // Delay slightly to avoid race with service worker registration
         const timer = setTimeout(() => {
             requestNotificationPermission(docId, collectionName);
         }, 3000);
         
         return () => clearTimeout(timer);
-    }, [loading, userRole, authContext.user, userEnrollmentId, cadets, staff]);
+    }, [loading, authContext.user?.uid, userRole, userEnrollmentId, cadets, staff]);
 
     // ── Foreground Push: show toast & OS notification when app is open ───────
     useEffect(() => {

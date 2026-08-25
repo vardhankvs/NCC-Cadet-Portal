@@ -42,16 +42,18 @@ const waitForSW = async (timeoutMs = 10000) => {
  */
 export const requestNotificationPermission = async (userId, collectionName = 'cadets') => {
     try {
-        if (!messaging) {
-            console.warn('FCM: Firebase Messaging is not supported in this browser.');
+        if (!messaging || typeof window === 'undefined' || !('Notification' in window)) {
+            return null;
+        }
+
+        // If permission was already denied by the user, return early silently
+        if (Notification.permission === 'denied') {
             return null;
         }
 
         // Step 1 — request permission
         const permission = await Notification.requestPermission();
-        console.log('FCM: Notification permission status:', permission);
         if (permission !== 'granted') {
-            console.warn('FCM: Permission denied (notifications blocked or dismissed by user).');
             return null;
         }
 

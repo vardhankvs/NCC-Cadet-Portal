@@ -392,7 +392,7 @@ export const CertificateGenerator = ({ initialCertFilter = 'All' }) => {
                     const summary = attendanceData?.individualSummaries?.find(s => s.id === c.id);
                     const attendancePercentage = summary ? summary.percentage : 0;
                     const cadetWithAtt = { ...c, attendancePercentage };
-                    return checkCadetEligibility(cadetWithAtt, minAttendanceLimit).eligible;
+                    return checkCadetEligibility(cadetWithAtt, minAttendanceB, minAttendanceC).eligible;
                 });
                 if (collegeCadets.length > 0) {
                     const batchLimit = 400; // safety limit under Firestore's 500 max writes
