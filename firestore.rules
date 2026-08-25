@@ -74,7 +74,42 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // 8. All other collections (Recursive Match for sub-collections like /messages)
+    // 8. Cadet Delegated Submissions Workflow
+    match /artifacts/{appId}/public/data/cadet_delegated_submissions/{docId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // 9. Operational & Training Collections
+    match /artifacts/{appId}/public/data/camps/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /artifacts/{appId}/public/data/inventory/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /artifacts/{appId}/public/data/inventoryLogs/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /artifacts/{appId}/public/data/social_activities/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /artifacts/{appId}/public/data/leave_requests/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /artifacts/{appId}/public/data/materials/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /artifacts/{appId}/public/data/references/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // 10. All other collections
     match /artifacts/{appId}/public/data/{collection}/{document=**} {
       allow read, write: if request.auth != null;
     }

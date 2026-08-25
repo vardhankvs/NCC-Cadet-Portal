@@ -163,7 +163,13 @@ export const executeLiveTaskAction = async (moduleId, actionType, payload, targe
             if (actionType === 'delete' && targetDocId) {
                 await deleteItem('camps', targetDocId);
             } else if (payload.action === 'add_candidates' && payload.campId) {
-                await addCadetsToCampBulk(payload.campId, payload.cadetIds, payload.status || 'Selected');
+                let toAdd = payload.cadetsToAdd;
+                if (!toAdd || !Array.isArray(toAdd) || toAdd.length === 0) {
+                    const cadetsRef = getCollectionRef('cadets');
+                    const snaps = await Promise.all((payload.cadetIds || []).map(id => getDoc(doc(cadetsRef, id))));
+                    toAdd = snaps.filter(s => s.exists()).map(s => ({ id: s.id, ...s.data() }));
+                }
+                await addCadetsToCampBulk(payload.campId, toAdd, payload.status || 'Selected');
             } else if (payload.action === 'update_roster_status' && payload.campId) {
                 await updateCampRoster(payload.campId, payload.cadetId, payload.status);
             } else if (payload.action === 'log_achievement' && payload.campId) {
@@ -390,37 +396,37 @@ export const useDelegatedSubmissions = (institutionId, cadetEnrollmentId = null)
             return;
         }
 
-        let q;
-        if (cadetEnrollmentId) {
-            // Cadet-specific queries (shows their own submissions)
-            q = query(
-                colRef,
-                where('cadetEnrollmentId', '==', cadetEnrollmentId)
-            );
-        } else if (institutionId && institutionId !== '14a-bn-srikakulam') {
-            // Institution ANO queries
-            q = query(
-                colRef,
-                where('institutionId', '==', institutionId)
-            );
-        } else {
-            // General query
-            q = colRef;
-        }
-
         const unsubscribe = onSnapshot(
-            q,
+            colRef,
             (snapshot) => {
-                const list = snapshot.docs.map((docSnap) => ({
+                let list = snapshot.docs.map((docSnap) => ({
                     id: docSnap.id,
                     ...docSnap.data()
                 }));
-                // Client-side sort by updatedAt descending (avoids composite index requirement)
+
+                // 1. If cadet enrollment ID is specified, show only their submissions
+                if (cadetEnrollmentId) {
+                    const cadetNorm = cadetEnrollmentId.trim().toUpperCase();
+                    list = list.filter((s) => {
+                        const sCadet = (s.cadetEnrollmentId || '').trim().toUpperCase();
+                        return sCadet === cadetNorm;
+                    });
+                } else if (institutionId && institutionId !== '14a-bn-srikakulam' && institutionId !== 'battalion' && institutionId !== 'All') {
+                    // 2. Institution ANO queries: Match institution or allow general/default submissions
+                    const targetInst = institutionId.trim().toLowerCase();
+                    list = list.filter((s) => {
+                        const sInst = (s.institutionId || '').trim().toLowerCase();
+                        return !sInst || sInst === targetInst || sInst === '14a-bn-srikakulam' || sInst === 'all';
+                    });
+                }
+
+                // Client-side sort by updatedAt descending
                 list.sort((a, b) => {
                     const tA = a.updatedAt?.toMillis?.() || (a.updatedAt ? new Date(a.updatedAt).getTime() : 0);
                     const tB = b.updatedAt?.toMillis?.() || (b.updatedAt ? new Date(b.updatedAt).getTime() : 0);
                     return tB - tA;
                 });
+
                 setSubmissions(list);
                 setLoading(false);
             },

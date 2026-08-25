@@ -498,7 +498,8 @@ export function Dashboard() {
         });
     }, [staff]);
 
-    const defaultTab = (userRole === 'admin' || userRole === 'superadmin' || userRole === 'battalion_admin') ? 'analytics' : 'profile';
+    const isAdminRole = userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin' || userRole === 'battalion_admin';
+    const defaultTab = isAdminRole ? 'analytics' : 'profile';
 
     // ── Read initial tab from URL (supports deep-linking & page refresh) ──
     // NOTE: adminTabs/cadetTabs are not available here (defined via useMemo below),
@@ -510,9 +511,22 @@ export function Dashboard() {
 
     const [activeTab, setActiveTab] = useState(getTabFromUrl);
 
+    // Current Cadet details
+    const currentCadet = useMemo(() => {
+        if (isAdminRole) return null;
+        return (cadets || []).find((c) => c.enrollmentId === userEnrollmentId);
+    }, [cadets, isAdminRole, userEnrollmentId]);
+
+    // Effective Delegations (from user doc or cadet doc)
+    const effectiveDelegatedModules = useMemo(() => {
+        const fromUser = userDelegatedModules || [];
+        const fromCadet = currentCadet?.delegatedModules || [];
+        return Array.from(new Set([...fromUser, ...fromCadet]));
+    }, [userDelegatedModules, currentCadet]);
+
     // AuthContext to pass down dynamically
     const authContext = useAuthContext();
-    const isDelegatedAdmin = userRole !== 'admin' && activeTab.startsWith('admin_') && (userDelegatedModules || []).includes(activeTab.replace('admin_', ''));
+    const isDelegatedAdmin = !isAdminRole && activeTab.startsWith('admin_');
     const delegatedModuleId = activeTab.startsWith('admin_') ? activeTab.replace('admin_', '') : null;
 
     const overriddenAuth = useMemo(() => {
@@ -964,8 +978,6 @@ export function Dashboard() {
         [newAnnouncementCount]
     );
 
-    const isAdminRole = userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin' || userRole === 'battalion_admin';
-
     const baseTabs = useMemo(() => {
         let tabs = isAdminRole ? [...adminTabs] : [...cadetTabs];
 
@@ -981,15 +993,19 @@ export function Dashboard() {
         }
 
         // Inject Delegated Roles
-        if (!isAdminRole && userDelegatedModules && userDelegatedModules.length > 0) {
-            const delegatedTabs = adminTabs.filter(t => userDelegatedModules.includes(t.id));
+        if (!isAdminRole && effectiveDelegatedModules && effectiveDelegatedModules.length > 0) {
+            const delegatedTabs = adminTabs.filter(t => effectiveDelegatedModules.includes(t.id));
             if (delegatedTabs.length > 0) {
-                delegatedTabs.forEach(t => { tabs.push({ ...t, id: 'admin_' + t.id, category: 'Admin Access' }); });
+                delegatedTabs.forEach(t => { 
+                    if (!tabs.some(existing => existing.id === 'admin_' + t.id)) {
+                        tabs.push({ ...t, id: 'admin_' + t.id, category: 'Admin Access' }); 
+                    }
+                });
             }
         }
 
         return tabs;
-    }, [newAnnouncementCount, adminTabs, cadetTabs, isAdminRole, userDelegatedModules, userRole]);
+    }, [newAnnouncementCount, adminTabs, cadetTabs, isAdminRole, effectiveDelegatedModules, userRole]);
 
     const availableTabs = baseTabs;
 
@@ -1023,12 +1039,6 @@ export function Dashboard() {
         return () => window.removeEventListener('popstate', handlePopState);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userRole]);
-
-
-    const currentCadet = useMemo(() => {
-        if (isAdminRole) return null;
-        return cadets.find((c) => c.enrollmentId === userEnrollmentId);
-    }, [cadets, isAdminRole, userEnrollmentId]);
 
     const initials = useMemo(() => {
         const name = isAdminRole ? (userRole === 'officer' ? 'Officer' : 'Admin') : (currentCadet?.name || 'Cadet');
@@ -1071,7 +1081,7 @@ export function Dashboard() {
                 {renderTab === 'attendance'    && <AttendanceTracker cadets={cadets} />}
                 {renderTab === 'summary'       && <AttendanceSummary summaryData={attendanceData} />}
                 {renderTab === 'discipline'        && <DisciplineView />}
-                {renderTab === 'delegations'       && <DutyRoster />}
+                {renderTab === 'delegations'       && <DutyRoster initialSubTab={new URLSearchParams(window.location.search).get('subtab')} />}
                 {renderTab === 'inventory'         && <InventoryView />}
                 {renderTab === 'fee'           && <FeeManagementView />}
                 {renderTab === 'events'        && <EventsView events={events} />}
