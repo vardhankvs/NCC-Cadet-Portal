@@ -314,7 +314,25 @@ export const executeLiveTaskAction = async (moduleId, actionType, payload, targe
         case 'summary':
         case 'parade':
         case 'att_logs': {
-            if (payload.cadetId && payload.date && payload.status) {
+            if (payload.action === 'bulk_mark_present' && Array.isArray(payload.cadetIds) && payload.date) {
+                for (const cadetId of payload.cadetIds) {
+                    await recordAttendance(cadetId, payload.date, payload.status || 'Present', 'ANO Verified Bulk Delegation', institutionId);
+                }
+            } else if (payload.action === 'delete_attendance_log' && payload.cadetId && payload.date) {
+                await recordAttendance(payload.cadetId, payload.date, 'Absent', 'ANO Verified Removal', institutionId);
+                if (targetDocId && !targetDocId.startsWith('vlog-')) {
+                    await deleteItem('attendance', targetDocId).catch(() => {});
+                }
+            } else if (payload.action === 'bulk_delete_attendance' && Array.isArray(payload.items)) {
+                for (const item of payload.items) {
+                    if (item.cadetId && item.date) {
+                        await recordAttendance(item.cadetId, item.date, 'Absent', 'ANO Verified Removal', institutionId);
+                        if (item.logId && !item.logId.startsWith('vlog-')) {
+                            await deleteItem('attendance', item.logId).catch(() => {});
+                        }
+                    }
+                }
+            } else if (payload.cadetId && payload.date && payload.status) {
                 await recordAttendance(payload.cadetId, payload.date, payload.status, 'ANO Verified Delegation', institutionId);
             }
             break;

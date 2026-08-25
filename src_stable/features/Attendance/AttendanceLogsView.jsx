@@ -13,7 +13,7 @@ import { sendPushToCadets } from '../../firebase/pushNotifications.js';
 
 export const AttendanceLogsView = () => {
     const { cadets, allCadets } = useDataContext();
-    const { userRole, userInstitutionId } = useAuthContext();
+    const { userRole, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
     const cadetRoster = (allCadets && allCadets.length > 0) ? allCadets : (cadets || []);
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -128,6 +128,44 @@ export const AttendanceLogsView = () => {
         if (selectedCadetIds.length === 0) return toast.error("Please select at least one cadet.");
         
         setMarking(true);
+
+        // If performing action under delegated cadet access, route to ANO verification
+        if (userRole === 'cadet') {
+            try {
+                const selectedNames = selectedCadetIds.map(id => {
+                    const c = cadets.find(x => x.id === id);
+                    return c ? `${c.name} (${c.enrollmentId})` : id;
+                });
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'att_logs',
+                    moduleName: 'Attendance Scan Logs',
+                    actionType: 'create',
+                    title: `Mark Attendance for ${selectedCadetIds.length} Cadet(s) on ${manualDate}`,
+                    payload: {
+                        action: 'bulk_mark_present',
+                        date: manualDate,
+                        cadetIds: selectedCadetIds,
+                        cadetNames: selectedNames,
+                        status: 'Present'
+                    }
+                });
+                toast.success(`Attendance for ${selectedCadetIds.length} cadet(s) submitted for ANO verification!`);
+                setShowManualMark(false);
+                setSelectedCadetIds([]);
+            } catch (err) {
+                console.error("Delegated bulk mark error:", err);
+                toast.error("Failed to submit attendance: " + err.message);
+            } finally {
+                setMarking(false);
+            }
+            return;
+        }
+
         try {
             const attRef = getCollectionRef('attendance');
             const cadetsRef = getCollectionRef('cadets');
@@ -221,6 +259,36 @@ export const AttendanceLogsView = () => {
         const logToDelete = logs.find(l => l.id === id);
         if (!logToDelete) return;
 
+        // If performing deletion under delegated cadet access, route to ANO verification
+        if (userRole === 'cadet') {
+            try {
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'att_logs',
+                    moduleName: 'Attendance Scan Logs',
+                    actionType: 'delete',
+                    targetDocId: logToDelete.id,
+                    title: `Mark Absent (Remove Attendance) for ${logToDelete.cadetName || logToDelete.enrollmentId} on ${logToDelete.date}`,
+                    payload: {
+                        action: 'delete_attendance_log',
+                        logId: logToDelete.id,
+                        cadetId: logToDelete.cadetId,
+                        cadetName: logToDelete.cadetName,
+                        enrollmentId: logToDelete.enrollmentId,
+                        date: logToDelete.date
+                    }
+                });
+                toast.success("Attendance removal request submitted for ANO verification!");
+            } catch (err) {
+                toast.error("Failed to submit attendance removal: " + err.message);
+            }
+            return;
+        }
+
         try {
             // 1. Remove from Cadet document attendance map (inspect for any date format key variants)
             if (logToDelete.cadetId) {
@@ -298,6 +366,36 @@ export const AttendanceLogsView = () => {
         if (!window.confirm(`Are you sure you want to delete ${selectedHistoryIds.length} records?`)) return;
         
         setLoading(true);
+
+        // If performing bulk deletion under delegated cadet access, route to ANO verification
+        if (userRole === 'cadet') {
+            try {
+                const selectedLogs = logs.filter(l => selectedHistoryIds.includes(l.id));
+                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
+                await submitDelegatedTask({
+                    institutionId: userInstitutionId,
+                    cadetEnrollmentId: userEnrollmentId,
+                    cadetName: userName,
+                    cadetUid: user?.uid,
+                    moduleId: 'att_logs',
+                    moduleName: 'Attendance Scan Logs',
+                    actionType: 'delete',
+                    title: `Bulk Remove Attendance for ${selectedHistoryIds.length} Cadet Record(s)`,
+                    payload: {
+                        action: 'bulk_delete_attendance',
+                        logIds: selectedHistoryIds,
+                        items: selectedLogs.map(l => ({ logId: l.id, cadetId: l.cadetId, date: l.date, name: l.cadetName, enrollmentId: l.enrollmentId }))
+                    }
+                });
+                toast.success(`Bulk attendance removal for ${selectedHistoryIds.length} records submitted for ANO verification!`);
+                setSelectedHistoryIds([]);
+            } catch (err) {
+                toast.error("Failed to submit bulk removal: " + err.message);
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
         try {
             const cadetsRef = getCollectionRef('cadets');
             const attRef = getCollectionRef('attendance');
