@@ -40,11 +40,20 @@ export const AnoTaskVerificationHub = ({ institutionId, anoName = 'Institution A
         return { pending, changesReq, approved, rejected, uniqueCadets, total: submissions.length };
     }, [submissions]);
 
-    // Available modules in current submissions
-    const availableModules = useMemo(() => {
-        const set = new Set(submissions.map(s => s.moduleId).filter(Boolean));
-        return Array.from(set);
-    }, [submissions]);
+    // All Chain of Command delegable modules list
+    const allModulesList = useMemo(() => {
+        const definedKeys = Object.keys(MODULE_NAMES);
+        const dynamicKeys = submissions.map(s => s.moduleId).filter(Boolean);
+        const combined = Array.from(new Set([...definedKeys, ...dynamicKeys]));
+        return combined.map(id => {
+            const count = submissions.filter(s => s.moduleId === id && (statusFilter === 'All' || s.status === statusFilter)).length;
+            return {
+                id,
+                name: MODULE_NAMES[id] || id.replace(/_/g, ' ').replace(/^./, str => str.toUpperCase()),
+                count
+            };
+        });
+    }, [submissions, statusFilter]);
 
     // Filtered submissions
     const filteredSubmissions = useMemo(() => {
@@ -145,14 +154,14 @@ export const AnoTaskVerificationHub = ({ institutionId, anoName = 'Institution A
                     }`}
                 >
                     <div className="flex items-center justify-between">
-                        <span className={`text-[10px] font-black uppercase tracking-widest ${statusFilter === 'All' ? 'text-white/70' : 'text-gray-400'}`}>
+                        <span className={`text-[10px] font-black uppercase tracking-widest ${statusFilter === 'All' ? 'text-ncc-gold' : 'text-gray-400'}`}>
                             Total Handled
                         </span>
-                        <Shield className={`w-4 h-4 ${statusFilter === 'All' ? 'text-ncc-gold' : 'text-ncc-gold'}`} />
+                        <Shield className={`w-4 h-4 ${statusFilter === 'All' ? 'text-ncc-gold' : 'text-ncc-navy'}`} />
                     </div>
                     <div className="mt-2 flex items-baseline gap-2">
                         <span className="text-2xl sm:text-3xl font-black font-display">{stats.total}</span>
-                        <span className={`text-xs ${statusFilter === 'All' ? 'text-white/70' : 'text-gray-500'}`}>All Submissions</span>
+                        <span className={`text-xs ${statusFilter === 'All' ? 'text-gray-300' : 'text-gray-500'}`}>All Submissions</span>
                     </div>
                 </div>
             </div>
@@ -176,10 +185,10 @@ export const AnoTaskVerificationHub = ({ institutionId, anoName = 'Institution A
                         onChange={e => setModuleFilter(e.target.value)}
                         className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-2xl py-2.5 px-3 text-xs font-bold text-ncc-navy dark:text-white focus:outline-none focus:ring-2 focus:ring-ncc-navy"
                     >
-                        <option value="All">All Modules</option>
-                        {availableModules.map(modId => (
-                            <option key={modId} value={modId}>
-                                {MODULE_NAMES[modId] || modId}
+                        <option value="All">All Modules ({submissions.filter(s => statusFilter === 'All' || s.status === statusFilter).length})</option>
+                        {allModulesList.map(mod => (
+                            <option key={mod.id} value={mod.id}>
+                                {mod.name} {mod.count > 0 ? `(${mod.count})` : ''}
                             </option>
                         ))}
                     </select>
