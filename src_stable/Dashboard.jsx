@@ -480,7 +480,16 @@ export function Dashboard() {
 
     const battalionStaff = useMemo(() => {
         if (!Array.isArray(staff)) return [];
-        return staff.filter(s => s && s.name && s.rank);
+        return staff.filter(s => {
+            if (!s || !s.name || !s.rank) return false;
+            // Exclude College ANO records from Battalion Staff
+            if (s.category === 'ano' || s.role === 'ano' || s.staffType === 'ano') return false;
+            const inst = (s.institutionId || '').trim().toLowerCase();
+            if (inst && inst !== '14a-bn-srikakulam' && inst !== 'battalion' && inst !== '14a' && inst !== 'unit') {
+                return false;
+            }
+            return true;
+        });
     }, [staff]);
 
     const defaultTab = (userRole === 'admin' || userRole === 'superadmin' || userRole === 'battalion_admin') ? 'analytics' : 'profile';
@@ -821,7 +830,7 @@ export function Dashboard() {
                 { id: 'selection_process',  name: 'Selection Process', category: 'Administration', icon: UserCheck },
                 { id: 'alumni',             name: 'Alumni',         category: 'Administration', icon: GraduationCap },
 
-                { id: 'staff',              name: 'Staff',          category: 'Administration', icon: User },
+                { id: 'staff',              name: 'Battalion Staff', category: 'Administration', icon: User },
                 { id: 'profile',            name: 'My Profile',     category: 'Administration', icon: User },
 
                 // Logistics & Operations
@@ -886,7 +895,7 @@ export function Dashboard() {
             { id: 'hierarchy',         name: 'Unit Hierarchy', category: 'Intelligence', icon: Users },
             { id: 'honour',            name: 'Honour Roll',    category: 'Intelligence', icon: Medal },
             { id: 'hall_of_fame',      name: 'Unit Excellence',category: 'Intelligence', icon: Trophy },
-            { id: 'staff',             name: 'Staff',          category: 'Intelligence', icon: UserCheck },
+            { id: 'staff',             name: 'Battalion Staff',category: 'Intelligence', icon: UserCheck },
             { id: 'alumni',            name: 'Alumni',         category: 'Intelligence', icon: GraduationCap },
 
             // Academics & Training

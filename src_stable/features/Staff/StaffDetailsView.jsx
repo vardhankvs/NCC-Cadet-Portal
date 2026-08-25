@@ -11,10 +11,9 @@ import { db, appId } from '../../firebase/config';
 import { collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { Briefcase, Plus, User, Edit, Trash2, ChevronUp, ChevronDown } from '../../components/Icons.jsx';
 
-const StaffMemberCard = ({ member, onSelect, onEdit, onDelete, onMove, userRole, isFirst, isLast }) => {
+const StaffMemberCard = ({ member, onSelect, onEdit, onDelete, onMove, isWriteAllowed, isFirst, isLast }) => {
     const [imageError, setImageError] = useState(false);
     useEffect(() => { setImageError(false); }, [member.photoUrl]);
-    const isWriteAllowed = userRole === 'superadmin' || userRole === 'battalion_admin' || userRole === 'admin' || userRole === 'officer';
 
     return (
         <div 
@@ -59,17 +58,30 @@ const StaffMemberCard = ({ member, onSelect, onEdit, onDelete, onMove, userRole,
 };
 
 export const StaffDetailsView = ({ staff }) => {
-    const { userRole } = useAuthContext();
+    const { userRole, userInstitutionId } = useAuthContext();
     const [isAddingStaff, setIsAddingStaff] = useState(false);
     const [editingStaff, setEditingStaff] = useState(null);
     const [selectedStaff, setSelectedStaff] = useState(null);
     const [itemToDelete, setItemToDelete] = useState(null);
     const [error, setError] = useState(null);
 
-    const isWriteAllowed = userRole === 'superadmin' || userRole === 'battalion_admin' || userRole === 'admin' || userRole === 'officer';
+    // Strictly Battalion Admin only (NOT ANOs / College Officers)
+    const isBattalionAdmin = (userRole === 'superadmin' || userRole === 'battalion_admin' || userRole === 'admin') && 
+                            (!userInstitutionId || userInstitutionId === '14a-bn-srikakulam' || userInstitutionId === 'battalion');
+
+    const isWriteAllowed = isBattalionAdmin;
 
     const sortedStaff = useMemo(() => {
-        const validStaff = (staff || []).filter(s => s && s.name && s.rank);
+        const validStaff = (staff || []).filter(s => {
+            if (!s || !s.name || !s.rank) return false;
+            // Exclude College ANOs from Battalion Staff directory
+            if (s.category === 'ano' || s.role === 'ano' || s.staffType === 'ano') return false;
+            const inst = (s.institutionId || '').trim().toLowerCase();
+            if (inst && inst !== '14a-bn-srikakulam' && inst !== 'battalion' && inst !== '14a' && inst !== 'unit') {
+                return false;
+            }
+            return true;
+        });
         return [...validStaff].sort((a, b) => { 
             const pa = a.priority ?? 999, pb = b.priority ?? 999; 
             return pa !== pb ? pa - pb : (a.name || '').localeCompare(b.name || ''); 
@@ -143,9 +155,12 @@ export const StaffDetailsView = ({ staff }) => {
                             <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 shadow-inner">
                                 <Briefcase className="w-7 h-7 text-ncc-gold" />
                             </div>
-                            <h2 className="text-3xl sm:text-4xl font-display font-black text-white tracking-tight">Staff Directory</h2>
+                            <div>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-ncc-gold">14(A) BN NCC HEADQUARTERS</span>
+                                <h2 className="text-3xl sm:text-4xl font-display font-black text-white tracking-tight">Battalion Staff Directory</h2>
+                            </div>
                         </div>
-                        <p className="text-white/70 text-sm sm:text-base font-medium max-w-xl">Meet the dedicated officers and staff who lead and support our unit.</p>
+                        <p className="text-white/70 text-sm sm:text-base font-medium max-w-xl">Meet the dedicated officers, JCOs, NCOs, and PI staff who lead and support our unit headquarters.</p>
                     </div>
                     {isWriteAllowed && (
                         <div className="relative z-10 mt-6 sm:mt-0">
@@ -161,7 +176,10 @@ export const StaffDetailsView = ({ staff }) => {
                     {sortedStaff.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-20 bg-white/40 dark:bg-white/5 rounded-[2.5rem] border border-dashed border-gray-300 dark:border-white/20 animate-fadeIn">
                             <Briefcase className="w-16 h-16 text-gray-300 dark:text-white/20 mb-4" />
-                            <p className="text-gray-500 dark:text-white/60 font-medium text-lg">No staff members listed yet.</p>
+                            <p className="text-gray-500 dark:text-white/60 font-medium text-lg">No battalion staff members listed yet.</p>
+                            {isWriteAllowed && (
+                                <p className="text-xs text-ncc-gold mt-2">Click "Add Staff Member" above to register 14(A) BN NCC PI staff & officers.</p>
+                            )}
                         </div>
                     ) : (
                         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -169,7 +187,7 @@ export const StaffDetailsView = ({ staff }) => {
                                 <StaffMemberCard key={member.id} member={member} isFirst={index === 0} isLast={index === sortedStaff.length - 1}
                                     onSelect={setSelectedStaff}
                                     onMove={handleMoveStaff} onEdit={(m) => { setEditingStaff(m); setError(null); }}
-                                    onDelete={(item) => { setItemToDelete(item); setError(null); }} userRole={userRole} />
+                                    onDelete={(item) => { setItemToDelete(item); setError(null); }} isWriteAllowed={isWriteAllowed} />
                             ))}
                         </div>
                     )}

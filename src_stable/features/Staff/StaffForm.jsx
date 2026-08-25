@@ -298,6 +298,9 @@ export const StaffForm = ({ currentStaff, onSaveSuccess, onCancel, targetInstitu
                 photoUrl: uploadedPhotoUrl || '',
                 priority: currentStaff?.priority ?? 999,
                 institutionId: effectiveInstitutionId,
+                category: isBattalionStaff ? 'battalion_staff' : 'ano',
+                role: isBattalionStaff ? 'battalion_staff' : 'ano',
+                staffType: isBattalionStaff ? 'battalion_staff' : 'ano',
             };
 
             await saveStaff(payload, currentStaff?.id);
