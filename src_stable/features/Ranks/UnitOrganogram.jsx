@@ -13,16 +13,13 @@ import {
     Layers, 
     Grid, 
     RefreshCcw, 
-    Trash2, 
     CheckCircle, 
-    LifeBuoy,
     GraduationCap,
     Sparkles
 } from '../../components/Icons.jsx';
 import { LoadingIndicator } from '../../components/ui/LoadingIndicator.jsx';
 import { formatDate } from '../../utils/dateUtils.js';
 import { CadetProfileModal } from './CadetProfileModal.jsx';
-import { deduplicateCadets, rescueCadets } from '../../firebase/firestoreService';
 
 // ─── Rank Definition & Hierarchy Configuration ──────────────────────────────
 const RANK_HIERARCHY = [
@@ -286,8 +283,6 @@ export const UnitOrganogram = ({ initialFilter = 'All', initialDivFilter = 'All'
     const [searchQuery, setSearchQuery] = useState('');
     const [viewLayout, setViewLayout] = useState('pyramid'); // 'pyramid' | 'grid'
     
-    const [cleaning, setCleaning] = useState(false);
-    const [cleanResult, setCleanResult] = useState(null);
     const { userInstitutionId, userRole } = useAuthContext();
     const isAdmin = Boolean(userRole && userRole.toLowerCase() !== 'cadet');
 
@@ -366,35 +361,7 @@ export const UnitOrganogram = ({ initialFilter = 'All', initialDivFilter = 'All'
         return { total, apex, seniorNcos, juniorNcos, baseCadets };
     }, [groupedCadets]);
 
-    const handleCleanDuplicates = async () => {
-        if (!confirm('This will find and merge duplicate cadet records. Continue?')) return;
-        setCleaning(true);
-        try {
-            const result = await deduplicateCadets();
-            setCleanResult(`Merged ${result.removedCount} duplicates across ${result.totalScanned} records!`);
-            setTimeout(() => setCleanResult(null), 5000);
-        } catch (err) {
-            console.error('Deduplication failed:', err);
-            alert('Cleanup failed: ' + err.message);
-        } finally {
-            setCleaning(false);
-        }
-    };
 
-    const handleRescue = async () => {
-        if (!confirm('This will force-restore all cadets to the default unit. Continue?')) return;
-        setCleaning(true);
-        try {
-            const count = await rescueCadets();
-            alert(`Rescued ${count} cadets! Refreshing...`);
-            window.location.reload();
-        } catch (err) {
-            console.error('Rescue failed:', err);
-            alert('Rescue failed: ' + err.message);
-        } finally {
-            setCleaning(false);
-        }
-    };
 
     if (loading) return <div className="p-20 text-center"><LoadingIndicator /></div>;
 
@@ -433,47 +400,30 @@ export const UnitOrganogram = ({ initialFilter = 'All', initialDivFilter = 'All'
                             </p>
                         </div>
 
-                        {/* View Switcher & Actions */}
-                        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
-                            <div className="flex bg-[#f5f0e8] dark:bg-[#0a1628] p-1 sm:p-1.5 rounded-2xl border border-[#ddd8cc] dark:border-white/10">
-                                <button
-                                    onClick={() => setViewLayout('pyramid')}
-                                    className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all ${
-                                        viewLayout === 'pyramid'
-                                            ? 'bg-ncc-navy text-white dark:bg-ncc-gold dark:text-ncc-navy shadow-md'
-                                            : 'text-gray-600 dark:text-white/70 hover:text-ncc-navy dark:hover:text-white'
-                                    }`}
-                                >
-                                    <Layers className="w-3.5 h-3.5" />
-                                    Pyramid Tree
-                                </button>
-                                <button
-                                    onClick={() => setViewLayout('grid')}
-                                    className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all ${
-                                        viewLayout === 'grid'
-                                            ? 'bg-ncc-navy text-white dark:bg-ncc-gold dark:text-ncc-navy shadow-md'
-                                            : 'text-gray-600 dark:text-white/70 hover:text-ncc-navy dark:hover:text-white'
-                                    }`}
-                                >
-                                    <Grid className="w-3.5 h-3.5" />
-                                    Tier Grid
-                                </button>
-                            </div>
-
-                            {/* Admin Duplicate Clean / Rescue Controls */}
-                            {isAdmin && (
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={handleCleanDuplicates}
-                                        disabled={cleaning}
-                                        className="px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold bg-ncc-red/10 text-ncc-red hover:bg-ncc-red hover:text-white border border-ncc-red/20 transition-all flex items-center gap-1.5 shadow-sm"
-                                        title="Clean redundant cadet duplicates safely"
-                                    >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                        {cleaning ? 'Cleaning...' : 'Deduplicate'}
-                                    </button>
-                                </div>
-                            )}
+                        {/* View Switcher */}
+                        <div className="flex bg-[#f5f0e8] dark:bg-[#0a1628] p-1 sm:p-1.5 rounded-2xl border border-[#ddd8cc] dark:border-white/10">
+                            <button
+                                onClick={() => setViewLayout('pyramid')}
+                                className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all ${
+                                    viewLayout === 'pyramid'
+                                        ? 'bg-ncc-navy text-white dark:bg-ncc-gold dark:text-ncc-navy shadow-md'
+                                        : 'text-gray-600 dark:text-white/70 hover:text-ncc-navy dark:hover:text-white'
+                                }`}
+                            >
+                                <Layers className="w-3.5 h-3.5" />
+                                Pyramid Tree
+                            </button>
+                            <button
+                                onClick={() => setViewLayout('grid')}
+                                className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all ${
+                                    viewLayout === 'grid'
+                                        ? 'bg-ncc-navy text-white dark:bg-ncc-gold dark:text-ncc-navy shadow-md'
+                                        : 'text-gray-600 dark:text-white/70 hover:text-ncc-navy dark:hover:text-white'
+                                }`}
+                            >
+                                <Grid className="w-3.5 h-3.5" />
+                                Tier Grid
+                            </button>
                         </div>
                     </div>
 
