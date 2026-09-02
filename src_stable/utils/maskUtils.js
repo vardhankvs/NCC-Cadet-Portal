@@ -43,15 +43,15 @@ export const maskBloodGroup = (val) => {
 export const getMaskedCadet = (cadet, currentUserRole, currentUserEnrollmentId) => {
     if (!cadet) return null;
     
-    // Only Battalion Admin & Superadmin see unmasked personal details across all cadets
-    const isSuperOrBattalionAdmin = ['superadmin', 'battalion_admin'].includes((currentUserRole || '').toLowerCase());
+    // Officers, Unit Admins, ANOs, Superadmins, Battalion Admins see unmasked details
+    const isOfficerOrAdmin = ['admin', 'officer', 'ano', 'superadmin', 'battalion_admin'].includes((currentUserRole || '').toLowerCase());
     
     // Check if the current user is the cadet themselves
     const isSelf = currentUserRole === 'cadet' && 
         String(cadet.enrollmentId || cadet.regimentalNumber || '').trim().toLowerCase() === 
         String(currentUserEnrollmentId || '').trim().toLowerCase();
 
-    if (isSuperOrBattalionAdmin || isSelf) {
+    if (isOfficerOrAdmin || isSelf) {
         return cadet;
     }
     

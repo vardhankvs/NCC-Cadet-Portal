@@ -5,6 +5,7 @@ import { Download, Loader, ShieldCheck, User } from '../../components/Icons.jsx'
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { toast } from 'react-toastify';
+import nccLogo from '../../assets/ncc_logo.png';
 
 export const IDCardGenerator = ({ cadet }) => {
     const cardRef = useRef(null);
@@ -35,7 +36,7 @@ export const IDCardGenerator = ({ cadet }) => {
 
     if (!cadet) return null;
 
-    const officialLogo = "/src/assets/ncc_logo.jpg";
+    const officialLogo = nccLogo;
 
     return (
         <div className="flex flex-col items-center gap-6">

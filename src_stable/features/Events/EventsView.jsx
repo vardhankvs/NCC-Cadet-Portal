@@ -10,7 +10,7 @@ import { ConfirmationModal } from '../../components/ui/ConfirmationModal.jsx';
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay.jsx';
 import { deleteItem } from '../../firebase/firestoreService.js';
 import { Megaphone, Plus, ImageIcon, Edit, Trash2, List } from '../../components/Icons.jsx';
-import { formatDate } from '../../utils/dateUtils.js';
+import { formatDate, isEventPast, getEventEndDateTime, getEventDisplayDate } from '../../utils/dateUtils.js';
 import { toast } from 'react-toastify';
 
 
@@ -28,9 +28,18 @@ export const EventsView = ({ events }) => {
     const [itemToDelete, setItemToDelete] = useState(null);
     const [error, setError] = useState(null);
 
-    const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
-    const upcomingEvents = useMemo(() => events.filter((e) => e.date && e.date >= today).sort((a, b) => (a.date?.getTime() || 0) - (b.date?.getTime() || 0)), [events, today]);
-    const pastEvents = useMemo(() => events.filter((e) => e.date && e.date < today).sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0)), [events, today]);
+    const now = new Date();
+    const upcomingEvents = useMemo(() => {
+        return (events || [])
+            .filter((e) => !isEventPast(e, now))
+            .sort((a, b) => getEventEndDateTime(a).getTime() - getEventEndDateTime(b).getTime());
+    }, [events]);
+
+    const pastEvents = useMemo(() => {
+        return (events || [])
+            .filter((e) => isEventPast(e, now))
+            .sort((a, b) => getEventEndDateTime(b).getTime() - getEventEndDateTime(a).getTime());
+    }, [events]);
 
     const handleModalClose = () => { setIsAddingEvent(false); setEditingEvent(null); setItemToDelete(null); setViewingGalleryEvent(null); setManagingRosterEventId(null); setError(null); };
     const handleDeleteConfirm = async () => {
@@ -46,9 +55,9 @@ export const EventsView = ({ events }) => {
                 <div className="col-span-full text-center py-20 text-gray-400 dark:text-white/80 italic">No events found.</div>
             ) : eventList.map((event) => {
                 const myStatus = event.attendeeStatus?.[currentCadetId];
-                const isPast = event.date < today;
+                const isPast = isEventPast(event, now);
                 const confirmedCount = Object.values(event.attendeeStatus || {}).filter((s) => s === 'confirmed').length;
-                const eventDate = new Date(event.date);
+                const eventDate = getEventDisplayDate(event.date || event.startDate);
                 const month = eventDate.toLocaleString('default', { month: 'short' }).toUpperCase();
                 const day = eventDate.getDate();
 

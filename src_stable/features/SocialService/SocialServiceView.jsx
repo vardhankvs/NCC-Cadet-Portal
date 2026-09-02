@@ -13,7 +13,10 @@ import {
     X as XIcon,
     AlertCircle,
     Camera,
-    Edit
+    Edit,
+    Filter,
+    Check,
+    ChevronDown
 } from '../../components/Icons.jsx';
 import { SocialGalleryModal } from './SocialGalleryModal.jsx';
 
@@ -48,17 +51,9 @@ export const SocialServiceView = () => {
     const [vmFilterDiv, setVmFilterDiv] = useState('All');
     const [vmFilterCert, setVmFilterCert] = useState('All');
     const [activeGallery, setActiveGallery] = useState(null);
+    const [selectedTypes, setSelectedTypes] = useState([]);
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-
-    const filteredActivities = useMemo(() => {
-        if (!searchQuery) return socialActivities || [];
-        const q = searchQuery.toLowerCase();
-        return (socialActivities || []).filter(a => 
-            (a.title || '').toLowerCase().includes(q) || 
-            (a.type || '').toLowerCase().includes(q)
-        );
-    }, [socialActivities, searchQuery]);
-
 
     const activityTypes = [
         'Swachh Bharat',
@@ -69,6 +64,59 @@ export const SocialServiceView = () => {
         'Disaster Management',
         'Others'
     ];
+
+    const availableActivityTypes = useMemo(() => {
+        const types = new Set();
+        (socialActivities || []).forEach(a => {
+            if (a.type && a.type.trim()) {
+                types.add(a.type.trim());
+            }
+        });
+        return Array.from(types).sort();
+    }, [socialActivities]);
+
+    const activityTypeCounts = useMemo(() => {
+        const counts = {};
+        (socialActivities || []).forEach(a => {
+            if (a.type) counts[a.type] = (counts[a.type] || 0) + 1;
+        });
+        return counts;
+    }, [socialActivities]);
+
+    const toggleType = (type) => {
+        setSelectedTypes(prev => 
+            prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+        );
+    };
+
+    const filteredActivities = useMemo(() => {
+        let list = socialActivities || [];
+        if (selectedTypes.length > 0) {
+            list = list.filter(a => selectedTypes.includes(a.type));
+        }
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            list = list.filter(a => 
+                (a.title || '').toLowerCase().includes(q) || 
+                (a.type || '').toLowerCase().includes(q) ||
+                (a.location || '').toLowerCase().includes(q)
+            );
+        }
+        return list;
+    }, [socialActivities, searchQuery, selectedTypes]);
+
+    const totalVolunteersCount = useMemo(() => {
+        return (filteredActivities || []).reduce((sum, a) => sum + (a.volunteers?.length || 0), 0);
+    }, [filteredActivities]);
+
+    const uniqueLocationsCount = useMemo(() => {
+        return new Set((filteredActivities || []).map(a => (a.location || '').trim()).filter(Boolean)).size;
+    }, [filteredActivities]);
+
+    const myParticipationsCount = useMemo(() => {
+        if (!userEnrollmentId) return 0;
+        return (filteredActivities || []).filter(a => a.volunteers?.includes(userEnrollmentId)).length;
+    }, [filteredActivities, userEnrollmentId]);
 
     const filteredCadetsForVM = useMemo(() => {
         return cadets.filter(c => {
@@ -355,42 +403,90 @@ export const SocialServiceView = () => {
     if (loading) return <div className="p-20 text-center"><LoadingIndicator /></div>;
 
     return (
-        <div className="space-y-6 fade-in">
-            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-[#050b14] p-6 rounded-2xl border border-[#ddd8cc] shadow-sm">
-                <div>
-                    <h2 className="text-2xl font-display font-bold text-ncc-navy dark:text-white">Social Service Tracking</h2>
-                    <p className="text-gray-500 dark:text-white/70 text-sm">Community service, blood donation, and awareness drives.</p>
-                </div>
-                {userRole === 'admin' && (
-                    <button 
-                        onClick={() => {
-                            if (showAddForm) {
-                                setShowAddForm(false);
-                                setEditingActivityId(null);
-                                setNewActivity({
-                                    title: '',
-                                    type: 'Swachh Bharat',
-                                    date: new Date().toISOString().split('T')[0],
-                                    location: '',
-                                    description: ''
-                                });
-                            } else {
-                                setShowAddForm(true);
-                            }
-                        }}
-                        className="ncc-btn ncc-btn-primary px-6 flex items-center gap-2"
-                    >
-                        {showAddForm ? <XIcon className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                        {showAddForm ? 'Cancel' : 'Add New Activity'}
-                    </button>
-                )}
-            </header>
+        <div className="space-y-6 fade-in w-full">
+            {/* ── Top Hero Header & Quick Stats ── */}
+            <div className="bg-white dark:bg-[#050b14] rounded-2xl border border-[#ddd8cc] dark:border-white/10 p-6 shadow-sm">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="px-3 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-ncc-navy text-ncc-gold dark:bg-white/10 dark:text-ncc-gold">
+                                Community & Outreach
+                            </span>
+                        </div>
+                        <h2 className="text-2xl sm:text-3xl font-display font-bold text-ncc-navy dark:text-white flex items-center gap-3">
+                            <Heart className="w-7 h-7 text-ncc-red fill-ncc-red/20" />
+                            Social Service Tracking
+                        </h2>
+                        <p className="text-gray-500 dark:text-white/70 text-sm mt-1">
+                            Community service drives, blood donation registries, cleanliness campaigns, and environmental initiatives.
+                        </p>
+                    </div>
 
+                    <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                        {userRole === 'admin' && (
+                            <button 
+                                onClick={() => {
+                                    if (showAddForm) {
+                                        setShowAddForm(false);
+                                        setEditingActivityId(null);
+                                        setNewActivity({
+                                            title: '',
+                                            type: 'Swachh Bharat',
+                                            date: new Date().toISOString().split('T')[0],
+                                            location: '',
+                                            description: ''
+                                        });
+                                    } else {
+                                        setShowAddForm(true);
+                                    }
+                                }}
+                                className="ncc-btn ncc-btn-primary px-6 py-3 flex-1 lg:flex-none flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
+                            >
+                                {showAddForm ? <XIcon className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                                {showAddForm ? 'Cancel' : 'Add New Activity'}
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* ── KPI Stat Badges ── */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-6 border-t border-[#ddd8cc] dark:border-white/10">
+                    <div className="bg-[#f5f0e8] dark:bg-[#0a1628] p-4 rounded-xl border border-[#ddd8cc] dark:border-white/10">
+                        <p className="text-[10px] font-black text-gray-500 dark:text-white/70 uppercase tracking-wider">Total Drives</p>
+                        <p className="text-2xl sm:text-3xl font-black text-ncc-navy dark:text-white mt-1">{(filteredActivities || []).length}</p>
+                    </div>
+                    <div className="bg-[#f5f0e8] dark:bg-[#0a1628] p-4 rounded-xl border border-[#ddd8cc] dark:border-white/10">
+                        <p className="text-[10px] font-black text-gray-500 dark:text-white/70 uppercase tracking-wider">Volunteers Engaged</p>
+                        <p className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{totalVolunteersCount}</p>
+                    </div>
+                    <div className="bg-[#f5f0e8] dark:bg-[#0a1628] p-4 rounded-xl border border-[#ddd8cc] dark:border-white/10">
+                        <p className="text-[10px] font-black text-gray-500 dark:text-white/70 uppercase tracking-wider">Active Locations</p>
+                        <p className="text-2xl sm:text-3xl font-black text-ncc-gold mt-1">{uniqueLocationsCount}</p>
+                    </div>
+                    {userRole === 'cadet' && (
+                        <div className="bg-[#f5f0e8] dark:bg-[#0a1628] p-4 rounded-xl border border-[#ddd8cc] dark:border-white/10">
+                            <p className="text-[10px] font-black text-gray-500 dark:text-white/70 uppercase tracking-wider">My Participations</p>
+                            <p className="text-2xl sm:text-3xl font-black text-ncc-red mt-1">{myParticipationsCount}</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* ── Add / Edit Form ── */}
             {showAddForm && (
-                <div className="ncc-card p-6 border-2 border-ncc-gold/30 animate-in slide-in-from-top-4">
+                <div className="ncc-card p-6 sm:p-8 border-2 border-ncc-gold/40 shadow-xl animate-in slide-in-from-top-4">
+                    <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#ddd8cc] dark:border-white/10">
+                        <h3 className="text-lg font-bold text-ncc-navy dark:text-white flex items-center gap-2">
+                            <Heart className="w-5 h-5 text-ncc-gold" />
+                            {editingActivityId ? 'Edit Social Activity' : 'Create New Social Initiative'}
+                        </h3>
+                        <button onClick={() => setShowAddForm(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-white">
+                            <XIcon className="w-5 h-5" />
+                        </button>
+                    </div>
                     <form onSubmit={handleSubmit} className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="sm:col-span-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div className="sm:col-span-2 lg:col-span-2">
                                 <label className="ncc-label">Activity Title</label>
                                 <input 
                                     type="text" required
@@ -400,7 +496,7 @@ export const SocialServiceView = () => {
                                     onChange={e => setNewActivity({...newActivity, title: e.target.value})}
                                 />
                             </div>
-                            <div className="sm:col-span-1">
+                            <div>
                                 <label className="ncc-label">Activity Type</label>
                                 <select 
                                     className="ncc-input"
@@ -419,188 +515,361 @@ export const SocialServiceView = () => {
                                     onChange={e => setNewActivity({...newActivity, date: e.target.value})}
                                 />
                             </div>
-                            <div>
+                            <div className="sm:col-span-2 lg:col-span-2">
                                 <label className="ncc-label">Location</label>
                                 <input 
                                     type="text" required
                                     className="ncc-input"
-                                    placeholder="e.g. Srikakulam / District Stadium"
+                                    placeholder="e.g. Srikakulam / GMRIT Campus"
                                     value={newActivity.location}
                                     onChange={e => setNewActivity({...newActivity, location: e.target.value})}
                                 />
                             </div>
-                            <div className="sm:col-span-2">
+                            <div className="sm:col-span-2 lg:col-span-3">
                                 <label className="ncc-label">Description (Optional)</label>
                                 <textarea 
-                                    className="ncc-input h-20"
-                                    placeholder="Brief details about the activity..."
+                                    className="ncc-input h-24"
+                                    placeholder="Brief summary of objectives, impact, and activities..."
                                     value={newActivity.description}
                                     onChange={e => setNewActivity({...newActivity, description: e.target.value})}
                                 />
                             </div>
                         </div>
-                        <button 
-                            type="submit" 
-                            disabled={processing}
-                            className="ncc-btn ncc-btn-success w-full py-4 text-sm font-black tracking-widest uppercase"
-                        >
-                            {processing ? 'Saving...' : (editingActivityId ? 'Save Changes' : 'Create Social Activity')}
-                        </button>
+                        <div className="flex justify-end gap-3 pt-2">
+                            <button 
+                                type="button" 
+                                onClick={() => setShowAddForm(false)} 
+                                className="ncc-btn ncc-btn-secondary px-6"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                type="submit" 
+                                disabled={processing}
+                                className="ncc-btn ncc-btn-success px-8 py-3 text-sm font-black tracking-wider uppercase"
+                            >
+                                {processing ? 'Saving...' : (editingActivityId ? 'Save Changes' : 'Publish Activity')}
+                            </button>
+                        </div>
                     </form>
                 </div>
             )}
 
-            {!showAddForm && (socialActivities || []).length > 0 && (
-                <div className="relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-white/40" />
-                    <input 
-                        type="text"
-                        placeholder="Search by Title or Activity Type..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white dark:bg-[#050b14] border border-[#ddd8cc] dark:border-white/10 outline-none focus:border-ncc-navy focus:ring-1 focus:ring-ncc-navy transition-all dark:text-white shadow-sm"
-                    />
-                </div>
-            )}
+            {/* ── Search & Checkbox Filter Bar ── */}
+            <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                    {/* Search Bar */}
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-white/40" />
+                        <input 
+                            type="text"
+                            placeholder="Search activities by title, location, or type..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-10 py-3 rounded-2xl bg-white dark:bg-[#050b14] border border-[#ddd8cc] dark:border-white/10 outline-none focus:border-ncc-navy dark:focus:border-ncc-gold transition-all text-xs sm:text-sm dark:text-white shadow-sm"
+                        />
+                        {searchQuery && (
+                            <button 
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-white"
+                            >
+                                <XIcon className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
 
-            <div className="grid grid-cols-1 gap-6">
+                    {/* Checkbox-based Filter Dropdown Button */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setIsFilterOpen(!isFilterOpen)}
+                            className={`w-full sm:w-auto px-4 py-3 rounded-2xl border flex items-center justify-between sm:justify-center gap-2.5 transition-all text-xs font-bold shadow-sm ${
+                                selectedTypes.length > 0
+                                    ? 'bg-ncc-navy text-white border-ncc-navy dark:bg-ncc-gold dark:text-ncc-navy dark:border-ncc-gold'
+                                    : 'bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border-[#ddd8cc] dark:border-white/10 hover:border-ncc-gold'
+                            }`}
+                        >
+                            <div className="flex items-center gap-2">
+                                <Filter className="w-4 h-4" />
+                                <span>Filter by Category</span>
+                                {selectedTypes.length > 0 && (
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                                        selectedTypes.length > 0 
+                                            ? 'bg-ncc-gold text-ncc-navy dark:bg-ncc-navy dark:text-white' 
+                                            : 'bg-gray-100 text-gray-600'
+                                    }`}>
+                                        {selectedTypes.length}
+                                    </span>
+                                )}
+                            </div>
+                            <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isFilterOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {/* Dropdown Card with Checkboxes */}
+                        {isFilterOpen && (
+                            <>
+                                <div 
+                                    className="fixed inset-0 z-40" 
+                                    onClick={() => setIsFilterOpen(false)} 
+                                />
+                                <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white dark:bg-[#0a1628] rounded-2xl border border-[#ddd8cc] dark:border-white/10 shadow-2xl z-50 p-4 animate-in fade-in zoom-in-95 duration-150">
+                                    <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#ddd8cc] dark:border-white/10">
+                                        <span className="text-xs font-bold uppercase tracking-wider text-ncc-navy dark:text-white">
+                                            Activity Categories
+                                        </span>
+                                        {selectedTypes.length > 0 ? (
+                                            <button 
+                                                type="button"
+                                                onClick={() => setSelectedTypes([])}
+                                                className="text-[11px] font-bold text-red-500 hover:underline"
+                                            >
+                                                Clear All
+                                            </button>
+                                        ) : (
+                                            <span className="text-[10px] font-semibold text-gray-400 dark:text-white/40">All Selected</span>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-1 max-h-64 overflow-y-auto ncc-scrollbar">
+                                        {availableActivityTypes.length === 0 ? (
+                                            <p className="text-xs text-gray-400 dark:text-white/50 text-center py-4 italic">No active activities found.</p>
+                                        ) : (
+                                            availableActivityTypes.map(type => {
+                                                const isChecked = selectedTypes.includes(type);
+                                                const count = activityTypeCounts[type] || 0;
+                                                return (
+                                                    <div 
+                                                        key={type}
+                                                        onClick={() => toggleType(type)}
+                                                        className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer select-none transition-all ${
+                                                            isChecked 
+                                                                ? 'bg-ncc-navy/10 dark:bg-white/10 text-ncc-navy dark:text-white font-bold' 
+                                                                : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-white/70'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${
+                                                                isChecked 
+                                                                    ? 'bg-ncc-navy dark:bg-ncc-gold border-ncc-navy dark:border-ncc-gold text-white dark:text-ncc-navy shadow-sm' 
+                                                                    : 'border-gray-300 dark:border-white/20 bg-white dark:bg-transparent'
+                                                            }`}>
+                                                                {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                                            </div>
+                                                            <span className="text-xs">{type}</span>
+                                                        </div>
+                                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-white/60">
+                                                            {count}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+
+                                    <div className="pt-3 mt-3 border-t border-[#ddd8cc] dark:border-white/10 flex justify-between items-center">
+                                        <p className="text-[11px] text-gray-400 dark:text-white/50">
+                                            {selectedTypes.length === 0 ? 'Showing all activities' : `${selectedTypes.length} selected`}
+                                        </p>
+                                        <button 
+                                            type="button"
+                                            onClick={() => setIsFilterOpen(false)}
+                                            className="px-4 py-1.5 rounded-lg bg-ncc-navy dark:bg-ncc-gold text-white dark:text-ncc-navy text-xs font-bold shadow-sm"
+                                        >
+                                            Done
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                {/* Active Filter Pills Display */}
+                {selectedTypes.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <span className="text-[11px] font-bold text-gray-400 dark:text-white/50">Active Filters:</span>
+                        {selectedTypes.map(type => (
+                            <span 
+                                key={type}
+                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-ncc-navy/10 dark:bg-white/10 text-ncc-navy dark:text-white border border-ncc-navy/20 dark:border-white/10"
+                            >
+                                {type}
+                                <button 
+                                    type="button"
+                                    onClick={() => toggleType(type)}
+                                    className="hover:text-red-500 transition-colors"
+                                >
+                                    <XIcon className="w-3.5 h-3.5" />
+                                </button>
+                            </span>
+                        ))}
+                        <button 
+                            type="button"
+                            onClick={() => setSelectedTypes([])}
+                            className="text-xs font-bold text-red-500 hover:underline ml-1"
+                        >
+                            Clear All
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* ── Activities Card Grid (Wider 2-Column on Desktop) ── */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 w-full">
                 {(filteredActivities || []).length === 0 ? (
-                    <div className="bg-[#f5f0e8] dark:bg-[#0a1628] border-2 border-dashed border-[#ddd8cc] rounded-2xl p-12 text-center">
-                        <Heart className="w-12 h-12 text-[#ddd8cc] mx-auto mb-4" />
-                        <p className="text-gray-500 dark:text-white/70 italic">No social activities match your search.</p>
+                    <div className="col-span-full bg-[#f5f0e8] dark:bg-[#0a1628] border-2 border-dashed border-[#ddd8cc] dark:border-white/10 rounded-2xl p-12 text-center">
+                        <Heart className="w-12 h-12 text-[#ddd8cc] dark:text-white/20 mx-auto mb-4" />
+                        <p className="text-gray-500 dark:text-white/70 italic">No social service activities found matching your criteria.</p>
                     </div>
                 ) : (
                     filteredActivities.map(activity => {
                         const isParticipating = activity.volunteers?.includes(userEnrollmentId);
+                        const volunteerCount = (activity.volunteers || []).length;
                         
                         return (
-                            <div key={activity.id} className="ncc-card overflow-hidden group border-[#ddd8cc] hover:border-ncc-gold transition-all duration-300">
+                            <div 
+                                key={activity.id} 
+                                className="ncc-card overflow-hidden group border-[#ddd8cc] dark:border-white/10 hover:border-ncc-gold transition-all duration-300 flex flex-col justify-between"
+                            >
                                 <div className="p-6">
-                                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <span className="px-3 py-1 bg-ncc-navy/5 text-ncc-navy dark:text-white text-[10px] font-black uppercase tracking-widest rounded-full border border-ncc-navy/10">
-                                                    {activity.type}
+                                    {/* Card Header & Badges */}
+                                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="px-3 py-1 bg-ncc-navy/5 dark:bg-white/10 text-ncc-navy dark:text-ncc-gold text-[10px] font-black uppercase tracking-widest rounded-full border border-ncc-navy/10 dark:border-white/10">
+                                                {activity.type}
+                                            </span>
+                                            {isParticipating && userRole === 'cadet' && (
+                                                <span className="px-2.5 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-wider rounded-full border border-emerald-500/30 flex items-center gap-1">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Participating
                                                 </span>
-                                                <span className="text-gray-400 dark:text-white/60 text-[10px] flex items-center gap-1 font-bold">
-                                                    <Calendar className="w-3 h-3" /> {formatDate(activity.date)}
-                                                </span>
+                                            )}
+                                        </div>
+                                        <span className="text-gray-500 dark:text-white/60 text-xs flex items-center gap-1 font-bold">
+                                            <Calendar className="w-3.5 h-3.5 text-ncc-gold" /> {formatDate(activity.date)}
+                                        </span>
+                                    </div>
+
+                                    {/* Title & Location */}
+                                    <h3 className="text-xl font-display font-bold text-ncc-navy dark:text-white group-hover:text-ncc-gold transition-colors">
+                                        {activity.title}
+                                    </h3>
+                                    <p className="text-gray-500 dark:text-white/70 text-xs mt-1.5 flex items-center gap-1.5 font-medium">
+                                        <MapPin className="w-3.5 h-3.5 text-ncc-gold flex-shrink-0" /> {activity.location}
+                                    </p>
+
+                                    {/* Description */}
+                                    {activity.description && (
+                                        <p className="text-gray-600 dark:text-white/80 text-xs sm:text-sm mt-3.5 border-l-2 border-ncc-gold/40 pl-3.5 leading-relaxed line-clamp-3">
+                                            {activity.description}
+                                        </p>
+                                    )}
+
+                                    {/* Volunteers Summary Stat */}
+                                    <div className="mt-5 pt-4 border-t border-[#ddd8cc] dark:border-white/10 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-lg bg-ncc-navy/5 dark:bg-white/10 flex items-center justify-center text-ncc-navy dark:text-white">
+                                                <Users className="w-4 h-4 text-ncc-gold" />
                                             </div>
-                                            <h3 className="text-xl font-display font-bold text-ncc-navy dark:text-white transition-colors">
-                                                {activity.title}
-                                            </h3>
-                                            <p className="text-gray-500 dark:text-white/70 text-sm mt-2 flex items-center gap-1">
-                                                <MapPin className="w-4 h-4 text-ncc-gold" /> {activity.location}
-                                            </p>
-                                            {activity.description && (
-                                                <p className="text-gray-600 dark:text-white/80 text-sm mt-3 border-l-2 border-[#ddd8cc] pl-4 italic">
-                                                    {activity.description}
+                                            <div>
+                                                <p className="text-[10px] font-black text-gray-400 dark:text-white/60 uppercase tracking-tight leading-none">Registered Volunteers</p>
+                                                <p className="text-base font-black text-ncc-navy dark:text-white mt-0.5">{volunteerCount} Cadets</p>
+                                            </div>
+                                        </div>
+
+                                        <button 
+                                            onClick={() => setActiveGallery(activity)}
+                                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border border-[#ddd8cc] dark:border-white/10 hover:border-ncc-gold flex items-center gap-1.5 transition-all shadow-sm"
+                                        >
+                                            <Camera className="w-3.5 h-3.5 text-ncc-gold" /> Gallery
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* ── Action Footer ── */}
+                                <div className="bg-[#f5f0e8] dark:bg-[#0a1628] px-6 py-4 border-t border-[#ddd8cc] dark:border-white/10">
+                                    {userRole === 'admin' ? (
+                                        <div className="flex flex-col gap-2.5">
+                                            <button 
+                                                onClick={() => setSelectedActivity(activity)}
+                                                className="ncc-btn ncc-btn-secondary w-full py-2.5 flex items-center justify-center gap-2 text-xs font-black tracking-wider uppercase border-2 shadow-sm"
+                                            >
+                                                <Users className="w-4 h-4" /> Manage Volunteers
+                                            </button>
+
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button 
+                                                    onClick={() => {
+                                                        const volunteerCadets = (activity.volunteers || []).map(vid => 
+                                                            cadets.find(c => c.enrollmentId === vid)
+                                                        ).filter(Boolean);
+                                                        generateNominalRollPDF(
+                                                            volunteerCadets, 
+                                                            `Volunteer Roll - ${activity.title}`, 
+                                                            `${activity.title}_Roll_Regtl.pdf`,
+                                                            'regimental',
+                                                            activity.location,
+                                                            activity.date
+                                                        );
+                                                    }}
+                                                    className="px-3 py-2 rounded-lg text-[11px] font-bold bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border border-[#ddd8cc] dark:border-white/10 hover:border-ncc-gold flex items-center justify-center gap-1.5 transition-all truncate"
+                                                >
+                                                    <Download className="w-3.5 h-3.5 text-ncc-gold flex-shrink-0" /> Regtl Roll
+                                                </button>
+                                                <button 
+                                                    onClick={() => {
+                                                        const volunteerCadets = (activity.volunteers || []).map(vid => 
+                                                            cadets.find(c => c.enrollmentId === vid)
+                                                        ).filter(Boolean);
+                                                        generateNominalRollPDF(
+                                                            volunteerCadets, 
+                                                            `Volunteer Roll - ${activity.title}`, 
+                                                            `${activity.title}_Roll_JNTU.pdf`,
+                                                            'jntu',
+                                                            activity.location,
+                                                            activity.date
+                                                        );
+                                                    }}
+                                                    className="px-3 py-2 rounded-lg text-[11px] font-bold bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border border-[#ddd8cc] dark:border-white/10 hover:border-ncc-gold flex items-center justify-center gap-1.5 transition-all truncate"
+                                                >
+                                                    <Download className="w-3.5 h-3.5 text-ncc-gold flex-shrink-0" /> JNTU Roll
+                                                </button>
+                                            </div>
+
+                                            <div className="flex gap-2 pt-1">
+                                                <button 
+                                                    onClick={() => handleEdit(activity)}
+                                                    className="flex-1 py-1.5 px-3 rounded-lg text-xs font-bold bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border border-[#ddd8cc] dark:border-white/10 hover:border-ncc-navy flex items-center justify-center gap-1.5 transition"
+                                                >
+                                                    <Edit className="w-3.5 h-3.5" /> Edit
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDelete(activity.id)}
+                                                    className="flex-1 py-1.5 px-3 rounded-lg text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-100 flex items-center justify-center gap-1.5 transition"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-between gap-3">
+                                            {isParticipating ? (
+                                                <button 
+                                                    onClick={() => {
+                                                        const cadet = cadets.find(c => c.enrollmentId === userEnrollmentId);
+                                                        if (cadet) generateCertificate(activity, cadet);
+                                                    }}
+                                                    className="ncc-btn ncc-btn-primary w-full py-2.5 flex items-center justify-center gap-2 text-xs font-black tracking-wider uppercase"
+                                                >
+                                                    <Download className="w-4 h-4" /> Download Certificate
+                                                </button>
+                                            ) : (
+                                                <p className="text-xs text-gray-500 dark:text-white/60 italic w-full text-center py-1">
+                                                    Open to all battalion cadets. Contact your ANO to volunteer.
                                                 </p>
                                             )}
                                         </div>
-
-                                        <div className="flex flex-col gap-2 w-full sm:w-auto">
-                                            <div className="bg-[#f5f0e8] dark:bg-[#0a1628] p-3 rounded-xl border border-[#ddd8cc] text-center">
-                                                <p className="text-[10px] font-black text-gray-500 dark:text-white/80 uppercase tracking-tighter mb-1">Volunteers</p>
-                                                <p className="text-2xl font-black text-ncc-navy dark:text-white leading-none">{(activity.volunteers || []).length}</p>
-                                            </div>
-                                            
-                                            {userRole === 'admin' ? (
-                                                <button 
-                                                    onClick={() => setSelectedActivity(activity)}
-                                                    className="ncc-btn ncc-btn-secondary ncc-btn-sm w-full py-2 flex items-center justify-center gap-2 border-2"
-                                                >
-                                                    <Users className="w-4 h-4" /> Manage Volunteers
-                                                </button>
-                                            ) : (
-                                                isParticipating && (
-                                                    <button 
-                                                        onClick={() => {
-                                                            const cadet = cadets.find(c => c.enrollmentId === userEnrollmentId);
-                                                            if (cadet) generateCertificate(activity, cadet);
-                                                        }}
-                                                        className="ncc-btn ncc-btn-primary ncc-btn-sm flex items-center justify-center gap-2"
-                                                    >
-                                                        <Download className="w-4 h-4" /> My Certificate
-                                                    </button>
-                                                )
-                                            )}
-
-                                            {userRole === 'admin' && (
-                                                <div className="flex flex-col gap-1.5">
-                                                    <button 
-                                                        onClick={() => {
-                                                            const volunteerCadets = (activity.volunteers || []).map(vid => 
-                                                                cadets.find(c => c.enrollmentId === vid)
-                                                            ).filter(Boolean);
-                                                            generateNominalRollPDF(
-                                                                volunteerCadets, 
-                                                                `Volunteer Roll - ${activity.title}`, 
-                                                                `${activity.title}_Roll_Regtl.pdf`,
-                                                                'regimental',
-                                                                activity.location,
-                                                                activity.date
-                                                            );
-                                                        }}
-                                                        className="ncc-btn bg-[#f5f0e8] dark:bg-[#0a1628] text-ncc-navy dark:text-white border border-[#ddd8cc] hover:border-ncc-gold ncc-btn-sm w-full py-2 text-xs flex items-center justify-center gap-2"
-                                                    >
-                                                        <Download className="w-3.5 h-3.5 text-ncc-gold" /> Regtl Nominal Roll
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => {
-                                                            const volunteerCadets = (activity.volunteers || []).map(vid => 
-                                                                cadets.find(c => c.enrollmentId === vid)
-                                                            ).filter(Boolean);
-                                                            generateNominalRollPDF(
-                                                                volunteerCadets, 
-                                                                `Volunteer Roll - ${activity.title}`, 
-                                                                `${activity.title}_Roll_JNTU.pdf`,
-                                                                'jntu',
-                                                                activity.location,
-                                                                activity.date
-                                                            );
-                                                        }}
-                                                        className="ncc-btn bg-[#f5f0e8] dark:bg-[#0a1628] text-ncc-navy dark:text-white border border-[#ddd8cc] hover:border-ncc-gold ncc-btn-sm w-full py-2 text-xs flex items-center justify-center gap-2"
-                                                    >
-                                                        <Download className="w-3.5 h-3.5 text-ncc-gold" /> JNTU Nominal Roll
-                                                    </button>
-                                                </div>
-                                            )}
-
-
-                                            <button 
-                                                onClick={() => setActiveGallery(activity)}
-                                                className="ncc-btn bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border-2 border-[#ddd8cc] hover:border-ncc-gold ncc-btn-sm w-full py-2 flex items-center justify-center gap-2 mb-2"
-                                            >
-                                                <Camera className="w-4 h-4 text-ncc-gold" /> Gallery
-                                            </button>
-
-                                            {userRole === 'admin' && (
-                                                <div className="flex gap-2">
-                                                    <button 
-                                                        onClick={() => handleEdit(activity)}
-                                                        className="ncc-btn bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border border-[#ddd8cc] hover:border-ncc-navy ncc-btn-sm w-full py-2 flex items-center justify-center gap-2"
-                                                    >
-                                                        <Edit className="w-3 h-3" /> Edit
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleDelete(activity.id)}
-                                                        className="ncc-btn bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 ncc-btn-sm w-full py-2 flex items-center justify-center gap-2"
-                                                    >
-                                                        <Trash2 className="w-3 h-3" /> Delete
-                                                    </button>
-                                                </div>
-                                            )}
-
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
-                                {isParticipating && userRole === 'cadet' && (
-                                    <div className="bg-emerald-50 px-6 py-2 border-t border-emerald-100 flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                                        <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">You participated in this activity</span>
-                                    </div>
-                                )}
                             </div>
                         );
                     })

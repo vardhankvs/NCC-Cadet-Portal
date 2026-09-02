@@ -8,7 +8,7 @@ import { UserCheck, Clock, Calendar, Download, Search, Filter, Trash2, Plus, X a
 import { toast } from 'react-toastify';
 import { LoadingIndicator } from '../../components/ui/LoadingIndicator.jsx';
 import * as XLSX from 'xlsx';
-import { formatDate, normalizeDate } from '../../utils/dateUtils.js';
+import { formatDate, normalizeDate, getTodayDateString } from '../../utils/dateUtils.js';
 import { sendPushToCadets } from '../../firebase/pushNotifications.js';
 
 export const AttendanceLogsView = () => {
@@ -19,7 +19,7 @@ export const AttendanceLogsView = () => {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
+    const [filterDate, setFilterDate] = useState(getTodayDateString());
     const [selectedCert, setSelectedCert] = useState('All');
     const [selectedDiv, setSelectedDiv] = useState('All');
     
@@ -29,7 +29,7 @@ export const AttendanceLogsView = () => {
     const [manualCert, setManualCert] = useState('All');
     const [manualDiv, setManualDiv] = useState('All');
     const [selectedCadetIds, setSelectedCadetIds] = useState([]);
-    const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
+    const [manualDate, setManualDate] = useState(getTodayDateString());
     const [marking, setMarking] = useState(false);
     const [selectedHistoryIds, setSelectedHistoryIds] = useState([]);
 
@@ -39,7 +39,7 @@ export const AttendanceLogsView = () => {
         const attRef = getCollectionRef('attendance');
         if (!attRef) return;
 
-        const q = query(attRef, limit(1000));
+        const q = query(attRef);
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             let list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -60,62 +60,27 @@ export const AttendanceLogsView = () => {
                 });
             }
 
-            // Build a set of existing cadetId + normalized date combinations
-            const existingKeys = new Set();
-            list.forEach(l => {
-                const normD = normalizeDate(l.date);
-                if (l.cadetId) existingKeys.add(`${l.cadetId}_${normD}`);
-                const reg = normalizeReg(l.enrollmentId);
-                if (reg) existingKeys.add(`${reg}_${normD}`);
-            });
-
-            // Synthesize any missing records from cadet.attendance profile maps
-            const virtualLogs = [];
-            cadetRoster.forEach(cadet => {
-                if (!cadet.attendance) return;
-                const regId = cadet.enrollmentId || cadet.regimentalNumber || '';
-                const normReg = normalizeReg(regId);
-
-                Object.entries(cadet.attendance).forEach(([dateStr, status]) => {
-                    const isPresent = status && ['PRESENT', 'P', 'VERIFIED', 'LATE', 'ATTENDED', 'EXEMPT', '1'].includes(String(status).trim().toUpperCase());
-                    if (!isPresent) return;
-
-                    const normDate = normalizeDate(dateStr);
-                    const keyByCadetId = cadet.id ? `${cadet.id}_${normDate}` : null;
-                    const keyByReg = normReg ? `${normReg}_${normDate}` : null;
-
-                    const hasExisting = (keyByCadetId && existingKeys.has(keyByCadetId)) || (keyByReg && existingKeys.has(keyByReg));
-
-                    if (!hasExisting) {
-                        if (keyByCadetId) existingKeys.add(keyByCadetId);
-                        if (keyByReg) existingKeys.add(keyByReg);
-
-                        virtualLogs.push({
-                            id: `vlog-${cadet.id}-${normDate}`,
-                            cadetId: cadet.id,
-                            cadetName: cadet.name,
-                            enrollmentId: regId,
-                            certificate: cadet.certificate || cadet.currentCertificate || cadet.B || 'NA',
-                            division: regId.toUpperCase().includes('SW') ? 'SW' : 'SD',
-                            timestamp: { seconds: Math.floor(new Date(normDate).getTime() / 1000) || Math.floor(Date.now() / 1000) },
-                            markedBy: 'Verified (System)',
-                            institutionId: cadet.institutionId || userInstitutionId || 'gmrit',
-                            date: normDate,
-                            isVirtual: true
-                        });
-                    }
-                });
-            });
-
-            const combinedList = [...list, ...virtualLogs];
-
-            // Client-side sorting to avoid composite index requirements
-            combinedList.sort((a, b) => {
+            // Client-side sorting to latest first
+            list.sort((a, b) => {
                 const timeA = a.timestamp?.seconds || (a.timestamp ? new Date(a.timestamp).getTime() / 1000 : 0);
                 const timeB = b.timestamp?.seconds || (b.timestamp ? new Date(b.timestamp).getTime() / 1000 : 0);
                 return timeB - timeA;
             });
-            setLogs(combinedList);
+
+            // Client-side deduplication by (enrollmentId || cadetId) + date keeping the latest record
+            const seen = new Set();
+            const deduplicatedList = [];
+            for (const log of list) {
+                const reg = normalizeReg(log.enrollmentId);
+                const normD = normalizeDate(log.date);
+                const key = reg ? `${reg}_${normD}` : `${log.cadetId}_${normD}`;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    deduplicatedList.push(log);
+                }
+            }
+
+            setLogs(deduplicatedList);
             setLoading(false);
         }, (err) => {
             console.error("Attendance logs snapshot notice:", err);
@@ -486,10 +451,12 @@ export const AttendanceLogsView = () => {
 
         // Determine cert/div (use log value or fallback to joining with cadet data)
         const logCert = log.certificate || cadets.find(c => c.id === log.cadetId)?.certificate || 'NA';
-        const logDiv = log.division || (log.enrollmentId.toUpperCase().includes('SW') ? 'SW' : 'SD');
+        const regId = String(log.enrollmentId || '');
+        const logDiv = log.division || (regId.toUpperCase().includes('SW') ? 'SW' : 'SD');
+        const cadetName = String(log.cadetName || '');
 
-        const matchesSearch = log.cadetName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            log.enrollmentId.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSearch = cadetName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                            regId.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesCert = selectedCert === 'All' || logCert === selectedCert;
         const matchesDiv = selectedDiv === 'All' || logDiv === selectedDiv;
 

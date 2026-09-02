@@ -288,7 +288,7 @@ export const saveCadet = async (data, id = null) => {
             feeDueDate: '',
         };
 
-        const institutionId = await getCurrentUserInstitution();
+        const institutionId = (payload.institutionId ? String(payload.institutionId).trim().toLowerCase() : '') || await getCurrentUserInstitution() || 'gmrit';
 
         // Check vacancy limit
         if (institutionId) {
@@ -478,11 +478,16 @@ export const bulkAddCadets = async (cadets, institutionId) => {
                 updatedAt: serverTimestamp(),
             };
 
+            const rowInstitutionId = getField(['Institution ID', 'institution id', 'institutionId', 'College Code', 'college code', 'College ID', 'college id', 'Unit ID', 'unit id']) || institutionId || 'gmrit';
+
             const existingRef = existingMap.get(enrollmentId);
             
             if (existingRef) {
                 // UPDATE EXISTING CADET
-                batch.update(existingRef, payload);
+                batch.update(existingRef, {
+                    ...payload,
+                    institutionId: rowInstitutionId,
+                });
                 updatedCount++;
             } else {
                 // ADD NEW CADET
@@ -495,7 +500,7 @@ export const bulkAddCadets = async (cadets, institutionId) => {
                     feePaid: 0,
                     feeDueDate: '',
                     attendance: {},
-                    institutionId,
+                    institutionId: rowInstitutionId,
                     status: 'active',
                     createdAt: serverTimestamp(),
                 });
@@ -757,41 +762,50 @@ export const recordAttendance = async (cadetId, date, status, markedBy = 'ANO (M
         updatedAt: serverTimestamp(),
     });
 
-    // 2. Sync Attendance History Logs collection
-    const existingLogsSnap = await getDocs(query(attRef, where('cadetId', '==', cadetId), where('date', '==', cleanDate)));
+    // 2. Sync Attendance History Logs collection using deterministic ID: `${cadetId}_${cleanDate}`
+    const detDocId = `${cadetId}_${cleanDate}`;
+    const detDocRef = doc(attRef, detDocId);
 
     if (isPresent) {
-        if (!existingLogsSnap.empty) {
-            existingLogsSnap.docs.forEach(async (logDoc) => {
-                await updateDoc(doc(attRef, logDoc.id), {
-                    cadetName: cadet.name || '',
-                    enrollmentId: regId,
-                    certificate: cadet.certificate || cadet.B || 'NA',
-                    division,
-                    timestamp: serverTimestamp(),
-                    markedBy,
-                    institutionId: instId,
-                    date: cleanDate,
-                });
-            });
-        } else {
-            await addDoc(attRef, {
-                cadetId,
-                cadetName: cadet.name || '',
-                enrollmentId: regId,
-                certificate: cadet.certificate || cadet.B || 'NA',
-                division,
-                timestamp: serverTimestamp(),
-                markedBy,
-                institutionId: instId,
-                date: cleanDate,
-            });
+        await setDoc(detDocRef, {
+            cadetId,
+            cadetName: cadet.name || '',
+            enrollmentId: regId,
+            certificate: cadet.certificate || cadet.B || 'NA',
+            division,
+            timestamp: serverTimestamp(),
+            markedBy,
+            institutionId: instId,
+            date: cleanDate,
+            status: status || 'Present'
+        }, { merge: true });
+
+        // Clean any older duplicate documents with random IDs for this cadet on this date
+        try {
+            const existingLogsSnap = await getDocs(query(attRef, where('date', '==', cleanDate)));
+            for (const logDoc of existingLogsSnap.docs) {
+                if (logDoc.id !== detDocId) {
+                    const lData = logDoc.data();
+                    if (lData.cadetId === cadetId || (regId && lData.enrollmentId && lData.enrollmentId.toUpperCase() === regId.toUpperCase())) {
+                        await deleteDoc(doc(attRef, logDoc.id)).catch(() => {});
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn("Log deduplication note:", e);
         }
     } else {
-        if (!existingLogsSnap.empty) {
+        await deleteDoc(detDocRef).catch(() => {});
+        try {
+            const existingLogsSnap = await getDocs(query(attRef, where('date', '==', cleanDate)));
             for (const logDoc of existingLogsSnap.docs) {
-                await deleteDoc(doc(attRef, logDoc.id));
+                const lData = logDoc.data();
+                if (lData.cadetId === cadetId || (regId && lData.enrollmentId && lData.enrollmentId.toUpperCase() === regId.toUpperCase())) {
+                    await deleteDoc(doc(attRef, logDoc.id)).catch(() => {});
+                }
             }
+        } catch (e) {
+            console.warn("Log removal note:", e);
         }
     }
 };

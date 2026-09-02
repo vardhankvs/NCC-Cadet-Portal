@@ -21,28 +21,33 @@ export default defineConfig({
                 injectionPoint: undefined,
                 maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
             },
-            includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+            includeAssets: ['favicon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'pwa-maskable-512x512.png'],
             manifest: {
-                name: 'NCC Portal',
+                name: '14(A) BN NCC Srikakulam',
                 short_name: 'NCC',
-                description: 'Digital Ecosystem for NCC GMRIT',
-                theme_color: '#0f2e4a',
+                description: 'Digital Ecosystem for 14(A) BN NCC GMRIT Unit Management',
+                theme_color: '#0a1628',
+                background_color: '#0a1628',
+                display: 'standalone',
+                orientation: 'portrait',
                 icons: [
                     {
                         src: 'pwa-192x192.png',
                         sizes: '192x192',
-                        type: 'image/png'
-                    },
-                    {
-                        src: 'pwa-512x512.png',
-                        sizes: '512x512',
-                        type: 'image/png'
+                        type: 'image/png',
+                        purpose: 'any'
                     },
                     {
                         src: 'pwa-512x512.png',
                         sizes: '512x512',
                         type: 'image/png',
-                        purpose: 'any maskable'
+                        purpose: 'any'
+                    },
+                    {
+                        src: 'pwa-maskable-512x512.png',
+                        sizes: '512x512',
+                        type: 'image/png',
+                        purpose: 'maskable'
                     }
                 ]
             }

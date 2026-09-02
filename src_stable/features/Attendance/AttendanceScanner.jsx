@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { getCollectionRef, createPendingAttendance } from '../../firebase/firestoreService.js';
-import { query, where, getDocs } from 'firebase/firestore';
+import { query, where, getDocs, doc, addDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { useDataContext } from '../../context/DataContext.jsx';
 import { sendAttendancePush } from '../../firebase/pushNotifications.js';
+import { getTodayDateString } from '../../utils/dateUtils.js';
 import {
     ShieldCheck, UserCheck, Clock, X, Camera,
     History, MapPin, Target, AlertTriangle, Shield, CheckCircle
@@ -581,9 +582,9 @@ export const AttendanceScanner = () => {
         isProcessingRef.current = true;
         lastScanRef.current = { id: decodedText, time: now };
 
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayDateString();
         const cadet = cadetsRef.current.find(
-            c => c.enrollmentId === decodedText && c.status !== 'alumni'
+            c => (c.enrollmentId === decodedText || c.regimentalNumber === decodedText || c.id === decodedText) && c.status !== 'alumni'
         );
 
         if (!cadet) {
@@ -619,7 +620,7 @@ export const AttendanceScanner = () => {
             const newScan = {
                 id: cadet.id,
                 name: cadet.name,
-                enrollmentId: cadet.enrollmentId,
+                enrollmentId: cadet.enrollmentId || cadet.regimentalNumber,
                 time: new Date().toLocaleTimeString(),
                 status: scanStatus
             };
@@ -628,7 +629,7 @@ export const AttendanceScanner = () => {
             setRecentLogs(prev => [{
                 name: cadet.name,
                 time: new Date().toLocaleTimeString(),
-                id: cadet.enrollmentId,
+                id: cadet.enrollmentId || cadet.regimentalNumber,
                 status: scanStatus
             }, ...prev].slice(0, 15));
 
@@ -641,7 +642,7 @@ export const AttendanceScanner = () => {
                 lng:  loc.longitude + radius * Math.cos(angle),
             }]);
 
-            toast.success(`✅ Scanned ${cadet.name} (${cadet.enrollmentId}) — Staged in Batch`);
+            toast.success(`✅ Scanned ${cadet.name} (${cadet.enrollmentId || cadet.regimentalNumber}) — Staged in Batch`);
             if (window.navigator.vibrate) window.navigator.vibrate(150);
             isProcessingRef.current = false;
             return;
@@ -649,25 +650,44 @@ export const AttendanceScanner = () => {
 
         try {
             const attRef = getCollectionRef('attendance');
-            if (!attRef) throw new Error('Database not ready');
+            const cadetsCol = getCollectionRef('cadets');
+            if (!attRef || !cadetsCol) throw new Error('Database not ready');
 
-            const existing = await getDocs(
-                query(attRef, where('enrollmentId', '==', cadet.enrollmentId), where('date', '==', today))
-            );
-            if (!existing.empty) {
-                toast.warning(`${cadet.name} already marked for today.`);
-                isProcessingRef.current = false;
-                return;
+            // 1. Directly update Cadet document in 'cadets' collection
+            const cadetDocRef = doc(cadetsCol, cadet.id);
+            await updateDoc(cadetDocRef, {
+                [`attendance.${today}`]: scanStatus,
+                updatedAt: serverTimestamp(),
+            });
+
+            // 2. Set attendance log with deterministic document ID (cadetId_date) to prevent duplicates completely
+            const logDocId = `${cadet.id}_${today}`;
+            const logDocRef = doc(attRef, logDocId);
+            await setDoc(logDocRef, {
+                cadetId: cadet.id,
+                cadetName: cadet.name,
+                enrollmentId: cadet.enrollmentId || cadet.regimentalNumber,
+                certificate: cadet.certificate || cadet.B || 'NA',
+                division: (cadet.enrollmentId || cadet.regimentalNumber || '').toUpperCase().includes('SW') ? 'SW' : 'SD',
+                timestamp: serverTimestamp(),
+                markedBy: `${userName || 'ANO'} (Parade QR Scanner)`,
+                status: scanStatus,
+                location: loc,
+                institutionId: cadet.institutionId || userInstitutionId || 'gmrit',
+                date: today,
+            }, { merge: true });
+
+            // 3. Send optional push / pending record for cadet verification history
+            try {
+                const pendingDoc = await createPendingAttendance(
+                    cadet.id, cadet.name, cadet.enrollmentId || cadet.regimentalNumber, loc, scanStatus
+                );
+                sendAttendancePush([cadet.id], pendingDoc.id, loc);
+            } catch (pErr) {
+                console.warn('Push record skipped:', pErr);
             }
 
-            const pendingDoc = await createPendingAttendance(
-                cadet.id, cadet.name, cadet.enrollmentId, loc, scanStatus
-            );
-
-            sendAttendancePush([cadet.id], pendingDoc.id, loc);
-
-            const icon = scanStatus === 'Late' ? '🟡' : '📲';
-            toast.info(`${icon} Sent to ${cadet.name}${scanStatus === 'Late' ? ' — flagged LATE' : ''}`);
+            toast.success(`✅ ${cadet.name} marked ${scanStatus.toUpperCase()} for today!`);
 
             setRecentLogs(prev => [{
                 name:   cadet.name,
@@ -689,7 +709,7 @@ export const AttendanceScanner = () => {
 
         } catch (err) {
             console.error('Attendance scan failed:', err);
-            toast.error('Database error. Please try again.');
+            toast.error(`Attendance update error: ${err.message || 'Please try again.'}`);
         } finally {
             isProcessingRef.current = false;
         }

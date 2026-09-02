@@ -10,6 +10,8 @@ import {
     Printer,
     Loader,
     Search,
+    Users,
+    CheckCircle,
 } from '../../components/Icons.jsx';
 import { setEventAttendeeStatus, setEventAttendeeBulk } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
@@ -29,9 +31,9 @@ const CadetRow = ({ cadet, event, isSelected, onToggleSelection }) => {
             <button
                 onClick={() => handleSetStatus(null)}
                 title="Remove from List"
+                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition"
             >
-                {' '}
-                <UserX className="w-4 h-4" />{' '}
+                <UserX className="w-4 h-4 text-red-500" />
             </button>
         );
     } else {
@@ -40,9 +42,9 @@ const CadetRow = ({ cadet, event, isSelected, onToggleSelection }) => {
             <button
                 onClick={() => handleSetStatus('confirmed')}
                 title="Add to Event List"
+                className="p-1.5 text-gray-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg transition"
             >
-                {' '}
-                <UserCheck className="w-4 h-4" />{' '}
+                <UserCheck className="w-4 h-4 text-emerald-600" />
             </button>
         );
     }
@@ -81,13 +83,13 @@ const CadetRow = ({ cadet, event, isSelected, onToggleSelection }) => {
                 {cadet.name}
             </td>
             <td className="px-4 py-3 text-sm text-gray-500 dark:text-white/70 whitespace-nowrap">
-                {cadet.enrollmentId}
+                {cadet.enrollmentId || cadet.regimentalNumber || 'N/A'}
             </td>
             <td className="px-4 py-3 text-sm text-gray-700 dark:text-white/90">
                 <span
                     className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
                         status === 'confirmed'
-                            ? 'bg-green-100 text-green-800'
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
                             : 'bg-gray-100 dark:bg-[#0d2137] text-gray-600 dark:text-white/80'
                     }`}
                 >
@@ -101,12 +103,12 @@ const CadetRow = ({ cadet, event, isSelected, onToggleSelection }) => {
 
 export const EventRosterModal = ({ eventId, onClose }) => {
     const { cadets, events } = useDataContext();
+    const [statusTab, setStatusTab] = useState('all'); // 'all', 'confirmed', 'unselected'
     const [selectedCertificate, setSelectedCertificate] = useState('All');
     const [selectedDivision, setSelectedDivision] = useState('All');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCadets, setSelectedCadets] = useState(new Set());
     const [isBulkProcessing, setIsBulkProcessing] = useState(false);
-    // Removed isDownloadingWord state
 
     const event = useMemo(
         () => events.find((e) => e.id === eventId),
@@ -115,11 +117,26 @@ export const EventRosterModal = ({ eventId, onClose }) => {
 
     const sortedCadets = cadets;
 
+    const confirmedCadets = useMemo(() => {
+        if (!event) return [];
+        return sortedCadets.filter(
+            (cadet) => event.attendeeStatus?.[cadet.id] === 'confirmed'
+        );
+    }, [sortedCadets, event]);
+
     const filteredCadets = useMemo(() => {
         let list = [...sortedCadets];
+        
+        // Status filter: All, Confirmed (Selected), or Unselected
+        if (statusTab === 'confirmed') {
+            list = list.filter((cadet) => event?.attendeeStatus?.[cadet.id] === 'confirmed');
+        } else if (statusTab === 'unselected') {
+            list = list.filter((cadet) => event?.attendeeStatus?.[cadet.id] !== 'confirmed');
+        }
+
         if (selectedCertificate !== 'All') {
             list = list.filter(
-                (cadet) => cadet.certificate === selectedCertificate
+                (cadet) => (cadet.currentCertificate || cadet.certificate) === selectedCertificate
             );
         }
         if (selectedDivision !== 'All') {
@@ -132,19 +149,13 @@ export const EventRosterModal = ({ eventId, onClose }) => {
             const lowerSearch = searchTerm.toLowerCase();
             list = list.filter(
                 (cadet) =>
-                    cadet.name.toLowerCase().includes(lowerSearch) ||
-                    (cadet.enrollmentId || '').toLowerCase().includes(lowerSearch)
+                    (cadet.name || '').toLowerCase().includes(lowerSearch) ||
+                    (cadet.enrollmentId || cadet.regimentalNumber || '').toLowerCase().includes(lowerSearch) ||
+                    (cadet.jntuNo || '').toLowerCase().includes(lowerSearch)
             );
         }
         return list;
-    }, [sortedCadets, selectedCertificate, selectedDivision, searchTerm]);
-
-    const confirmedCadets = useMemo(() => {
-        if (!event) return [];
-        return sortedCadets.filter(
-            (cadet) => event.attendeeStatus?.[cadet.id] === 'confirmed'
-        );
-    }, [sortedCadets, event]);
+    }, [sortedCadets, event, statusTab, selectedCertificate, selectedDivision, searchTerm]);
 
     const handleSelectAll = (e) => {
         if (e.target.checked) {
@@ -357,16 +368,84 @@ export const EventRosterModal = ({ eventId, onClose }) => {
             <div className="p-6 bg-white dark:bg-[#050b14] rounded-xl shadow-2xl max-h-[80vh] flex flex-col">
                 {/* Header */}
                 <div className="flex justify-between items-center mb-4 border-b pb-3">
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                        Manage Roster: {event.name}
-                    </h2>
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                            Manage Roster: {event.name}
+                        </h2>
+                        <p className="text-xs text-gray-500 dark:text-white/60 mt-0.5">
+                            Select, review, and manage cadets registered for this event
+                        </p>
+                    </div>
                     <button
                         type="button"
                         onClick={onClose}
                         title="Close"
-                        className="text-gray-400 dark:text-white/80 hover:text-gray-600 dark:text-white/80"
+                        className="text-gray-400 dark:text-white/80 hover:text-gray-600 dark:text-white/80 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 transition"
                     >
                         <XCircle className="w-6 h-6" />
+                    </button>
+                </div>
+
+                {/* Primary Status Tabs (All vs Selected vs Unselected) */}
+                <div className="flex bg-gray-100 dark:bg-[#0d2137] p-1.5 rounded-2xl mb-4 border border-gray-200 dark:border-white/10 shadow-inner gap-1">
+                    <button
+                        type="button"
+                        onClick={() => { setStatusTab('all'); setSelectedCadets(new Set()); }}
+                        className={`flex-1 py-2.5 px-3 text-xs font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 ${
+                            statusTab === 'all'
+                                ? 'bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white shadow-md'
+                                : 'text-gray-600 dark:text-white/60 hover:text-ncc-navy dark:hover:text-white'
+                        }`}
+                    >
+                        <Users className="w-4 h-4" />
+                        <span>All Cadets</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            statusTab === 'all'
+                                ? 'bg-ncc-navy/10 dark:bg-white/10 text-ncc-navy dark:text-white'
+                                : 'bg-gray-200 dark:bg-white/5 text-gray-600 dark:text-white/60'
+                        }`}>
+                            {sortedCadets.length}
+                        </span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => { setStatusTab('confirmed'); setSelectedCadets(new Set()); }}
+                        className={`flex-1 py-2.5 px-3 text-xs font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 ${
+                            statusTab === 'confirmed'
+                                ? 'bg-emerald-600 text-white shadow-md'
+                                : 'text-gray-600 dark:text-white/60 hover:text-emerald-600 dark:hover:text-emerald-400'
+                        }`}
+                    >
+                        <UserCheck className="w-4 h-4" />
+                        <span>Selected Cadets</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            statusTab === 'confirmed'
+                                ? 'bg-white/20 text-white'
+                                : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                        }`}>
+                            {confirmedCadets.length}
+                        </span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => { setStatusTab('unselected'); setSelectedCadets(new Set()); }}
+                        className={`flex-1 py-2.5 px-3 text-xs font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 ${
+                            statusTab === 'unselected'
+                                ? 'bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white shadow-md'
+                                : 'text-gray-600 dark:text-white/60 hover:text-ncc-navy dark:hover:text-white'
+                        }`}
+                    >
+                        <UserX className="w-4 h-4" />
+                        <span>Unselected</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            statusTab === 'unselected'
+                                ? 'bg-ncc-navy/10 dark:bg-white/10 text-ncc-navy dark:text-white'
+                                : 'bg-gray-200 dark:bg-white/5 text-gray-600 dark:text-white/60'
+                        }`}>
+                            {Math.max(0, sortedCadets.length - confirmedCadets.length)}
+                        </span>
                     </button>
                 </div>
 
@@ -486,9 +565,29 @@ export const EventRosterModal = ({ eventId, onClose }) => {
                                 <tr>
                                     <td
                                         colSpan="5"
-                                        className="px-4 py-4 text-center text-gray-500 dark:text-white/70"
+                                        className="px-4 py-12 text-center text-gray-500 dark:text-white/70"
                                     >
-                                        No cadets match your filters.
+                                        <div className="flex flex-col items-center justify-center space-y-2">
+                                            {statusTab === 'confirmed' ? (
+                                                <>
+                                                    <UserCheck className="w-8 h-8 text-emerald-500/50" />
+                                                    <p className="font-bold text-sm text-gray-700 dark:text-white">No Cadets Selected Yet</p>
+                                                    <p className="text-xs text-gray-400 dark:text-white/60">Switch to the "All Cadets" or "Unselected" tab to select cadets for this event.</p>
+                                                </>
+                                            ) : statusTab === 'unselected' ? (
+                                                <>
+                                                    <CheckCircle className="w-8 h-8 text-emerald-500" />
+                                                    <p className="font-bold text-sm text-gray-700 dark:text-white">All Cadets Selected</p>
+                                                    <p className="text-xs text-gray-400 dark:text-white/60">All cadets matching your filters are already added to this event roster.</p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Users className="w-8 h-8 text-gray-400" />
+                                                    <p className="font-bold text-sm text-gray-700 dark:text-white">No Cadets Found</p>
+                                                    <p className="text-xs text-gray-400 dark:text-white/60">No cadets match the selected certificates or search criteria.</p>
+                                                </>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             )}

@@ -133,5 +133,5 @@ export const Volume2 = (props) => <LucideIcon {...props}><polygon points="11 5 6
 export const VolumeX = (props) => <LucideIcon {...props}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></LucideIcon>;
 export const Map = (props) => <LucideIcon {...props}><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></LucideIcon>;
 export const Layers = (props) => <LucideIcon {...props}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></LucideIcon>;
-export const Navigation = (props) => <LucideIcon {...props}><polygon points="3 11 22 2 13 21 11 13 3 11"/></LucideIcon>;
 export const Crosshair = (props) => <LucideIcon {...props}><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></LucideIcon>;
+export const Grid = (props) => <LucideIcon {...props}><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></LucideIcon>;

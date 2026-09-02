@@ -140,6 +140,7 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
     const [formData, setFormData] = useState({
         name:             currentCadet?.name || '',
         enrollmentId:     currentCadet?.enrollmentId || currentCadet?.regimentalNumber || '',
+        institutionId:    currentCadet?.institutionId || userInstitutionId || 'gmrit',
         jntuNo:           currentCadet?.jntuNo || '',
         rank:             currentCadet?.rank || 'CDT',
         certificate:      currentCadet?.certificate || currentCadet?.B || 'NA',
@@ -386,7 +387,11 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
                                 <TextInput name="enrollmentId" value={formData.enrollmentId} onChange={handleChange}
                                     placeholder="e.g. AP18SD0001" required={!isEditMode} />
                             </Field>
-                            <Field label="JNTU Number" icon={List}>
+                            <Field label="Institution ID / College Code" icon={Shield}>
+                                <TextInput name="institutionId" value={formData.institutionId} onChange={handleChange}
+                                    placeholder="e.g. gmrit" required />
+                            </Field>
+                            <Field label="JNTU Number" icon={List} className="sm:col-span-2">
                                 <TextInput name="jntuNo" value={formData.jntuNo} onChange={handleChange}
                                     placeholder="e.g. 23341A05A7" />
                             </Field>

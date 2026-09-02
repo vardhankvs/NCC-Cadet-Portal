@@ -250,11 +250,19 @@ export function CollegesView({ mode }) {
     const collegeDetailsMetrics = useMemo(() => {
         const metrics = {};
         collegesList.forEach(c => {
-            // Only count active (non-alumni) cadets
-            const collegeCadets = allCadets.filter(cad => cad.institutionId === c.subdomain && cad.status !== 'alumni');
+            const sub = c.subdomain.toLowerCase();
+            // Only count active (non-alumni) cadets belonging to this college
+            const collegeCadets = allCadets.filter(cad => {
+                if (cad.status === 'alumni') return false;
+                const inst = (cad.institutionId || '').toLowerCase();
+                const reg = (cad.enrollmentId || cad.regimentalNumber || '').toUpperCase();
+                if (inst === sub) return true;
+                if (sub === 'gmrit' && (!inst || inst === '14a-bn-srikakulam' || reg.includes('0520') || (cad.college || '').toLowerCase().includes('gmr') || (cad.collegeName || '').toLowerCase().includes('gmr'))) return true;
+                return false;
+            });
             
             // Staff are filtered by institutionId — show ALL staff for that college
-            const collegeStaff = staff.filter(s => s.institutionId === c.subdomain);
+            const collegeStaff = staff.filter(s => (s.institutionId || '').toLowerCase() === sub);
             const collegeAnos = collegeStaff; // All staff of this college are ANOs/officers
             const anoCount = collegeAnos.length;
 
@@ -309,19 +317,35 @@ export function CollegesView({ mode }) {
                 cadetsList: cadetsListWithAttendance,
                 staffList: collegeAnos,
                 // Wing breakdown
-                sdCount: collegeCadets.filter(cad => (cad.enrollmentId || cad.regimentalNumber || '').toUpperCase().includes('SD')).length,
-                swCount: collegeCadets.filter(cad => (cad.enrollmentId || cad.regimentalNumber || '').toUpperCase().includes('SW')).length,
+                sdCount: collegeCadets.filter(cad => {
+                    const reg = (cad.enrollmentId || cad.regimentalNumber || '').toUpperCase();
+                    const isSW = reg.includes('SW') || (cad.division || '').toUpperCase() === 'SW' || (cad.gender || '').toLowerCase() === 'female' || (cad.gender || '').toLowerCase() === 'f';
+                    return !isSW;
+                }).length,
+                swCount: collegeCadets.filter(cad => {
+                    const reg = (cad.enrollmentId || cad.regimentalNumber || '').toUpperCase();
+                    return reg.includes('SW') || (cad.division || '').toUpperCase() === 'SW' || (cad.gender || '').toLowerCase() === 'female' || (cad.gender || '').toLowerCase() === 'f';
+                }).length,
                 // Certificate breakdown
-                b1Count: collegeCadets.filter(cad => (cad.certificate || cad.B) === 'B1').length,
-                b2Count: collegeCadets.filter(cad => (cad.certificate || cad.B) === 'B2').length,
-                cCount:  collegeCadets.filter(cad => (cad.certificate || cad.B) === 'C').length,
+                b1Count: collegeCadets.filter(cad => {
+                    const cert = (cad.currentCertificate || cad.certificate || cad.B || '').trim().toUpperCase();
+                    return cert === 'B1' || cert === 'B' || cert === 'CERT B1';
+                }).length,
+                b2Count: collegeCadets.filter(cad => {
+                    const cert = (cad.currentCertificate || cad.certificate || cad.B || '').trim().toUpperCase();
+                    return cert === 'B2' || cert === 'CERT B2';
+                }).length,
+                cCount: collegeCadets.filter(cad => {
+                    const cert = (cad.currentCertificate || cad.certificate || cad.B || '').trim().toUpperCase();
+                    return cert === 'C' || cert === 'CERT C';
+                }).length,
             };
         });
         return metrics;
     }, [collegesList, allCadets, staff]);
 
     const activeCadetsAllColleges = useMemo(() => {
-        return allCadets.filter(c => c.status !== 'alumni' && c.institutionId && c.institutionId !== '14a-bn-srikakulam');
+        return allCadets.filter(c => c.status !== 'alumni' && (!c.institutionId || c.institutionId !== '14a-bn-srikakulam'));
     }, [allCadets]);
 
     const cadetsAllCollegesWithAttendance = useMemo(() => {

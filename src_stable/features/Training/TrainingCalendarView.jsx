@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { useDataContext } from '../../context/DataContext.jsx';
 import { Calendar as CalendarIcon, Clock, MapPin, ChevronLeft, ChevronRight, Plus, Users, Shield, Bell, Download } from '../../components/Icons.jsx';
-import { formatDate } from '../../utils/dateUtils.js';
+import { formatDate, isEventPast, getEventEndDateTime } from '../../utils/dateUtils.js';
 import { DrillSchedulerForm } from './DrillSchedulerForm.jsx';
 import { downloadICalFile } from '../../utils/icalExport.js';
 import { sendEventReminderPush } from '../../firebase/pushNotifications.js';
@@ -56,13 +56,10 @@ export const TrainingCalendarView = () => {
         setIsAddingEvent(true);
     };
 
+    const now = new Date();
     const upcomingOperations = events
-        .filter(e => {
-            const eventDate = new Date(e.date || e.startDate);
-            const today = new Date(); today.setHours(0, 0, 0, 0);
-            return eventDate >= today;
-        })
-        .sort((a, b) => new Date(a.date || a.startDate) - new Date(b.date || b.startDate))
+        .filter(e => !isEventPast(e, now))
+        .sort((a, b) => getEventEndDateTime(a).getTime() - getEventEndDateTime(b).getTime())
         .slice(0, 6);
 
     const handleExportIcal = (e, event) => {

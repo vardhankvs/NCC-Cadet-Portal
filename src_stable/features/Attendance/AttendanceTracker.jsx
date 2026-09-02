@@ -5,7 +5,7 @@ import { useDataContext } from '../../context/DataContext.jsx';
 import { recordAttendance, addNotification, checkAndSendLowAttendanceAlert } from '../../firebase/firestoreService.js';
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay.jsx';
 import { Calendar } from '../../components/Icons.jsx';
-import { formatDate } from '../../utils/dateUtils.js';
+import { formatDate, normalizeDate } from '../../utils/dateUtils.js';
 import { sendPushToAll, sendPushToCadets } from '../../firebase/pushNotifications.js';
 import { toast } from 'react-toastify';
 
@@ -23,6 +23,7 @@ const formatHistoryDate = (dateString) => {
 export const AttendanceTracker = ({ cadets }) => {
     const { userRole, actualRole, isDelegatedCadet, userEnrollmentId, userInstitutionId, userName, user } = useAuthContext();
     const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
+    const isAno = (userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin') && !isDelegatedCadet;
     const { attendanceData } = useDataContext();
     const [selectedDate, setSelectedDate] = useState(getTodayDateString());
     const [selectedCertificate, setSelectedCertificate] = useState('All');
@@ -32,7 +33,13 @@ export const AttendanceTracker = ({ cadets }) => {
     const [error, setError] = useState(null);
     const today = getTodayDateString();
 
-    const isAno = (userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin') && !isDelegatedCadet;
+    const normalizeReg = (str) => String(str || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
+    const isPresentStatus = (status) => {
+        if (!status) return false;
+        const s = String(status).trim().toUpperCase();
+        return s === 'PRESENT' || s === 'P' || s === 'VERIFIED' || s === 'LATE' || s === 'ATTENDED' || s === 'EXEMPT' || s === 'TRUE' || s === '1';
+    };
 
     const relevantCadets = useMemo(() => {
         const activeCadets = cadets.filter(c => c.status !== 'alumni');
@@ -40,7 +47,12 @@ export const AttendanceTracker = ({ cadets }) => {
         if (isAno || isDelegatedCadet) {
             list = selectedCertificate === 'All' ? [...activeCadets] : activeCadets.filter((c) => c.certificate === selectedCertificate);
         } else {
-            list = activeCadets.filter((c) => c.enrollmentId === userEnrollmentId);
+            const userNorm = normalizeReg(userEnrollmentId);
+            list = activeCadets.filter((c) => 
+                normalizeReg(c.enrollmentId) === userNorm || 
+                normalizeReg(c.regimentalNumber) === userNorm || 
+                c.id === user?.uid
+            );
         }
 
         if (selectedCategory !== 'All') {
@@ -54,9 +66,18 @@ export const AttendanceTracker = ({ cadets }) => {
             }
         }
         return list;
-    }, [cadets, selectedCertificate, selectedCategory, searchQuery, userRole, userEnrollmentId, isAno, isDelegatedCadet]);
+    }, [cadets, selectedCertificate, selectedCategory, searchQuery, userRole, userEnrollmentId, isAno, isDelegatedCadet, user?.uid]);
 
-    const getStatus = useCallback((cadet) => cadet.attendance?.[selectedDate] || 'Absent', [selectedDate]);
+    const getStatus = useCallback((cadet) => {
+        if (!cadet || !cadet.attendance) return 'Absent';
+        const normTarget = normalizeDate(selectedDate);
+        for (const [k, v] of Object.entries(cadet.attendance)) {
+            if (normalizeDate(k) === normTarget) {
+                return isPresentStatus(v) ? 'Present' : (v || 'Absent');
+            }
+        }
+        return 'Absent';
+    }, [selectedDate]);
 
     const toggleStatus = async (cadetId) => {
         const cadet = cadets.find((c) => c.id === cadetId);
@@ -261,6 +282,9 @@ export const AttendanceTracker = ({ cadets }) => {
                                 <tbody>
                                     {Object.entries(relevantCadets[0].attendance || {})
                                         .filter(([dateKey, status]) => {
+                                            if (!dateKey) return false;
+                                            const norm = normalizeDate(dateKey);
+                                            if (norm === '2026-08-26' || String(dateKey).includes('26-08-2026') || String(dateKey).includes('26/08/2026')) return false;
                                             if (!cadetHistorySearch.trim()) return true;
                                             const { date, day } = formatHistoryDate(dateKey);
                                             const q = cadetHistorySearch.toLowerCase();

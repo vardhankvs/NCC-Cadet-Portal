@@ -11,21 +11,60 @@ import { addDoc, serverTimestamp, query, orderBy, onSnapshot, updateDoc, doc, ar
 import { sendPushToAll, sendPushToAdmins } from '../../firebase/pushNotifications.js';
 
 
-const BloodGroupTag = ({ group, isActive, onClick }) => (
+export const normalizeBloodGroup = (bg) => {
+    if (!bg) return '';
+    let s = String(bg).trim().toUpperCase()
+        .replace(/\s+/g, '')
+        .replace(/POSITIVE/g, '+')
+        .replace(/NEGATIVE/g, '-')
+        .replace(/POS/g, '+')
+        .replace(/NEG/g, '-')
+        .replace(/VE/g, '')
+        .replace(/1/g, '')
+        .replace(/[()]/g, '');
+
+    if (s === 'O+' || s === 'OPOSITIVE' || s === 'O+VE') return 'O+';
+    if (s === 'O-' || s === 'ONEGATIVE' || s === 'O-VE') return 'O-';
+    if (s === 'A+' || s === 'APOSITIVE' || s === 'A+VE') return 'A+';
+    if (s === 'A-' || s === 'ANEGATIVE' || s === 'A-VE') return 'A-';
+    if (s === 'B+' || s === 'BPOSITIVE' || s === 'B+VE') return 'B+';
+    if (s === 'B-' || s === 'BNEGATIVE' || s === 'B-VE') return 'B-';
+    if (s === 'AB+' || s === 'ABPOSITIVE' || s === 'AB+VE') return 'AB+';
+    if (s === 'AB-' || s === 'ABNEGATIVE' || s === 'AB-VE') return 'AB-';
+
+    if (s.startsWith('O') && s.includes('+')) return 'O+';
+    if (s.startsWith('O') && s.includes('-')) return 'O-';
+    if (s.startsWith('AB') && s.includes('+')) return 'AB+';
+    if (s.startsWith('AB') && s.includes('-')) return 'AB-';
+    if (s.startsWith('A') && s.includes('+')) return 'A+';
+    if (s.startsWith('A') && s.includes('-')) return 'A-';
+    if (s.startsWith('B') && s.includes('+')) return 'B+';
+    if (s.startsWith('B') && s.includes('-')) return 'B-';
+
+    return s;
+};
+
+const BloodGroupTag = ({ group, count, isActive, onClick }) => (
     <button
         onClick={onClick}
-        className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 ${
+        className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all border-2 flex items-center gap-1.5 ${
             isActive 
-            ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-200 scale-105' 
-            : 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/10 text-gray-500 dark:text-white/50 hover:border-red-200 hover:text-red-500'
+            ? 'bg-red-600 border-red-600 text-white shadow-lg shadow-red-500/30 scale-105' 
+            : 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/10 text-gray-600 dark:text-white/70 hover:border-red-400 hover:text-red-500'
         }`}
     >
-        {group}
+        <span>{group}</span>
+        {count !== undefined && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${isActive ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-white/60'}`}>
+                {count}
+            </span>
+        )}
     </button>
 );
 
 const DonorCard = ({ donor, onChat }) => {
-    const cadetPhone = donor.phonePersonal || donor.phone || donor.phoneNumber;
+    const cadetPhone = donor.phonePersonal || donor.phone || donor.phoneNumber || donor.phoneParents;
+    const cadetBloodGroup = normalizeBloodGroup(donor.bloodGroup || donor.blood_group || donor.blood) || donor.bloodGroup || 'N/A';
 
     const handleCall = () => {
         if (!cadetPhone) return toast.info("Phone number not listed");
@@ -45,13 +84,13 @@ const DonorCard = ({ donor, onChat }) => {
             className="bg-white dark:bg-[#050b14] p-6 rounded-3xl border border-[#ddd8cc] shadow-sm hover:shadow-md transition-all group relative overflow-hidden"
         >
             <div className="absolute top-0 right-0 w-24 h-24 bg-red-50 dark:bg-red-500/5 rounded-bl-[4rem] flex items-start justify-end p-4">
-                <span className="text-2xl font-black text-red-600 dark:text-red-400">{donor.bloodGroup}</span>
+                <span className="text-2xl font-black text-red-600 dark:text-red-400">{cadetBloodGroup}</span>
             </div>
 
             <div className="flex items-center gap-4 mb-6">
                 <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/5 overflow-hidden">
-                    {donor.photoURL ? (
-                        <img src={donor.photoURL} alt={donor.name} className="w-full h-full object-cover" />
+                    {donor.photoURL || donor.photoUrl ? (
+                        <img src={donor.photoURL || donor.photoUrl} alt={donor.name} className="w-full h-full object-cover" />
                     ) : (
                         <div className="w-full h-full flex items-center justify-center font-bold text-gray-300">
                             {donor.name?.[0]}
@@ -60,7 +99,7 @@ const DonorCard = ({ donor, onChat }) => {
                 </div>
                 <div>
                     <h3 className="font-black text-ncc-navy dark:text-white group-hover:text-red-600 transition-colors">{donor.name}</h3>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{donor.regimentalNumber}</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{donor.enrollmentId || donor.regimentalNumber}</p>
                 </div>
             </div>
 
@@ -258,12 +297,36 @@ export const BloodRegistry = ({ onChat }) => {
         return () => unsubscribe();
     }, [userRole]);
 
+    const bloodGroupCounts = useMemo(() => {
+        const counts = { ALL: (cadets || []).length, 'A+': 0, 'A-': 0, 'B+': 0, 'B-': 0, 'AB+': 0, 'AB-': 0, 'O+': 0, 'O-': 0 };
+        (cadets || []).forEach(c => {
+            const rawBg = c.bloodGroup || c.blood_group || c.blood || '';
+            const norm = normalizeBloodGroup(rawBg);
+            if (norm && counts[norm] !== undefined) {
+                counts[norm]++;
+            }
+        });
+        return counts;
+    }, [cadets]);
+
     const donors = useMemo(() => {
-        return cadets.filter(c => {
-            const matchesSearch = c.name?.toLowerCase().includes(search.toLowerCase()) || 
-                                c.regimentalNumber?.toLowerCase().includes(search.toLowerCase());
-            const matchesGroup = selectedGroup === 'ALL' || c.bloodGroup === selectedGroup;
-            return matchesSearch && matchesGroup && c.bloodGroup;
+        const q = (search || '').trim().toLowerCase();
+        const normSelected = normalizeBloodGroup(selectedGroup);
+
+        return (cadets || []).filter(c => {
+            const rawBg = c.bloodGroup || c.blood_group || c.blood || '';
+            const normCadetBg = normalizeBloodGroup(rawBg);
+
+            const matchesSearch = !q || 
+                (c.name || '').toLowerCase().includes(q) || 
+                (c.enrollmentId || '').toLowerCase().includes(q) ||
+                (c.regimentalNumber || '').toLowerCase().includes(q) ||
+                (c.rank || '').toLowerCase().includes(q) ||
+                (normCadetBg && normCadetBg.toLowerCase().includes(q));
+
+            const matchesGroup = selectedGroup === 'ALL' || (normCadetBg && (normCadetBg === normSelected || normCadetBg === selectedGroup));
+
+            return matchesSearch && matchesGroup;
         });
     }, [cadets, search, selectedGroup]);
 
@@ -516,6 +579,7 @@ export const BloodRegistry = ({ onChat }) => {
                                                 <BloodGroupTag 
                                                     key={group} 
                                                     group={group} 
+                                                    count={bloodGroupCounts[group]}
                                                     isActive={selectedGroup === group}
                                                     onClick={() => setSelectedGroup(group)}
                                                 />

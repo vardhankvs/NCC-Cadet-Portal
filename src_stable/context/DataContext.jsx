@@ -1,7 +1,9 @@
 // src/context/DataContext.jsx
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useMemo, useState, useEffect } from 'react';
 import { useFirestoreSubscription } from '../hooks/useFirestoreSubscription.jsx';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp, getDocs, writeBatch, doc, deleteField } from 'firebase/firestore';
+import { db } from '../firebase/config.js';
+import { getCollectionRef } from '../firebase/firestoreService.js';
 import { useAuthContext } from './AuthContext.jsx';
 import { useTenant } from './TenantContext.jsx';
 import { normalizeDate } from '../utils/dateUtils.js';
@@ -32,7 +34,7 @@ export const DataProvider = ({ children }) => {
     const { tenant } = useTenant();
 
 
-    // Multi-college active selection filter
+    // Multi-college active selection filter (Defaults to 'All' for battalion admin/superadmin, otherwise unit subdomain)
     const [selectedCollege, setSelectedCollege] = useState('All');
 
     // Subscriptions for all data streams
@@ -121,14 +123,24 @@ export const DataProvider = ({ children }) => {
             const regNo = String(cadet.enrollmentId || cadet.regimentalNumber || '').trim().toUpperCase();
             if (!regNo) continue;
 
+            const sanitizedAtt = {};
+            if (cadet.attendance) {
+                Object.entries(cadet.attendance).forEach(([d, s]) => {
+                    const normD = normalizeDate(d);
+                    if (normD && normD !== '2026-08-26' && !String(d).includes('26-08-2026') && !String(d).includes('26/08/2026') && !String(d).includes('2026-08-26')) {
+                        sanitizedAtt[normD] = s;
+                    }
+                });
+            }
+
             if (!mapByRegNo.has(regNo)) {
                 mapByRegNo.set(regNo, {
                     ...cadet,
-                    attendance: { ...(cadet.attendance || {}) }
+                    attendance: sanitizedAtt
                 });
             } else {
                 const primary = mapByRegNo.get(regNo);
-                primary.attendance = { ...(cadet.attendance || {}), ...primary.attendance };
+                primary.attendance = { ...sanitizedAtt, ...primary.attendance };
             }
         }
         const uniqueCadets = Array.from(mapByRegNo.values());
@@ -145,20 +157,43 @@ export const DataProvider = ({ children }) => {
         });
     }, [rawCadets]);
 
-    // Apply Active College filtering for admin views
+    // Apply Active College filtering for admin and college unit views
     const allCadets = useMemo(() => {
-        if (selectedCollege === 'All') return allCadetsUnfiltered;
-        return allCadetsUnfiltered.filter(c => c.institutionId === selectedCollege);
-    }, [allCadetsUnfiltered, selectedCollege]);
+        const isBattalionLevel = userRole === 'superadmin' || userRole === 'battalion_admin';
+        
+        // If battalion admin / superadmin and "All" or nothing is selected, show all cadets
+        if (isBattalionLevel && (!selectedCollege || selectedCollege === 'All')) {
+            return allCadetsUnfiltered;
+        }
+
+        // Otherwise filter by selected college (for battalion admin drill-down) or unit institutionId
+        const targetInst = ((isBattalionLevel && selectedCollege && selectedCollege !== 'All') 
+            ? selectedCollege 
+            : (userInstitutionId || tenant?.subdomain || 'gmrit')
+        ).toLowerCase();
+        
+        return allCadetsUnfiltered.filter(c => {
+            const inst = (c.institutionId || '').toLowerCase();
+            if (inst === targetInst) return true;
+            // Match if regimental number contains GMRIT unit sequence (0520) or college specifies GMR
+            const reg = (c.enrollmentId || c.regimentalNumber || '').toUpperCase();
+            if (targetInst === 'gmrit' && (reg.includes('0520') || reg.includes('GMR') || (c.college || '').toLowerCase().includes('gmr') || (c.collegeName || '').toLowerCase().includes('gmr'))) {
+                return true;
+            }
+            return false;
+        });
+    }, [allCadetsUnfiltered, selectedCollege, userInstitutionId, userRole, tenant]);
 
     const cadets = useMemo(() => allCadets.filter(c => c.status !== 'alumni'), [allCadets]);
     const alumni = useMemo(() => allCadets.filter(c => c.status === 'alumni'), [allCadets]);
 
     const processedEvents = useMemo(() => {
         const proc = events.map(processEvent);
-        if (selectedCollege === 'All') return proc;
-        return proc.filter(e => e.institutionId === selectedCollege);
-    }, [events, selectedCollege]);
+        const isBattalionLevel = userRole === 'superadmin' || userRole === 'battalion_admin';
+        if (isBattalionLevel && (!selectedCollege || selectedCollege === 'All')) return proc;
+        const target = ((isBattalionLevel && selectedCollege && selectedCollege !== 'All') ? selectedCollege : (userInstitutionId || tenant?.subdomain || 'gmrit')).toLowerCase();
+        return proc.filter(e => (e.institutionId || '').toLowerCase() === target);
+    }, [events, selectedCollege, userRole, userInstitutionId, tenant]);
 
     const filteredStaff = useMemo(() => {
         if (userRole === 'superadmin' || userRole === 'battalion_admin') {
@@ -173,9 +208,11 @@ export const DataProvider = ({ children }) => {
     }, [staff, userRole, userInstitutionId, tenant]);
 
     const filteredInventory = useMemo(() => {
-        if (selectedCollege === 'All') return inventory;
-        return inventory.filter(i => i.institutionId === selectedCollege);
-    }, [inventory, selectedCollege]);
+        const isBattalionLevel = userRole === 'superadmin' || userRole === 'battalion_admin';
+        if (isBattalionLevel && (!selectedCollege || selectedCollege === 'All')) return inventory;
+        const target = ((isBattalionLevel && selectedCollege && selectedCollege !== 'All') ? selectedCollege : (userInstitutionId || tenant?.subdomain || 'gmrit')).toLowerCase();
+        return inventory.filter(i => (i.institutionId || '').toLowerCase() === target);
+    }, [inventory, selectedCollege, userRole, userInstitutionId, tenant]);
 
     const filteredAnnouncements = useMemo(() => {
         // Announcements are now globally fetched; role-based filtering done in AnnouncementsView
@@ -187,19 +224,25 @@ export const DataProvider = ({ children }) => {
     const filteredCamps = useMemo(() => camps, [camps]);
 
     const filteredSocialActivities = useMemo(() => {
-        if (selectedCollege === 'All') return socialActivities;
-        return socialActivities.filter(s => s.institutionId === selectedCollege);
-    }, [socialActivities, selectedCollege]);
+        const isBattalionLevel = userRole === 'superadmin' || userRole === 'battalion_admin';
+        if (isBattalionLevel && (!selectedCollege || selectedCollege === 'All')) return socialActivities;
+        const target = ((isBattalionLevel && selectedCollege && selectedCollege !== 'All') ? selectedCollege : (userInstitutionId || tenant?.subdomain || 'gmrit')).toLowerCase();
+        return socialActivities.filter(s => (s.institutionId || '').toLowerCase() === target);
+    }, [socialActivities, selectedCollege, userRole, userInstitutionId, tenant]);
 
     const filteredGrievances = useMemo(() => {
-        if (selectedCollege === 'All') return grievances;
-        return grievances.filter(g => g.institutionId === selectedCollege);
-    }, [grievances, selectedCollege]);
+        const isBattalionLevel = userRole === 'superadmin' || userRole === 'battalion_admin';
+        if (isBattalionLevel && (!selectedCollege || selectedCollege === 'All')) return grievances;
+        const target = ((isBattalionLevel && selectedCollege && selectedCollege !== 'All') ? selectedCollege : (userInstitutionId || tenant?.subdomain || 'gmrit')).toLowerCase();
+        return grievances.filter(g => (g.institutionId || '').toLowerCase() === target);
+    }, [grievances, selectedCollege, userRole, userInstitutionId, tenant]);
 
     const filteredTransactions = useMemo(() => {
-        if (selectedCollege === 'All') return transactions;
-        return transactions.filter(t => t.institutionId === selectedCollege);
-    }, [transactions, selectedCollege]);
+        const isBattalionLevel = userRole === 'superadmin' || userRole === 'battalion_admin';
+        if (isBattalionLevel && (!selectedCollege || selectedCollege === 'All')) return transactions;
+        const target = ((isBattalionLevel && selectedCollege && selectedCollege !== 'All') ? selectedCollege : (userInstitutionId || tenant?.subdomain || 'gmrit')).toLowerCase();
+        return transactions.filter(t => (t.institutionId || '').toLowerCase() === target);
+    }, [transactions, selectedCollege, userRole, userInstitutionId, tenant]);
 
     const filteredGallery = useMemo(() => {
         if (!Array.isArray(gallery)) return [];
@@ -271,6 +314,67 @@ export const DataProvider = ({ children }) => {
         }).length;
     }, [notifications, userRole, lastViewedNotifications]);
 
+    // --- AUTOMATIC DATABASE CLEANUP EFFECT FOR 26-08-2026 ---
+    useEffect(() => {
+        const performDbCleanup = async () => {
+            if (userRole !== 'admin' && userRole !== 'superadmin' && userRole !== 'battalion_admin') return;
+            try {
+                const cadetsRef = getCollectionRef('cadets');
+                if (!cadetsRef) return;
+                const snap = await getDocs(cadetsRef);
+                let batch = writeBatch(db);
+                let count = 0;
+                
+                snap.forEach(d => {
+                    const data = d.data();
+                    const att = data.attendance || {};
+                    const matchingKeys = Object.keys(att).filter(k => 
+                        k.includes('26-08-2026') || 
+                        k.includes('26/08/2026') || 
+                        k.includes('2026-08-26') || 
+                        normalizeDate(k) === '2026-08-26'
+                    );
+                    if (matchingKeys.length > 0) {
+                        const updates = {};
+                        matchingKeys.forEach(k => {
+                            updates[`attendance.${k}`] = deleteField();
+                        });
+                        batch.update(d.ref, updates);
+                        count++;
+                    }
+                });
+
+                if (count > 0) {
+                    await batch.commit();
+                    console.log(`[NCC Database Auto-Cleanup] Successfully deleted 26-08-2026 attendance keys from ${count} cadet documents in Firestore.`);
+                }
+
+                // Also delete any logs in attendance collection for 26-08-2026
+                const attRef = getCollectionRef('attendance');
+                if (attRef) {
+                    const attSnap = await getDocs(attRef);
+                    let attBatch = writeBatch(db);
+                    let attCount = 0;
+                    attSnap.forEach(d => {
+                        const l = d.data();
+                        if (normalizeDate(l.date) === '2026-08-26' || String(l.date).includes('26-08-2026') || String(l.date).includes('26/08/2026')) {
+                            attBatch.delete(d.ref);
+                            attCount++;
+                        }
+                    });
+                    if (attCount > 0) {
+                        await attBatch.commit();
+                        console.log(`[NCC Database Auto-Cleanup] Deleted ${attCount} logs from attendance collection for 26-08-2026.`);
+                    }
+                }
+            } catch (err) {
+                console.warn("[NCC Database Auto-Cleanup notice]:", err);
+            }
+        };
+
+        performDbCleanup();
+    }, []);
+
     // --- ATTENDANCE CALCULATION ---
     const attendanceData = useMemo(() => {
         const activeCadets = cadets; // already filtered out alumni
@@ -288,45 +392,75 @@ export const DataProvider = ({ children }) => {
         const activeCadetRegSet = new Set(
             activeCadets.map(c => normalizeReg(c.enrollmentId || c.regimentalNumber)).filter(Boolean)
         );
+        const activeCadetIdSet = new Set(
+            activeCadets.map(c => c.id).filter(Boolean)
+        );
+        const cadetMapByReg = {};
+        activeCadets.forEach(c => {
+            const reg = normalizeReg(c.enrollmentId || c.regimentalNumber);
+            if (reg) cadetMapByReg[reg] = c;
+            if (c.id) cadetMapByReg[c.id] = c;
+        });
 
+        // 2. Derive valid class dates strictly from attendance collection and cadet profiles with quorum validation
+        const datesByCert = { B1: new Set(), B2: new Set(), C: new Set(), All: new Set() };
+        const dateCadetCounts = {};
+        
         (attendanceLogs || []).forEach(log => {
             const normReg = normalizeReg(log.enrollmentId);
+            const cadetId = log.cadetId;
             const normDate = normalizeDate(log.date);
-            if (normDate && normReg && activeCadetRegSet.has(normReg)) {
-                if (!logsByEnrollment[normReg]) logsByEnrollment[normReg] = {};
-                logsByEnrollment[normReg][normDate] = log.status || 'Present';
+            const isForActiveCadet = (normReg && activeCadetRegSet.has(normReg)) || (cadetId && activeCadetIdSet.has(cadetId));
+
+            if (normDate && normDate !== '2026-08-26' && isForActiveCadet) {
+                if (normReg) {
+                    if (!logsByEnrollment[normReg]) logsByEnrollment[normReg] = {};
+                    logsByEnrollment[normReg][normDate] = log.status || 'Present';
+                }
+
+                const status = log.status || 'Present';
+                if (isPresentStatus(status)) {
+                    if (!dateCadetCounts[normDate]) dateCadetCounts[normDate] = { total: 0, B1: 0, B2: 0, C: 0 };
+                    dateCadetCounts[normDate].total++;
+                    const cadet = (normReg && cadetMapByReg[normReg]) || (cadetId && cadetMapByReg[cadetId]);
+                    const cert = cadet?.currentCertificate || cadet?.certificate || log.certificate || 'NA';
+                    if (cert === 'B1') dateCadetCounts[normDate].B1++;
+                    else if (cert === 'B2') dateCadetCounts[normDate].B2++;
+                    else if (cert === 'C') dateCadetCounts[normDate].C++;
+                }
             }
         });
 
-        // 2. Map class dates per certificate level (B1, B2, C) where at least one cadet in that cert was present
-        const datesByCert = { B1: new Set(), B2: new Set(), C: new Set(), All: new Set() };
-
+        // Also incorporate records from cadet profile attendance maps
         activeCadets.forEach((cadet) => {
             const cert = cadet.currentCertificate || cadet.certificate || 'NA';
             const normReg = normalizeReg(cadet.enrollmentId || cadet.regimentalNumber);
-            
-            // Normalize dates from cadet profile attendance map as well
-            const normalizedCadetAtt = {};
             if (cadet.attendance) {
                 Object.entries(cadet.attendance).forEach(([d, s]) => {
                     const normD = normalizeDate(d);
-                    if (normD) normalizedCadetAtt[normD] = s;
+                    if (normD && normD !== '2026-08-26' && isPresentStatus(s)) {
+                        if (!logsByEnrollment[normReg]?.[normD]) {
+                            if (!dateCadetCounts[normD]) dateCadetCounts[normD] = { total: 0, B1: 0, B2: 0, C: 0 };
+                            dateCadetCounts[normD].total++;
+                            if (cert === 'B1') dateCadetCounts[normD].B1++;
+                            else if (cert === 'B2') dateCadetCounts[normD].B2++;
+                            else if (cert === 'C') dateCadetCounts[normD].C++;
+                        }
+                    }
                 });
             }
+        });
 
-            const mergedAtt = {
-                ...normalizedCadetAtt,
-                ...(logsByEnrollment[normReg] || {})
-            };
+        const todayStr = normalizeDate(new Date());
 
-            Object.entries(mergedAtt).forEach(([date, status]) => {
-                if (isPresentStatus(status)) {
-                    datesByCert.All.add(date);
-                    if (cert === 'B1') datesByCert.B1.add(date);
-                    else if (cert === 'B2') datesByCert.B2.add(date);
-                    else if (cert === 'C') datesByCert.C.add(date);
-                }
-            });
+        // A date is an official class date if at least 3 cadets attended OR if it is today with active attendance
+        Object.entries(dateCadetCounts).forEach(([normD, counts]) => {
+            if (normD !== '2026-08-26' && (counts.total >= 3 || normD === todayStr || (activeCadets.length < 3 && counts.total > 0))) {
+                datesByCert.All.add(normD);
+                if (counts.B1 > 0 || normD === todayStr) datesByCert.B1.add(normD);
+                if (counts.B2 > 0 || normD === todayStr) datesByCert.B2.add(normD);
+                if (counts.C > 0 || normD === todayStr) datesByCert.C.add(normD);
+            }
         });
 
         const periodsHeld = {
@@ -357,19 +491,35 @@ export const DataProvider = ({ children }) => {
             if (cadet.attendance) {
                 Object.entries(cadet.attendance).forEach(([d, s]) => {
                     const normD = normalizeDate(d);
-                    if (normD) normalizedCadetAtt[normD] = s;
+                    if (normD && normD !== '2026-08-26') normalizedCadetAtt[normD] = s;
                 });
             }
 
             const certDatesSet = datesByCert[cert];
             const applicableDates = (certDatesSet && certDatesSet.size > 0)
-                ? Array.from(certDatesSet).sort((a, b) => b.localeCompare(a))
-                : [];
+                ? Array.from(certDatesSet).filter(d => d !== '2026-08-26').sort((a, b) => b.localeCompare(a))
+                : (datesByCert.All.size > 0 ? Array.from(datesByCert.All).filter(d => d !== '2026-08-26').sort((a, b) => b.localeCompare(a)) : []);
 
+            // Build full attendance mapping strictly based on official applicable dates
             const fullAttendance = {};
             applicableDates.forEach(date => {
-                const status = cadetLogs[date] || normalizedCadetAtt[date] || 'Absent';
-                fullAttendance[date] = status;
+                if (isPresentStatus(normalizedCadetAtt[date]) || isPresentStatus(cadetLogs[date])) {
+                    fullAttendance[date] = 'Present';
+                } else {
+                    fullAttendance[date] = 'Absent';
+                }
+            });
+
+            // Preserve extra dates if cadet attended a special / extra parade
+            Object.entries(normalizedCadetAtt).forEach(([d, s]) => {
+                if (isPresentStatus(s) && !fullAttendance[d]) {
+                    fullAttendance[d] = 'Present';
+                }
+            });
+            Object.entries(cadetLogs).forEach(([d, s]) => {
+                if (isPresentStatus(s) && !fullAttendance[d]) {
+                    fullAttendance[d] = 'Present';
+                }
             });
             
             let presentCount = 0;
@@ -379,7 +529,7 @@ export const DataProvider = ({ children }) => {
                 }
             });
             
-            const totalPeriods = applicableDates.length;
+            const totalPeriods = Object.keys(fullAttendance).length;
             const percentage = totalPeriods > 0 ? (presentCount / totalPeriods) * 100 : 0;
             const finalPct = parseFloat(percentage.toFixed(2));
             
@@ -432,10 +582,39 @@ export const DataProvider = ({ children }) => {
         };
     }, [cadets, attendanceLogs, userRole, userEnrollmentId]);
 
+    // Attach sanitized attendance and statistics to all cadet instances
+    const enrichedCadets = useMemo(() => {
+        if (!attendanceData?.individualSummaries || attendanceData.individualSummaries.length === 0) {
+            return cadets;
+        }
+        const summaryMap = new Map();
+        attendanceData.individualSummaries.forEach(s => {
+            const reg = (s.enrollmentId || s.regimentalNumber || '').trim().toUpperCase();
+            if (reg) summaryMap.set(reg, s);
+            if (s.id) summaryMap.set(s.id, s);
+        });
+
+        return cadets.map(c => {
+            const reg = (c.enrollmentId || c.regimentalNumber || '').trim().toUpperCase();
+            const summary = (reg && summaryMap.get(reg)) || (c.id && summaryMap.get(c.id));
+            if (!summary) return c;
+            return {
+                ...c,
+                attendance: summary.attendance,
+                presentCount: summary.presentCount,
+                totalPeriods: summary.totalPeriods,
+                percentage: summary.percentage,
+                attendancePresentCount: summary.presentCount,
+                attendanceTotalPeriods: summary.totalPeriods,
+                attendancePercentage: summary.percentage,
+            };
+        });
+    }, [cadets, attendanceData]);
+
     const value = {
-        cadets,
+        cadets: enrichedCadets,
         alumni,
-        allCadets,
+        allCadets: enrichedCadets,
         events: processedEvents,
         staff: filteredStaff,
         references,

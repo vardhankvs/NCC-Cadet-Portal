@@ -3,9 +3,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay';
 import { InputField } from '../../components/ui/InputField';
 import { Loader, LogIn, User, Shield, Key, Mail, CheckCircle, XCircle } from '../../components/Icons.jsx';
-import { initiatePasswordReset } from '../../firebase/authService';
 import { CadetResetModal } from './CadetResetModal.jsx';
 import { ThemeToggle } from '../../components/ui/ThemeToggle.jsx';
+import nccLogo from '../../assets/ncc_logo.png';
 
 export const LoginPage = ({
     onLogin,
@@ -307,9 +307,9 @@ export const LoginPage = ({
                         <div className="flex flex-col items-center gap-3">
                             <div className="relative">
                                 <img
-                                    src="/src/assets/ncc_logo.jpg"
+                                    src={nccLogo}
                                     alt="NCC Logo"
-                                    className="h-16 w-16 object-contain drop-shadow-md"
+                                    className="h-24 w-auto max-w-[120px] object-contain drop-shadow-lg"
                                     onError={(e) => {
                                         e.target.onerror = null;
                                         e.target.src =

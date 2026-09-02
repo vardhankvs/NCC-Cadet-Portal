@@ -58,7 +58,7 @@ export const useFirestoreSubscription = (collectionName, requiresAuth = true) =>
 
         // Exempt global/battalion-wide collections from multi-tenancy segregation
         // 'camps' is battalion-wide — all roles must see all records regardless of college tag
-        const globalCollections = ['units', 'staff', 'references', 'settings', 'jobs', 'materials', 'camps', 'announcements'];
+        const globalCollections = ['units', 'staff', 'references', 'settings', 'jobs', 'materials', 'camps', 'announcements', 'attendance'];
         if (userRole !== 'superadmin' && userRole !== 'battalion_admin' && activeUnitId && !globalCollections.includes(collectionName)) {
             q = query(ref, where('institutionId', '==', activeUnitId));
         }

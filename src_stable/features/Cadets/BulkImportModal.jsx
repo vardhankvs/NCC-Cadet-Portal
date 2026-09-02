@@ -21,6 +21,7 @@ export const BulkImportModal = ({ onClose }) => {
     const REQUIRED_HEADERS = [
         'name',
         'regimental number',
+        'institution id',
         'jntu no',
         'rank',
         'cert',

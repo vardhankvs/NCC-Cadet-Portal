@@ -77,8 +77,16 @@ export const UnitAnalytics = ({ onDrillDown, onTabChange }) => {
         }
     };
 
+    const CERT_COLOR_MAP = {
+        'Cert A': '#64748b',
+        'Cert B1': '#10b981',
+        'Cert B2': '#3b82f6',
+        'Cert C': '#d4af37',
+    };
+    const CERT_COLORS = ['#64748b', '#10b981', '#3b82f6', '#d4af37'];
+
     const stats = useMemo(() => {
-        const activeCadets = cadets.filter(c => c.status !== 'alumni');
+        const activeCadets = (cadets || []).filter(c => c && c.status !== 'alumni');
 
         let sd = 0, sw = 0;
         let b1_total = 0, b1_sd = 0, b1_sw = 0;
@@ -88,51 +96,75 @@ export const UnitAnalytics = ({ onDrillDown, onTabChange }) => {
 
         activeCadets.forEach(c => {
             const reg = (c.enrollmentId || c.regimentalNumber || '').toUpperCase();
-            const isSD = reg.includes('SD');
-            const isSW = reg.includes('SW');
-            const cert = c.certificate || c.B;
+            const isSW = reg.includes('SW') || (c.division || '').toUpperCase() === 'SW' || (c.wing || '').toUpperCase() === 'SW' || (c.gender || '').toLowerCase() === 'female' || (c.gender || '').toLowerCase() === 'f';
+            const isSD = !isSW;
+            
+            const rawCert = (c.currentCertificate || c.certificate || c.B || '').trim().toUpperCase();
+            const cert = rawCert.replace(/^CERT(IFICATE)?\s*/i, '').replace(/[-\s]/g, '');
 
             if (isSD) sd++;
             if (isSW) sw++;
 
-            if (cert === 'B1') { b1_total++; if (isSD) b1_sd++; if (isSW) b1_sw++; }
-            else if (cert === 'B2') { b2_total++; if (isSD) b2_sd++; if (isSW) b2_sw++; }
-            else if (cert === 'C') { c_total++; if (isSD) c_sd++; if (isSW) c_sw++; }
-
-            if (certs[cert] !== undefined) certs[cert]++;
+            if (cert === 'B1' || cert === 'B') { 
+                b1_total++; 
+                if (isSD) b1_sd++; 
+                if (isSW) b1_sw++; 
+                certs['B1']++;
+            } else if (cert === 'B2') { 
+                b2_total++; 
+                if (isSD) b2_sd++; 
+                if (isSW) b2_sw++; 
+                certs['B2']++;
+            } else if (cert === 'C') { 
+                c_total++; 
+                if (isSD) c_sd++; 
+                if (isSW) c_sw++; 
+                certs['C']++;
+            } else if (cert === 'A') {
+                certs['A']++;
+            }
         });
 
         const ranks = { 'CDT': 0, 'LCPL': 0, 'CPL': 0, 'SGT': 0, 'CSM': 0, 'CQMS': 0, 'JUO': 0, 'SUO': 0 };
         activeCadets.forEach(c => {
-            if (ranks[c.rank] !== undefined) ranks[c.rank]++;
-            else ranks['CDT']++;
+            const r = (c.rank || 'CDT').toUpperCase().trim();
+            if (ranks[r] !== undefined) {
+                ranks[r]++;
+            } else if (r === 'L/CPL' || r === 'L-CPL') {
+                ranks['LCPL']++;
+            } else if (r === 'UO') {
+                ranks['JUO']++;
+            } else {
+                ranks['CDT']++;
+            }
         });
 
         const rankChartData = Object.keys(ranks).map(key => ({ name: key, count: ranks[key] }));
         const certChartData = Object.keys(certs).map(key => ({ name: `Cert ${key}`, value: certs[key] }));
 
         const grievanceStats = {
-            pending: grievances.filter(g => g.status === 'Pending').length,
-            reviewed: grievances.filter(g => g.status === 'Reviewed' || g.status === 'Escalated').length,
-            resolved: grievances.filter(g => g.status === 'Resolved').length,
-            total: grievances.length
+            pending: (grievances || []).filter(g => (g.status || '').toLowerCase() === 'pending').length,
+            reviewed: (grievances || []).filter(g => {
+                const s = (g.status || '').toLowerCase();
+                return s === 'reviewed' || s === 'escalated' || s === 'in progress' || s === 'in-progress';
+            }).length,
+            resolved: (grievances || []).filter(g => (g.status || '').toLowerCase() === 'resolved').length,
+            total: (grievances || []).length
         };
 
         const financialStats = {
-            totalExpected: cadets.reduce((acc, c) => acc + (c.enrollmentFee || 1000) + (c.uniformFee || 1500) + (c.campFee || 0), 0),
-            totalCollected: cadets.reduce((acc, c) => acc + (Number(c.feePaid) || 0), 0),
+            totalExpected: activeCadets.reduce((acc, c) => acc + (Number(c.enrollmentFee !== undefined && c.enrollmentFee !== '' ? c.enrollmentFee : 1000)) + (Number(c.uniformFee !== undefined && c.uniformFee !== '' ? c.uniformFee : 1500)) + (Number(c.campFee || 0)), 0),
+            totalCollected: activeCadets.reduce((acc, c) => acc + (Number(c.feePaid) || 0), 0),
             totalPending: 0,
             collectionRate: 0
         };
-        financialStats.totalPending = financialStats.totalExpected - financialStats.totalCollected;
+        financialStats.totalPending = Math.max(0, financialStats.totalExpected - financialStats.totalCollected);
         financialStats.collectionRate = financialStats.totalExpected > 0 
             ? Math.round((financialStats.totalCollected / financialStats.totalExpected) * 100) 
             : 0;
 
         return { total: activeCadets.length, sd, sw, b1_total, b1_sd, b1_sw, b2_total, b2_sd, b2_sw, c_total, c_sd, c_sw, rankChartData, certChartData, grievanceStats, financialStats };
     }, [cadets, grievances]);
-
-    const CERT_COLORS = ['#64748b', '#10b981', '#3b82f6', '#d4af37'];
 
     const CustomTooltip = ({ active, payload, label }) => {
         if (active && payload && payload.length) {
@@ -394,8 +426,8 @@ export const UnitAnalytics = ({ onDrillDown, onTabChange }) => {
                                         stroke="none"
                                         cornerRadius={6}
                                     >
-                                        {stats.certChartData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={CERT_COLORS[index % CERT_COLORS.length]} />
+                                        {stats.certChartData.filter(d => d.value > 0).map((entry) => (
+                                            <Cell key={`cell-${entry.name}`} fill={CERT_COLOR_MAP[entry.name] || '#3b82f6'} />
                                         ))}
                                     </Pie>
                                     <RechartsTooltip content={<CustomTooltip />} />

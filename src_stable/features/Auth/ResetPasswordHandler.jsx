@@ -4,6 +4,7 @@ import { auth } from '../../firebase/config.js';
 import { InputField } from '../../components/ui/InputField.jsx';
 import { Loader, Shield } from '../../components/Icons.jsx';
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay.jsx';
+import nccLogo from '../../assets/ncc_logo.png';
 
 export const ResetPasswordHandler = ({ oobCode }) => {
     const [regimentalNumber, setRegimentalNumber] = useState('');
@@ -86,9 +87,9 @@ export const ResetPasswordHandler = ({ oobCode }) => {
                         <div className="flex flex-col items-center gap-3">
                             <div className="relative">
                                 <img
-                                    src="/src/assets/ncc_logo.jpg"
+                                    src={nccLogo}
                                     alt="NCC Logo"
-                                    className="h-16 w-16 object-contain drop-shadow-md"
+                                    className="h-24 w-auto max-w-[120px] object-contain drop-shadow-lg"
                                     onError={(e) => {
                                         e.target.onerror = null;
                                         e.target.src = 'https://placehold.co/64x64/0A1628/C9922A?text=NCC';

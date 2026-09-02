@@ -2,7 +2,7 @@
 import React from 'react';
 import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
 import { X, Calendar, User, CheckCircle, XCircle } from '../../components/Icons.jsx';
-import { formatDate } from '../../utils/dateUtils.js';
+import { formatDate, normalizeDate } from '../../utils/dateUtils.js';
 
 const isPresentStatus = (status) => {
     if (!status) return false;
@@ -49,16 +49,23 @@ const formatHistoryDate = (dateInput) => {
 };
 
 export const CadetAttendanceModal = ({ cadet, onClose, totalPeriods }) => {
-    const attendanceHistory = Object.entries(cadet.attendance || {}).sort(
-        ([dateA], [dateB]) => dateB.localeCompare(dateA)
-    );
+    const attendanceHistory = Object.entries(cadet.attendance || {})
+        .filter(([dateKey]) => {
+            if (!dateKey) return false;
+            const norm = normalizeDate(dateKey);
+            if (norm === '2026-08-26' || String(dateKey).includes('26-08-2026') || String(dateKey).includes('26/08/2026')) return false;
+            return true;
+        })
+        .sort(([dateA], [dateB]) => dateB.localeCompare(dateA));
 
-    const presentCount = attendanceHistory.filter(
-        ([, status]) => isPresentStatus(status)
-    ).length;
+    const presentCount = cadet.presentCount !== undefined
+        ? cadet.presentCount
+        : attendanceHistory.filter(([, status]) => isPresentStatus(status)).length;
     
-    const actualTotalPeriods = totalPeriods || attendanceHistory.length;
-    const percentage = actualTotalPeriods > 0 ? ((presentCount / actualTotalPeriods) * 100).toFixed(2) : 0;
+    const actualTotalPeriods = totalPeriods || cadet.totalPeriods || attendanceHistory.length;
+    const percentage = cadet.percentage !== undefined
+        ? cadet.percentage
+        : (actualTotalPeriods > 0 ? ((presentCount / actualTotalPeriods) * 100).toFixed(2) : 0);
 
     return (
         <ModalOverlay>

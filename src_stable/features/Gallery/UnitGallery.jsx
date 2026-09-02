@@ -3,7 +3,25 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useDataContext } from '../../context/DataContext.jsx';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
-import { X, ImageIcon, Camera, MapPin, Calendar, Plus, Trash2, Upload, Loader, RefreshCcw, Check, Edit2 } from '../../components/Icons.jsx';
+import { 
+    X, 
+    ImageIcon, 
+    Camera, 
+    MapPin, 
+    Calendar, 
+    Plus, 
+    Trash2, 
+    Upload, 
+    Loader, 
+    RefreshCcw, 
+    Check, 
+    Edit2,
+    Search,
+    ChevronLeft,
+    ChevronRight,
+    Download,
+    Eye
+} from '../../components/Icons.jsx';
 import { saveGalleryItem, deleteItem } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
 import { formatDate } from '../../utils/dateUtils.js';
@@ -66,6 +84,8 @@ export const UnitGallery = () => {
     const videoRef = useRef(null);
     const nativeCameraInputRef = useRef(null);
 
+    const [searchQuery, setSearchQuery] = useState('');
+
     const canUpload = ['admin', 'officer', 'superadmin', 'battalion_admin', 'ano'].includes((userRole || '').toLowerCase());
     const isBattalionAdmin = userRole === 'superadmin' || userRole === 'battalion_admin';
 
@@ -77,54 +97,93 @@ export const UnitGallery = () => {
 
     const collegeName = collegeUnit?.collegeName || collegeUnit?.unitName || (activeInstitutionId === 'gmrit' ? 'GMR Institute of Technology' : activeInstitutionId);
 
-    // Combine gallery items from Firestore `unit_gallery` collection + `events` with photos
+    // Unit uploads only
     const allImages = useMemo(() => {
-        const combined = [];
+        const list = [];
 
-        // 1. Items from unit_gallery collection
         (gallery || []).forEach(item => {
             if (!isBattalionAdmin) {
                 const matchInst = !item.institutionId || item.institutionId === '14a-bn-srikakulam' || item.institutionId === activeInstitutionId;
                 if (!matchInst) return;
             }
 
-            combined.push({
-                id: item.id,
-                url: item.photoUrl,
-                title: item.title || 'NCC Activity',
-                date: item.date ? formatDate(item.date) : 'N/A',
-                rawDate: item.date || null,
-                location: item.location || collegeName,
-                institutionId: item.institutionId || activeInstitutionId,
-                isUserUploaded: true,
-                uploaderName: item.uploaderName || 'ANO'
-            });
-        });
-
-        // 2. Extract photos from events
-        (events || []).forEach(event => {
-            if (event.imageUrls && event.imageUrls.length > 0) {
-                if (!isBattalionAdmin) {
-                    const matchInst = !event.institutionId || event.institutionId === '14a-bn-srikakulam' || event.institutionId === activeInstitutionId;
-                    if (!matchInst) return;
-                }
-
-                event.imageUrls.forEach((url, i) => {
-                    combined.push({
-                        id: `event-${event.id}-${i}`,
-                        url,
-                        title: event.title,
-                        date: event.date?.toDate ? formatDate(event.date.toDate()) : (event.date ? formatDate(event.date) : 'N/A'),
-                        location: event.location || 'Unit HQ',
-                        institutionId: event.institutionId || activeInstitutionId,
-                        isUserUploaded: false
-                    });
+            if (item.photoUrl && typeof item.photoUrl === 'string' && item.photoUrl.trim().length > 0) {
+                list.push({
+                    id: item.id,
+                    url: item.photoUrl,
+                    title: item.title || 'NCC Activity',
+                    date: item.date ? formatDate(item.date) : 'N/A',
+                    rawDate: item.date || null,
+                    location: item.location || collegeName,
+                    institutionId: item.institutionId || activeInstitutionId,
+                    isUserUploaded: true,
+                    uploaderName: item.uploaderName || 'ANO'
                 });
             }
         });
 
-        return combined;
-    }, [gallery, events, isBattalionAdmin, activeInstitutionId, collegeName]);
+        return list;
+    }, [gallery, isBattalionAdmin, activeInstitutionId, collegeName]);
+
+    // Dynamic Filtered List based on search
+    const filteredImages = useMemo(() => {
+        let list = allImages || [];
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            list = list.filter(i => 
+                (i.title || '').toLowerCase().includes(q) || 
+                (i.location || '').toLowerCase().includes(q) ||
+                (i.date || '').toLowerCase().includes(q)
+            );
+        }
+        return list;
+    }, [allImages, searchQuery]);
+
+    // Lightbox navigation helpers
+    const currentLightboxIndex = useMemo(() => {
+        if (!selectedImage) return -1;
+        return filteredImages.findIndex(img => img.id === selectedImage.id);
+    }, [filteredImages, selectedImage]);
+
+    const showPrevImage = () => {
+        if (currentLightboxIndex > 0) {
+            setSelectedImage(filteredImages[currentLightboxIndex - 1]);
+        }
+    };
+
+    const showNextImage = () => {
+        if (currentLightboxIndex !== -1 && currentLightboxIndex < filteredImages.length - 1) {
+            setSelectedImage(filteredImages[currentLightboxIndex + 1]);
+        }
+    };
+
+    const handleDownloadImage = (img, e) => {
+        if (e) e.stopPropagation();
+        try {
+            const link = document.createElement('a');
+            link.href = img.url;
+            link.download = `${(img.title || 'ncc_photo').replace(/[^a-z0-9]/gi, '_')}.jpg`;
+            link.target = '_blank';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            toast.success("Download started!");
+        } catch (err) {
+            toast.error("Could not download image directly");
+        }
+    };
+
+    // Keyboard navigation listener
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (!selectedImage) return;
+            if (e.key === 'Escape') setSelectedImage(null);
+            if (e.key === 'ArrowLeft') showPrevImage();
+            if (e.key === 'ArrowRight') showNextImage();
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedImage, currentLightboxIndex, filteredImages]);
 
     // ── Live Camera Functions ──
     const startCamera = async (mode = facingMode) => {
@@ -355,99 +414,162 @@ export const UnitGallery = () => {
     };
 
     return (
-        <div className="ncc-page">
-            <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-                <div>
-                    <h2 className="text-3xl font-display font-black text-ncc-navy dark:text-white flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-2xl bg-ncc-gold/10 flex items-center justify-center text-ncc-gold">
-                            <ImageIcon className="w-6 h-6" />
+        <div className="space-y-6 w-full">
+            {/* ── Top Hero & Action Header ── */}
+            <div className="bg-white dark:bg-[#050b14] border border-[#ddd8cc] dark:border-white/10 rounded-3xl p-6 sm:p-8 shadow-sm transition-all">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                    <div>
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-ncc-navy/5 dark:bg-white/10 text-ncc-navy dark:text-ncc-gold text-xs font-bold uppercase tracking-wider mb-3">
+                            <ImageIcon className="w-3.5 h-3.5" />
+                            Visual Chronicles
                         </div>
-                        Unit Gallery
-                    </h2>
-                    <p className="text-gray-500 dark:text-white/70 text-sm mt-2 max-w-xl">
-                        Visual record of {collegeName} NCC camps, parades, and strategic achievements.
-                    </p>
+                        <h2 className="text-2xl sm:text-3xl font-display font-bold text-ncc-navy dark:text-white flex items-center gap-3">
+                            {collegeName} Unit Gallery
+                        </h2>
+                        <p className="text-gray-500 dark:text-white/70 text-sm mt-1 max-w-2xl">
+                            Official photo gallery of {collegeName} NCC unit camps, drill sessions, parades, and achievements.
+                        </p>
+                    </div>
+
+                    {canUpload && (
+                        <div className="flex flex-wrap items-center gap-3">
+                            <button
+                                onClick={() => {
+                                    setIsUploading(true);
+                                    if (!location) setLocation(collegeName);
+                                }}
+                                className="px-5 py-3 bg-white dark:bg-[#0a1628] text-ncc-navy dark:text-white border border-[#ddd8cc] dark:border-white/10 font-bold rounded-2xl hover:border-ncc-gold transition shadow-sm text-xs tracking-wider uppercase flex items-center gap-2"
+                            >
+                                <Upload className="w-4 h-4 text-ncc-gold" /> Upload File
+                            </button>
+
+                            <button
+                                onClick={openCameraModal}
+                                className="px-6 py-3.5 bg-ncc-gold hover:bg-ncc-gold/90 text-ncc-navy font-bold rounded-2xl transition-all shadow-[0_0_20px_rgba(184,131,14,0.3)] hover:scale-105 uppercase text-xs tracking-wider flex items-center gap-2"
+                            >
+                                <Camera className="w-4 h-4" /> Take Photo
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* ── Search & Photo Count Bar ── */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-stretch sm:items-center">
+                <div className="flex items-center gap-2 text-xs font-bold text-gray-600 dark:text-white/70">
+                    <span className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#050b14] border border-[#ddd8cc] dark:border-white/10 text-ncc-navy dark:text-white font-black">
+                        {filteredImages.length}
+                    </span>
+                    <span>Photo{filteredImages.length === 1 ? '' : 's'}</span>
                 </div>
 
-                {canUpload && (
-                    <div className="flex flex-wrap items-center gap-3">
-                        <button
-                            onClick={() => {
-                                setIsUploading(true);
-                                if (!location) setLocation(collegeName);
-                            }}
-                            className="flex items-center justify-center gap-2 px-5 py-3 bg-white dark:bg-[#0a1628] text-ncc-navy dark:text-white border border-[#ddd8cc] dark:border-white/10 font-bold rounded-2xl hover:border-ncc-gold transition shadow-sm text-xs tracking-wider uppercase"
+                {/* Search Bar */}
+                <div className="relative min-w-[260px] sm:min-w-[320px]">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-white/40" />
+                    <input 
+                        type="text"
+                        placeholder="Search photos by title, date, location..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white dark:bg-[#050b14] border border-[#ddd8cc] dark:border-white/10 outline-none focus:border-ncc-navy dark:focus:border-ncc-gold transition-all text-xs dark:text-white shadow-sm"
+                    />
+                    {searchQuery && (
+                        <button 
+                            onClick={() => setSearchQuery('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-white"
                         >
-                            <Upload className="w-4 h-4 text-ncc-gold" /> Upload File
+                            <X className="w-3.5 h-3.5" />
                         </button>
+                    )}
+                </div>
+            </div>
 
-                        <button
-                            onClick={openCameraModal}
-                            className="flex items-center justify-center gap-2 px-6 py-3.5 bg-ncc-gold hover:bg-white text-ncc-navy font-bold rounded-2xl transition-all duration-300 shadow-[0_0_20px_rgba(184,131,14,0.3)] hover:scale-105 uppercase text-xs tracking-wider"
-                        >
-                            <Camera className="w-4 h-4" /> Take Photo
-                        </button>
-                    </div>
-                )}
-            </header>
-
-            {/* Gallery Grid */}
-            {allImages.length === 0 ? (
-                <div className="ncc-card p-16 sm:p-20 text-center flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-white/10 rounded-[2.5rem]">
+            {/* ── Responsive Full-Width Gallery Grid ── */}
+            {filteredImages.length === 0 ? (
+                <div className="bg-[#f5f0e8] dark:bg-[#0a1628] p-16 sm:p-20 text-center flex flex-col items-center justify-center border-2 border-dashed border-[#ddd8cc] dark:border-white/10 rounded-3xl w-full">
                     <div className="w-20 h-20 bg-ncc-navy/5 dark:bg-white/5 rounded-full flex items-center justify-center text-ncc-navy/30 dark:text-white/20 mb-4">
                         <Camera className="w-10 h-10" />
                     </div>
-                    <h3 className="text-xl font-display font-bold text-ncc-navy dark:text-white">No gallery photos yet</h3>
+                    <h3 className="text-xl font-display font-bold text-ncc-navy dark:text-white">No gallery photos found</h3>
                     <p className="text-gray-500 dark:text-white/60 text-sm mt-1 max-w-md">
-                        {canUpload ? "Click 'Take Photo' or 'Upload File' above to add photos from your college NCC unit's camps, drills, and events." : "Photos from upcoming camps and events will appear here."}
+                        {canUpload ? "Click 'Take Photo' or 'Upload File' above to add photos from your unit's events, camps, and activities." : "Photos uploaded by the unit will appear here."}
                     </p>
-
                 </div>
             ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {allImages.map((img, idx) => (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 w-full">
+                    {filteredImages.map((img, idx) => (
                         <div 
                             key={img.id || idx} 
-                            className="group relative aspect-square rounded-[2rem] overflow-hidden bg-gray-100 dark:bg-[#0a1628] border border-[#ddd8cc] dark:border-white/10 shadow-sm hover:shadow-2xl transition-all duration-500 cursor-pointer isolate"
-                            onClick={() => setSelectedImage(img)}
+                            className="group bg-white dark:bg-[#050b14] rounded-3xl overflow-hidden border border-[#ddd8cc] dark:border-white/10 shadow-md hover:shadow-2xl transition-all duration-300 flex flex-col isolate"
                         >
-                            <img 
-                                src={img.url} 
-                                alt={img.title} 
-                                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                            />
-                            
-                            {/* Action Overlay Buttons (Edit + Delete) for Uploader */}
-                            {canUpload && img.isUserUploaded && (
-                                <div className="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 z-20">
-                                    <button
-                                        onClick={(e) => openEditModal(img, e)}
-                                        title="Edit Photo Details"
-                                        className="p-2.5 bg-black/60 hover:bg-ncc-navy text-white rounded-full backdrop-blur-md transition hover:scale-110"
-                                    >
-                                        <Edit2 className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={(e) => handleDeletePhoto(img, e)}
-                                        disabled={deletingId === img.id}
-                                        title="Delete Photo"
-                                        className="p-2.5 bg-black/60 hover:bg-red-600 text-white rounded-full backdrop-blur-md transition hover:scale-110"
-                                    >
-                                        {deletingId === img.id ? <Loader className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                                    </button>
-                                </div>
-                            )}
+                            {/* Large Image Container with Zoom */}
+                            <div 
+                                className="relative h-80 sm:h-96 w-full overflow-hidden bg-gray-100 dark:bg-[#0a1628] cursor-pointer"
+                                onClick={() => setSelectedImage(img)}
+                            >
+                                <img 
+                                    src={img.url} 
+                                    alt={img.title} 
+                                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                                    onError={(e) => {
+                                        e.currentTarget.style.display = 'none';
+                                        e.currentTarget.parentElement.classList.add('bg-gradient-to-br', 'from-ncc-navy/20', 'to-ncc-gold/20');
+                                    }}
+                                />
 
-                            {/* Info Gradient */}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-6 z-10">
-                                <h4 className="text-white font-bold text-base leading-tight mb-2 drop-shadow">{img.title}</h4>
-                                <div className="flex flex-wrap items-center gap-3 text-[10px] text-white/80 font-bold uppercase tracking-wider">
-                                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-ncc-gold" /> {img.date}</span>
-                                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3 text-ncc-gold" /> {img.location}</span>
+                                {/* Top Action Overlay */}
+                                <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
+                                    <button
+                                        onClick={(e) => handleDownloadImage(img, e)}
+                                        title="Download Photo"
+                                        className="p-2.5 bg-black/60 hover:bg-ncc-navy text-white rounded-2xl backdrop-blur-md transition hover:scale-110 shadow-lg"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                    </button>
+                                    {canUpload && img.isUserUploaded && (
+                                        <>
+                                            <button
+                                                onClick={(e) => openEditModal(img, e)}
+                                                title="Edit Photo Details"
+                                                className="p-2.5 bg-black/60 hover:bg-ncc-navy text-white rounded-2xl backdrop-blur-md transition hover:scale-110 shadow-lg"
+                                            >
+                                                <Edit2 className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={(e) => handleDeletePhoto(img, e)}
+                                                disabled={deletingId === img.id}
+                                                title="Delete Photo"
+                                                className="p-2.5 bg-black/60 hover:bg-red-600 text-white rounded-2xl backdrop-blur-md transition hover:scale-110 shadow-lg"
+                                            >
+                                                {deletingId === img.id ? <Loader className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
-                                <button className="mt-4 w-full py-2 bg-white/15 hover:bg-ncc-gold hover:text-ncc-navy backdrop-blur-md rounded-xl text-white text-[10px] font-bold uppercase tracking-widest transition-all">
-                                    View Photo
-                                </button>
+
+                                {/* Hover overlay hint */}
+                                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                                    <span className="px-4 py-2 rounded-xl bg-black/70 text-white text-xs font-bold uppercase tracking-wider backdrop-blur-md">
+                                        Click to View Fullscreen
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Card Details Footer */}
+                            <div className="p-5 sm:p-6 flex flex-col justify-between flex-1 border-t border-[#ddd8cc]/60 dark:border-white/5">
+                                <div>
+                                    <h3 className="font-display font-bold text-base sm:text-xl text-ncc-navy dark:text-white leading-snug line-clamp-1">
+                                        {img.title}
+                                    </h3>
+                                </div>
+                                <div className="flex items-center justify-between gap-4 mt-3 pt-3 border-t border-[#ddd8cc]/40 dark:border-white/5 text-xs text-gray-500 dark:text-white/60 font-semibold">
+                                    <span className="flex items-center gap-1.5">
+                                        <Calendar className="w-4 h-4 text-ncc-gold" /> {img.date}
+                                    </span>
+                                    <span className="flex items-center gap-1.5 truncate max-w-[200px]">
+                                        <MapPin className="w-4 h-4 text-ncc-gold shrink-0" /> {img.location}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     ))}
@@ -829,31 +951,93 @@ export const UnitGallery = () => {
                 </ModalOverlay>
             )}
 
-            {/* Lightbox Modal */}
+            {/* ── Interactive Fullscreen Lightbox Modal ── */}
             {selectedImage && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-10">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 select-none animate-in fade-in duration-200">
                     <div 
-                        className="absolute inset-0 bg-black/95 backdrop-blur-sm"
+                        className="absolute inset-0 bg-black/95 backdrop-blur-md"
                         onClick={() => setSelectedImage(null)}
                     />
-                    <button 
-                        onClick={() => setSelectedImage(null)}
-                        className="absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white z-10 transition-all"
-                    >
-                        <X className="w-6 h-6" />
-                    </button>
+
+                    {/* Top Action Bar */}
+                    <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-30 pointer-events-auto">
+                        <div className="flex items-center gap-3">
+                            <span className="px-3.5 py-1.5 rounded-full bg-white/10 text-white text-xs font-bold backdrop-blur-md">
+                                {currentLightboxIndex !== -1 ? `${currentLightboxIndex + 1} / ${filteredImages.length}` : '1 / 1'}
+                            </span>
+                            <span className="hidden sm:inline-block text-white/60 text-xs font-medium">
+                                Use ← / → arrow keys to browse
+                            </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={(e) => handleDownloadImage(selectedImage, e)}
+                                title="Download Full Resolution"
+                                className="px-4 py-2 bg-white/10 hover:bg-ncc-gold hover:text-ncc-navy text-white rounded-2xl flex items-center gap-2 text-xs font-bold transition backdrop-blur-md"
+                            >
+                                <Download className="w-4 h-4" />
+                                <span className="hidden sm:inline">Download</span>
+                            </button>
+                            <button 
+                                onClick={() => setSelectedImage(null)}
+                                title="Close (Esc)"
+                                className="w-10 h-10 bg-white/10 hover:bg-white/20 rounded-2xl flex items-center justify-center text-white transition backdrop-blur-md"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Left Navigation Chevron */}
+                    {currentLightboxIndex > 0 && (
+                        <button
+                            onClick={showPrevImage}
+                            title="Previous Photo (Left Arrow)"
+                            className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 w-12 h-12 rounded-2xl bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition backdrop-blur-md z-30 shadow-2xl hover:scale-110"
+                        >
+                            <ChevronLeft className="w-6 h-6" />
+                        </button>
+                    )}
+
+                    {/* Right Navigation Chevron */}
+                    {currentLightboxIndex !== -1 && currentLightboxIndex < filteredImages.length - 1 && (
+                        <button
+                            onClick={showNextImage}
+                            title="Next Photo (Right Arrow)"
+                            className="absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 w-12 h-12 rounded-2xl bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition backdrop-blur-md z-30 shadow-2xl hover:scale-110"
+                        >
+                            <ChevronRight className="w-6 h-6" />
+                        </button>
+                    )}
                     
-                    <div className="relative max-w-5xl w-full h-full flex flex-col items-center justify-center animate-in zoom-in duration-300">
-                        <img 
-                            src={selectedImage.url} 
-                            alt={selectedImage.title} 
-                            className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl"
-                        />
-                        <div className="mt-8 text-center">
-                            <h3 className="text-white text-2xl font-display font-black">{selectedImage.title}</h3>
-                            <div className="flex items-center justify-center gap-6 mt-2 text-white/60 text-xs font-bold uppercase tracking-[0.2em]">
-                                <span className="flex items-center gap-2"><Calendar className="w-4 h-4 text-ncc-gold" /> {selectedImage.date}</span>
-                                <span className="flex items-center gap-2"><MapPin className="w-4 h-4 text-ncc-gold" /> {selectedImage.location}</span>
+                    {/* Main Image and Metadata Container */}
+                    <div className="relative max-w-5xl w-full max-h-[88vh] flex flex-col items-center justify-center z-20 pointer-events-auto">
+                        <div className="relative max-h-[70vh] flex items-center justify-center">
+                            <img 
+                                src={selectedImage.url} 
+                                alt={selectedImage.title} 
+                                className="max-w-full max-h-[70vh] object-contain rounded-2xl shadow-2xl"
+                            />
+                        </div>
+
+                        {/* Metadata Footer */}
+                        <div className="mt-4 w-full max-w-2xl bg-white/10 backdrop-blur-md rounded-2xl p-4 sm:p-5 border border-white/10 text-center">
+                            <h3 className="text-white text-lg sm:text-xl font-display font-bold leading-snug drop-shadow">
+                                {selectedImage.title}
+                            </h3>
+                            <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 mt-2 text-white/80 text-xs font-semibold uppercase tracking-wider">
+                                <span className="flex items-center gap-1.5">
+                                    <Calendar className="w-3.5 h-3.5 text-ncc-gold" /> {selectedImage.date}
+                                </span>
+                                <span className="flex items-center gap-1.5">
+                                    <MapPin className="w-3.5 h-3.5 text-ncc-gold" /> {selectedImage.location}
+                                </span>
+                                {selectedImage.uploaderName && (
+                                    <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full bg-ncc-gold/20 text-ncc-gold text-[10px] font-bold">
+                                        Added by {selectedImage.uploaderName}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>

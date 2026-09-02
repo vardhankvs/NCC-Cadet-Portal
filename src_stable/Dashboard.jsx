@@ -17,6 +17,7 @@ import { UnitGallery } from './features/Gallery/UnitGallery.jsx';
 import { UnitAlerts } from './features/Engagement/UnitAlerts.jsx';
 import { requestNotificationPermission, onForegroundMessage } from './firebase/messagingService';
 import { playNccNotificationSound } from './utils/notificationSound.js';
+import nccLogo from './assets/ncc_logo.png';
 
 import {
     LogOut,
@@ -124,19 +125,14 @@ import { useDelegatedSubmissions, MODULE_NAMES } from './firebase/delegationWork
 
 // ─── NCC Logo mark ─────────────────────────────────────────────────────────
 const NCCMark = ({ size = 'md' }) => {
-    const { isDarkMode } = useTheme();
-    const cls =
-        size === 'sm'
-            ? 'w-8 h-8 text-[10px]'
-            : size === 'lg'
-              ? 'w-12 h-12 text-sm'
-              : 'w-10 h-10 text-xs';
+    const heightCls = size === 'sm' ? 'h-8' : size === 'lg' ? 'h-12' : 'h-10';
     return (
-        <div
-            className={`${cls} rounded-lg flex items-center justify-center font-bold font-display flex-shrink-0`}
-            style={{ background: isDarkMode ? 'linear-gradient(135deg, #0A1628, #1B3A6B)' : 'linear-gradient(135deg, #1B3A6B, #0A1628)', color: '#ffffff' }}
-        >
-            <span className="gold-shimmer tracking-wide">NCC</span>
+        <div className="flex items-center justify-center flex-shrink-0">
+            <img
+                src={nccLogo}
+                alt="NCC Logo"
+                className={`${heightCls} w-auto max-w-[48px] object-contain drop-shadow-md`}
+            />
         </div>
     );
 };
@@ -443,8 +439,8 @@ function SidebarGroup({ category, tabs, activeTab, handleTabClick, isDarkMode, d
 // ─── Tab Content Logic Moved Inside Dashboard for better scope access ───
 
 
-const wideTabs = ['ncc_knowledge', 'analytics', 'hierarchy', 'library', 'tutorials', 'exams', 'list', 'att_logs', 'honour', 'inventory', 'summary', 'events', 'discipline', 'rank_mgmt', 'staff', 'alumni', 'career', 'career_bridge', 'feedback', 'grievances', 'direct_chat', 'results', 'colleges', 'overall_details', 'camps', 'camp_attendance', 'kit_mgmt', 'pft', 'security', 'training_calendar', 'leave_requests', 'hall_of_fame', 'blood_registry', 'timetable', 'cert_gen', 'selection_process', 'announcements', 'notifications', 'delegations'];
-const fullWidthTabs = ['delegations', 'hierarchy', 'colleges', 'overall_details', 'analytics'];
+const wideTabs = ['ncc_knowledge', 'analytics', 'hierarchy', 'library', 'tutorials', 'exams', 'list', 'att_logs', 'honour', 'inventory', 'summary', 'events', 'discipline', 'rank_mgmt', 'staff', 'alumni', 'career', 'career_bridge', 'feedback', 'grievances', 'direct_chat', 'results', 'colleges', 'overall_details', 'camps', 'camp_attendance', 'kit_mgmt', 'pft', 'security', 'training_calendar', 'leave_requests', 'hall_of_fame', 'blood_registry', 'timetable', 'cert_gen', 'selection_process', 'announcements', 'notifications', 'delegations', 'social', 'gallery', 'unit_gallery', 'fee'];
+const fullWidthTabs = ['list', 'delegations', 'hierarchy', 'colleges', 'overall_details', 'analytics', 'social', 'blood_registry', 'gallery', 'unit_gallery', 'rank_mgmt', 'camps', 'camp_attendance', 'fee'];
 
 export function Dashboard() {
     const { tenant } = useTenant();
