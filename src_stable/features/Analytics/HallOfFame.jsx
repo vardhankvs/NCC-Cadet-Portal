@@ -121,12 +121,26 @@ const LeaderboardCard = ({ cadet, rank, points, isTop3, onClick }) => {
     );
 };
 
+export const getRankBonus = (rank) => {
+    if (!rank) return 0;
+    const r = String(rank).trim().toUpperCase().replace(/[\s\-_/]/g, '');
+    if (r === 'SUO') return 50;
+    if (r === 'JUO') return 40;
+    if (r === 'CSM' || r === 'CSGT' || r === 'COMPANYSERGEANTMAJOR') return 35;
+    if (r === 'CQMS' || r === 'COMPANYQUARTERMASTER') return 30;
+    if (r === 'SGT' || r === 'SERGEANT') return 25;
+    if (r === 'CPL' || r === 'CORPORAL') return 20;
+    if (r === 'LCPL' || r === 'LANCECORPORAL' || r === 'LANC CORPORAL') return 15;
+    return 0; // CDT / others
+};
+
 const RANK_BONUS = {
     'SUO': 50,
     'JUO': 40,
     'CSM': 35,
     'C-SGT': 35,
     'C/SGT': 35,
+    'CSGT': 35,
     'CQMS': 30,
     'SGT': 25,
     'CPL': 20,
@@ -137,12 +151,14 @@ const RANK_BONUS = {
 const CadetPointsModal = ({ cadet, onClose }) => {
     if (!cadet) return null;
 
-    const attendancePct = cadet.percentage ?? 0;
+    const rawPct = cadet.percentage ?? cadet.attendancePercentage ?? 0;
+    const attendancePct = parseFloat(Number(rawPct || 0).toFixed(2));
     const attendancePts = cadet.attendancePts ?? Math.round(attendancePct * 1.2);
-    const rankBonus = cadet.rankBonus ?? (RANK_BONUS[cadet.rank] || 0);
-    const awardsList = cadet.awards || [];
+    const normRank = String(cadet.rank || 'CDT').trim().toUpperCase();
+    const rankBonus = cadet.rankBonus ?? getRankBonus(normRank);
+    const awardsList = Array.isArray(cadet.awards) ? cadet.awards : [];
     const awardPoints = cadet.awardPoints ?? (awardsList.length * 50);
-    const totalPoints = cadet.score ?? (attendancePts + rankBonus + awardPoints);
+    const totalPoints = cadet.score ?? Math.round(attendancePts + rankBonus + awardPoints);
 
     return (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
@@ -182,9 +198,9 @@ const CadetPointsModal = ({ cadet, onClose }) => {
                             {cadet.regimentalNumber || cadet.enrollmentId}
                         </p>
                         <div className="flex items-center gap-2 mt-1">
-                            {cadet.rank && (
+                            {normRank && (
                                 <span className="px-2.5 py-0.5 bg-ncc-navy/10 dark:bg-white/10 text-ncc-navy dark:text-ncc-gold text-[10px] font-black uppercase tracking-wider rounded-md border border-ncc-navy/20 dark:border-white/20">
-                                    {cadet.rank}
+                                    {normRank}
                                 </span>
                             )}
                             {(cadet.certificate || cadet.B) && (
@@ -215,7 +231,7 @@ const CadetPointsModal = ({ cadet, onClose }) => {
                         <div>
                             <p className="text-xs font-bold text-ncc-navy dark:text-white">Parade Attendance</p>
                             <p className="text-[10px] text-gray-400 dark:text-white/60 mt-0.5">
-                                {attendancePct}% attendance × 1.2
+                                {attendancePct}% attendance × 1.2 (Max 120 pts)
                             </p>
                         </div>
                         <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
@@ -227,7 +243,7 @@ const CadetPointsModal = ({ cadet, onClose }) => {
                         <div>
                             <p className="text-xs font-bold text-ncc-navy dark:text-white">Rank Appointment</p>
                             <p className="text-[10px] text-gray-400 dark:text-white/60 mt-0.5">
-                                Appointment Tier: {cadet.rank || 'CDT'}
+                                Appointment Tier: {normRank} (Up to +50 pts)
                             </p>
                         </div>
                         <span className="text-base font-black text-ncc-gold">
@@ -249,23 +265,31 @@ const CadetPointsModal = ({ cadet, onClose }) => {
 
                     {awardsList.length > 0 && (
                         <div className="mt-3 p-3 rounded-xl bg-ncc-gold/5 border border-ncc-gold/20">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-ncc-gold mb-2">Assigned Honors</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-ncc-gold mb-2">Assigned Honors & Camp Awards</p>
                             <div className="space-y-1.5">
-                                {awardsList.map((aw, idx) => (
-                                    <div key={idx} className="flex items-center justify-between text-xs font-bold text-ncc-navy dark:text-white">
-                                        <span className="flex items-center gap-1.5">
-                                            <Star className="w-3 h-3 text-ncc-gold fill-ncc-gold" /> {aw.title}
-                                        </span>
-                                        {aw.date && <span className="text-[9px] text-gray-400 font-mono">{aw.date}</span>}
-                                    </div>
-                                ))}
+                                {awardsList.map((aw, idx) => {
+                                    const title = typeof aw === 'string' ? aw : (aw.title || aw.name || 'Honor');
+                                    const desc = typeof aw === 'object' && aw.description ? aw.description : '';
+                                    const date = typeof aw === 'object' && (aw.date || aw.awardedAt) ? (aw.date || aw.awardedAt) : '';
+                                    return (
+                                        <div key={idx} className="flex flex-col gap-0.5 p-1.5 rounded-lg bg-white/40 dark:bg-white/5 border border-ncc-gold/10">
+                                            <div className="flex items-center justify-between text-xs font-bold text-ncc-navy dark:text-white">
+                                                <span className="flex items-center gap-1.5">
+                                                    <Star className="w-3 h-3 text-ncc-gold fill-ncc-gold shrink-0" /> {title}
+                                                </span>
+                                                {date && <span className="text-[9px] text-gray-400 font-mono">{date}</span>}
+                                            </div>
+                                            {desc && <p className="text-[10px] text-gray-500 dark:text-white/60 pl-4">{desc}</p>}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
                 </div>
 
                 <button 
-                    onClick={onClose}
+                    onClick={onClose} 
                     className="w-full mt-6 py-3 bg-ncc-navy text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-ncc-navy-mid transition-all shadow-md cursor-pointer"
                 >
                     Close Breakdown
@@ -275,42 +299,141 @@ const CadetPointsModal = ({ cadet, onClose }) => {
     );
 };
 
+// Helper to aggregate all live awards from:
+// 1. Live active camps[].roster[].achievements (matched live by id, enrollmentId, or regimentalNumber)
+// 2. Direct manual awards assigned in Hall of Fame (excluding stale non-existent camp awards)
+export const resolveCadetLiveAwards = (cadet, allCamps = []) => {
+    if (!cadet) return [];
+    const normReg = String(cadet.enrollmentId || cadet.regimentalNumber || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    const cadetId = String(cadet.id || cadet.cadetId || cadet.docId || '').trim();
+    const cadetName = String(cadet.name || cadet.cadetName || '').trim().toLowerCase();
+
+    const awardsMap = new Map();
+
+    // 1. Live Camps Subscription: strictly scan current active camps and their rosters
+    (allCamps || []).forEach(camp => {
+        if (!camp || !Array.isArray(camp.roster)) return;
+        const campName = camp.name || 'Camp';
+        const campDate = camp.startDate || camp.dates || camp.date || '';
+
+        camp.roster.forEach(r => {
+            if (!r) return;
+            const rReg = String(r.enrollmentId || r.regimentalNumber || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+            const rId = String(r.cadetId || r.id || '').trim();
+            const rName = String(r.cadetName || r.name || '').trim().toLowerCase();
+
+            const isMatch = (normReg && rReg && normReg === rReg) ||
+                            (cadetId && rId && cadetId === rId) ||
+                            (!rReg && !rId && cadetName && rName && cadetName === rName);
+
+            if (isMatch && Array.isArray(r.achievements) && r.achievements.length > 0) {
+                r.achievements.forEach(ach => {
+                    if (!ach) return;
+                    const titleStr = typeof ach === 'string' ? ach : (ach.title || ach.name || '');
+                    const key = titleStr.trim().toLowerCase();
+                    if (key && !awardsMap.has(key)) {
+                        awardsMap.set(key, {
+                            title: titleStr,
+                            description: `Awarded at ${campName}`,
+                            date: campDate
+                        });
+                    }
+                });
+            }
+        });
+    });
+
+    // 2. Direct manual honours assigned via Hall of Fame (non-camp awards)
+    (cadet.awards || []).forEach(aw => {
+        if (!aw) return;
+        const titleStr = typeof aw === 'string' ? aw : (aw.title || aw.name || '');
+        const desc = typeof aw === 'object' && aw.description ? aw.description : '';
+        // Filter out stale awards from non-existent camps
+        if (desc.includes('Awarded at ') && !allCamps.some(c => desc.includes(c.name))) {
+            return;
+        }
+        const key = titleStr.trim().toLowerCase();
+        if (key && !awardsMap.has(key)) {
+            awardsMap.set(key, {
+                title: titleStr,
+                description: desc || 'Command Commendation',
+                date: typeof aw === 'object' && (aw.date || aw.awardedAt) ? (aw.date || aw.awardedAt) : ''
+            });
+        }
+    });
+
+    return Array.from(awardsMap.values());
+};
+
 export const HallOfFame = () => {
-    const { attendanceData, cadets } = useDataContext();
+    const { attendanceData, cadets, camps } = useDataContext();
     const { userRole, actualRole, isDelegatedCadet: isDelCadet, userEnrollmentId, userName, user, userInstitutionId } = useAuthContext();
     const isDelegatedCadet = isDelCadet || userRole === 'cadet' || actualRole === 'cadet';
-    const isAno = !isDelegatedCadet && (userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin' || userRole === 'battalion_admin');
+    const isBattalionAdmin = userRole === 'battalion_admin' || userRole === 'superadmin' || actualRole === 'battalion_admin' || actualRole === 'superadmin';
+    const isAno = !isDelegatedCadet && (userRole === 'admin' || userRole === 'officer' || actualRole === 'admin' || actualRole === 'officer');
     
     const [isAwardModalOpen, setIsAwardModalOpen] = useState(false);
     const [awardForm, setAwardForm] = useState({ cadetId: '', title: 'Best Cadet Award', description: '', date: new Date().toISOString().split('T')[0] });
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [filterCert, setFilterCert] = useState('C');
+    const [filterCert, setFilterCert] = useState('All');
     const [filterDiv, setFilterDiv] = useState('All');
 
     const [showFormula, setShowFormula] = useState(false);
     const [selectedCadetForModal, setSelectedCadetForModal] = useState(null);
 
     const topCadets = useMemo(() => {
-        return [...attendanceData.individualSummaries]
+        const summaries = attendanceData?.individualSummaries || [];
+        const summaryMap = new Map();
+        summaries.forEach(s => {
+            const reg = String(s.enrollmentId || s.regimentalNumber || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+            if (reg) summaryMap.set(reg, s);
+            if (s.id) summaryMap.set(s.id, s);
+        });
+
+        // Use all active cadets from DataContext, falling back to summaries
+        const sourceList = (cadets && cadets.length > 0) ? cadets : summaries;
+
+        return sourceList
             .filter(c => {
                 const lowerQuery = searchQuery.toLowerCase();
                 const idStr = c.regimentalNumber || c.enrollmentId || '';
                 const matchesSearch = !searchQuery || (c.name || '').toLowerCase().includes(lowerQuery) || idStr.toLowerCase().includes(lowerQuery);
-                const matchesCert = filterCert === 'All' || c.certificate === filterCert;
+                const cert = c.certificate || c.currentCertificate || 'NA';
+                const matchesCert = filterCert === 'All' || cert === filterCert;
                 const matchesDiv = filterDiv === 'All' || idStr.toUpperCase().includes(filterDiv);
                 return matchesSearch && matchesCert && matchesDiv;
             })
             .map(c => {
-                const attendancePts = Math.round((c.percentage || 0) * 1.2);
-                const rankBonus = RANK_BONUS[c.rank] || 0;
-                const awardPoints = (c.awards || []).length * 50; 
+                const reg = String(c.enrollmentId || c.regimentalNumber || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+                const summary = summaryMap.get(reg) || (c.id && summaryMap.get(c.id)) || {};
+
+                // 1. Attendance Weightage (0–100% * 1.2 => up to 120 points)
+                const rawPct = summary.percentage ?? c.attendancePercentage ?? c.percentage ?? 0;
+                const attendancePct = parseFloat(Number(rawPct || 0).toFixed(2));
+                const attendancePts = Math.round(attendancePct * 1.2);
+
+                // 2. Rank Appointment Bonus (SUO: +50, JUO: +40, CSM: +35, CQMS: +30, SGT: +25, CPL: +20, LCPL: +15, CDT: +0)
+                const normRank = String(c.rank || summary.rank || 'CDT').trim().toUpperCase();
+                const rankBonus = getRankBonus(normRank);
+
+                // 3. Awards & Commendations (+50 pts / award)
+                const combinedAwards = resolveCadetLiveAwards({ ...summary, ...c }, camps);
+                const awardPoints = combinedAwards.length * 50;
+
+                const score = Math.round(attendancePts + rankBonus + awardPoints);
+
                 return {
                     ...c,
+                    ...summary,
+                    percentage: attendancePct,
+                    attendancePercentage: attendancePct,
                     attendancePts,
                     rankBonus,
+                    rank: normRank,
+                    awards: combinedAwards,
                     awardPoints,
-                    score: Math.round(attendancePts + rankBonus + awardPoints)
+                    score
                 };
             })
             .sort((a, b) => {
@@ -329,10 +452,41 @@ export const HallOfFame = () => {
                 return idA.localeCompare(idB);
             })
             .slice(0, 15);
-    }, [attendanceData, searchQuery, filterCert, filterDiv]);
+    }, [cadets, attendanceData, camps, searchQuery, filterCert, filterDiv]);
+
+    const activeSelectedCadet = useMemo(() => {
+        if (!selectedCadetForModal) return null;
+        const fromTop = topCadets.find(c => 
+            (c.id && selectedCadetForModal.id && c.id === selectedCadetForModal.id) ||
+            (c.enrollmentId && selectedCadetForModal.enrollmentId && c.enrollmentId === selectedCadetForModal.enrollmentId)
+        );
+        if (fromTop) return fromTop;
+        const liveAwards = resolveCadetLiveAwards(selectedCadetForModal, camps);
+        const rawPct = selectedCadetForModal.percentage ?? selectedCadetForModal.attendancePercentage ?? 0;
+        const attendancePct = parseFloat(Number(rawPct || 0).toFixed(2));
+        const attendancePts = Math.round(attendancePct * 1.2);
+        const normRank = String(selectedCadetForModal.rank || 'CDT').trim().toUpperCase();
+        const rankBonus = getRankBonus(normRank);
+        const awardPoints = liveAwards.length * 50;
+        return {
+            ...selectedCadetForModal,
+            percentage: attendancePct,
+            attendancePercentage: attendancePct,
+            awards: liveAwards,
+            attendancePts,
+            rankBonus,
+            rank: normRank,
+            awardPoints,
+            score: Math.round(attendancePts + rankBonus + awardPoints)
+        };
+    }, [selectedCadetForModal, topCadets, camps]);
 
     const handleAssignAward = async (e) => {
         e.preventDefault();
+        if (!isBattalionAdmin) {
+            toast.error("Permission Denied: Official awards and commendations can only be assigned by the Battalion Admin.");
+            return;
+        }
         if (!awardForm.cadetId) {
             toast.error("Select a cadet first.");
             return;
@@ -341,36 +495,6 @@ export const HallOfFame = () => {
         try {
             const targetCadet = cadets.find(c => c.enrollmentId === awardForm.cadetId);
             if (!targetCadet || !targetCadet.id) throw new Error("Cadet not found");
-
-            if (isDelegatedCadet) {
-                const { submitDelegatedTask } = await import('../../firebase/delegationWorkflowService.js');
-                await submitDelegatedTask({
-                    institutionId: userInstitutionId,
-                    cadetEnrollmentId: userEnrollmentId,
-                    cadetName: userName,
-                    cadetUid: user?.uid,
-                    moduleId: 'hall_of_fame',
-                    moduleName: 'Unit Excellence',
-                    actionType: 'create',
-                    targetDocId: targetCadet.id,
-                    title: `Award ${awardForm.title} to ${targetCadet.name} (${targetCadet.enrollmentId})`,
-                    payload: {
-                        cadetId: targetCadet.id,
-                        cadetName: targetCadet.name,
-                        enrollmentId: targetCadet.enrollmentId,
-                        award: {
-                            title: awardForm.title,
-                            description: awardForm.description,
-                            date: awardForm.date
-                        }
-                    }
-                });
-                toast.success("Award recommendation submitted for ANO verification!");
-                setIsAwardModalOpen(false);
-                setAwardForm({ cadetId: '', title: 'Best Cadet Award', description: '', date: new Date().toISOString().split('T')[0] });
-                setSearchQuery('');
-                return;
-            }
 
             const docRef = doc(getCollectionRef('users'), targetCadet.id);
             await updateDoc(docRef, {
@@ -382,7 +506,7 @@ export const HallOfFame = () => {
                 })
             });
 
-            toast.success("Award assigned successfully!");
+            toast.success("Award assigned successfully by Battalion HQ!");
             setIsAwardModalOpen(false);
             setAwardForm({ cadetId: '', title: 'Best Cadet Award', description: '', date: new Date().toISOString().split('T')[0] });
             setSearchQuery('');
@@ -419,7 +543,7 @@ export const HallOfFame = () => {
                             Recognizing elite discipline, unwavering attendance, and exceptional training performance within the unit.
                         </p>
                     </div>
-                    {userRole === 'admin' && (
+                    {isBattalionAdmin && (
                         <div className="shrink-0 flex items-center justify-center mt-4 lg:mt-0">
                             <button 
                                 onClick={() => setIsAwardModalOpen(true)}
@@ -433,7 +557,7 @@ export const HallOfFame = () => {
             </header>
 
             {/* Performance Index Calculation Summary Card - ANO / Admin ONLY */}
-            {userRole === 'admin' && (
+            {(isBattalionAdmin || isAno) && (
                 <div className="bg-white dark:bg-[#050b14] rounded-3xl border border-[#ddd8cc] p-6 shadow-sm">
                     <div 
                         className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer select-none"
@@ -533,13 +657,13 @@ export const HallOfFame = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end max-w-4xl mx-auto py-12">
                 <div className="order-2 md:order-1 h-auto md:h-[400px] mb-8 md:mb-0">
-                    {topCadets[1] && <LeaderboardCard cadet={topCadets[1]} rank={2} points={topCadets[1].score} isTop3 onClick={userRole === 'admin' ? setSelectedCadetForModal : undefined} />}
+                    {topCadets[1] && <LeaderboardCard cadet={topCadets[1]} rank={2} points={topCadets[1].score} isTop3 onClick={(isAno || userRole === 'admin' || userRole === 'superadmin' || userRole === 'battalion_admin') ? setSelectedCadetForModal : undefined} />}
                 </div>
                 <div className="order-1 md:order-2 h-auto md:h-[480px] mb-8 md:mb-0">
-                    {topCadets[0] && <LeaderboardCard cadet={topCadets[0]} rank={1} points={topCadets[0].score} isTop3 onClick={userRole === 'admin' ? setSelectedCadetForModal : undefined} />}
+                    {topCadets[0] && <LeaderboardCard cadet={topCadets[0]} rank={1} points={topCadets[0].score} isTop3 onClick={(isAno || userRole === 'admin' || userRole === 'superadmin' || userRole === 'battalion_admin') ? setSelectedCadetForModal : undefined} />}
                 </div>
                 <div className="order-3 md:order-3 h-auto md:h-[400px]">
-                    {topCadets[2] && <LeaderboardCard cadet={topCadets[2]} rank={3} points={topCadets[2].score} isTop3 onClick={userRole === 'admin' ? setSelectedCadetForModal : undefined} />}
+                    {topCadets[2] && <LeaderboardCard cadet={topCadets[2]} rank={3} points={topCadets[2].score} isTop3 onClick={(isAno || userRole === 'admin' || userRole === 'superadmin' || userRole === 'battalion_admin') ? setSelectedCadetForModal : undefined} />}
                 </div>
             </div>
 
@@ -562,7 +686,7 @@ export const HallOfFame = () => {
                             cadet={cadet} 
                             rank={index + 4} 
                             points={cadet.score} 
-                            onClick={userRole === 'admin' ? setSelectedCadetForModal : undefined}
+                            onClick={(isAno || userRole === 'admin' || userRole === 'superadmin' || userRole === 'battalion_admin') ? setSelectedCadetForModal : undefined}
                         />
                     ))}
                 </div>
@@ -673,8 +797,8 @@ export const HallOfFame = () => {
 
             {/* Cadet Points Breakdown Modal */}
             <AnimatePresence>
-                {selectedCadetForModal && (
-                    <CadetPointsModal cadet={selectedCadetForModal} onClose={() => setSelectedCadetForModal(null)} />
+                {activeSelectedCadet && (
+                    <CadetPointsModal cadet={activeSelectedCadet} onClose={() => setSelectedCadetForModal(null)} />
                 )}
             </AnimatePresence>
         </div>

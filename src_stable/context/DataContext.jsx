@@ -532,6 +532,64 @@ export const DataProvider = ({ children }) => {
             const totalPeriods = Object.keys(fullAttendance).length;
             const percentage = totalPeriods > 0 ? (presentCount / totalPeriods) * 100 : 0;
             const finalPct = parseFloat(percentage.toFixed(2));
+
+            // Aggregate all awards & active camp achievements
+            const awardsMap = new Map();
+            
+            // 1. Live Camps Subscription: strictly scan current active camps
+            (camps || []).forEach(camp => {
+                (camp.roster || []).forEach(r => {
+                    const rReg = normalizeReg(r.enrollmentId || r.regimentalNumber);
+                    const match = (normReg && rReg && normReg === rReg) || (cadet.id && r.cadetId && cadet.id === r.cadetId);
+                    if (match && Array.isArray(r.achievements) && r.achievements.length > 0) {
+                        r.achievements.forEach(ach => {
+                            if (!ach) return;
+                            const titleStr = typeof ach === 'string' ? ach : (ach.title || ach.name || '');
+                            const key = titleStr.trim().toLowerCase();
+                            if (key && !awardsMap.has(key)) {
+                                awardsMap.set(key, {
+                                    title: titleStr,
+                                    description: `Awarded at ${camp.name || 'Camp'}`,
+                                    date: camp.startDate || camp.date || ''
+                                });
+                            }
+                        });
+                    }
+                });
+            });
+
+            // 2. Direct manual awards assigned in Hall of Fame (non-camp awards)
+            (cadet.awards || []).forEach(aw => {
+                if (!aw) return;
+                const titleStr = typeof aw === 'string' ? aw : (aw.title || aw.name || '');
+                const desc = typeof aw === 'object' && aw.description ? aw.description : '';
+                if (desc.includes('Awarded at ') && !camps.some(c => desc.includes(c.name))) {
+                    return;
+                }
+                const key = titleStr.trim().toLowerCase();
+                if (key && !awardsMap.has(key)) {
+                    awardsMap.set(key, {
+                        title: titleStr,
+                        description: desc || 'Command Commendation',
+                        date: typeof aw === 'object' && (aw.date || aw.awardedAt) ? (aw.date || aw.awardedAt) : ''
+                    });
+                }
+            });
+
+            // 3. Direct cadet achievements
+            (cadet.achievements || []).forEach(ach => {
+                if (!ach) return;
+                const titleStr = typeof ach === 'string' ? ach : (ach.title || ach.name || '');
+                const key = titleStr.trim().toLowerCase();
+                if (key && !awardsMap.has(key)) {
+                    awardsMap.set(key, {
+                        title: titleStr,
+                        description: typeof ach === 'object' && ach.description ? ach.description : 'Unit Achievement',
+                        date: typeof ach === 'object' && ach.date ? ach.date : ''
+                    });
+                }
+            });
+            const aggregatedAwards = Array.from(awardsMap.values());
             
             return {
                 ...cadet,
@@ -542,7 +600,10 @@ export const DataProvider = ({ children }) => {
                 percentage: finalPct,
                 attendancePresentCount: presentCount,
                 attendanceTotalPeriods: totalPeriods,
-                attendancePercentage: finalPct
+                attendancePercentage: finalPct,
+                awards: aggregatedAwards,
+                awardPoints: aggregatedAwards.length * 50,
+                achievements: aggregatedAwards
             };
         });
 
@@ -580,7 +641,7 @@ export const DataProvider = ({ children }) => {
             overallAverage: averages.All,
             cadetNotFound: userRole === 'cadet' && !personalSummary,
         };
-    }, [cadets, attendanceLogs, userRole, userEnrollmentId]);
+    }, [cadets, attendanceLogs, userRole, userEnrollmentId, camps]);
 
     // Attach sanitized attendance and statistics to all cadet instances
     const enrichedCadets = useMemo(() => {

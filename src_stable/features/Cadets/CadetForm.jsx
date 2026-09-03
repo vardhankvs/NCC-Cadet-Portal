@@ -262,28 +262,28 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
     const certColor = { C: 'text-yellow-400', B2: 'text-blue-300', B1: 'text-green-300', NA: 'text-white/40' };
 
     return (
-        <div className="w-full max-w-xl mx-auto bg-white dark:bg-[#050b14] rounded-3xl shadow-2xl max-h-[92vh] flex flex-col">
+        <div className="w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto bg-white dark:bg-[#050b14] rounded-3xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden">
 
             {/* ── Hero Header ──────────────────────────────────────────────── */}
-            <div className="relative bg-ncc-navy px-6 pt-6 pb-10 shrink-0 rounded-t-3xl overflow-hidden">
+            <div className="relative bg-ncc-navy px-5 sm:px-8 pt-6 sm:pt-8 pb-10 sm:pb-12 shrink-0 rounded-t-3xl overflow-hidden">
                 {/* Close */}
                 <button
                     type="button" onClick={onCancel}
-                    className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all"
+                    className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all text-white/70 hover:text-white"
                 >
-                    <XCircle className="w-4 h-4 text-white/70" />
+                    <XCircle className="w-5 h-5" />
                 </button>
 
-                <div className="flex items-center gap-5">
+                <div className="flex items-center gap-4 sm:gap-6">
                     {/* Photo / Initials */}
                     <div className="relative shrink-0">
                         <div
-                            className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-ncc-gold/40 bg-ncc-navy/60 flex items-center justify-center shadow-xl cursor-pointer group"
+                            className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 border-ncc-gold/40 bg-ncc-navy/60 flex items-center justify-center shadow-xl cursor-pointer group"
                             onClick={() => fileInputRef.current?.click()}
                         >
                             {photoPreview
                                 ? <img src={photoPreview} alt="preview" className="w-full h-full object-cover group-hover:opacity-70 transition-opacity" />
-                                : <span className="text-white font-bold text-2xl group-hover:opacity-50 transition-opacity">{initials}</span>
+                                : <span className="text-white font-bold text-xl sm:text-2xl group-hover:opacity-50 transition-opacity">{initials}</span>
                             }
                             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                 <Upload className="w-5 h-5 text-ncc-gold" />
@@ -302,27 +302,27 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
                     </div>
 
                     {/* Name & Meta */}
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-1">
                             <Shield className="w-3.5 h-3.5 text-ncc-gold shrink-0" />
-                            <span className="text-[10px] font-black text-ncc-gold uppercase tracking-[0.2em]">
+                            <span className="text-[10px] sm:text-xs font-black text-ncc-gold uppercase tracking-[0.2em]">
                                 {isEditMode ? 'Edit Cadet Record' : 'New Cadet Enrolment'}
                             </span>
                         </div>
-                        <h2 className="text-xl font-display font-bold text-white truncate">
+                        <h2 className="text-xl sm:text-2xl lg:text-3xl font-display font-bold text-white truncate">
                             {formData.name || <span className="text-white/30 italic">Full Name</span>}
                         </h2>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                             {formData.enrollmentId && (
-                                <span className="font-mono text-xs text-white/50">{formData.enrollmentId}</span>
+                                <span className="font-mono text-xs text-white/70 bg-white/10 px-2 py-0.5 rounded">{formData.enrollmentId}</span>
                             )}
                             {formData.rank && (
-                                <span className="px-2 py-0.5 bg-ncc-gold/10 rounded text-ncc-gold text-[10px] font-black uppercase tracking-widest">
+                                <span className="px-2 py-0.5 bg-ncc-gold/10 border border-ncc-gold/30 rounded text-ncc-gold text-[10px] font-black uppercase tracking-widest">
                                     {formData.rank}
                                 </span>
                             )}
                             {formData.certificate && (
-                                <span className={`text-[10px] font-black uppercase tracking-widest ${certColor[formData.certificate] || 'text-white/40'}`}>
+                                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 bg-white/10 rounded ${certColor[formData.certificate] || 'text-white/40'}`}>
                                     {formData.certificate}
                                 </span>
                             )}
@@ -345,7 +345,7 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
 
             {/* ── Tab Bar ──────────────────────────────────────────────────── */}
             <div
-                className="shrink-0 -mt-5 mx-4 bg-white dark:bg-[#0a1628] rounded-2xl shadow-lg border border-ncc-navy/5 dark:border-white/5 flex overflow-hidden z-10 relative"
+                className="shrink-0 -mt-5 mx-4 sm:mx-8 bg-white dark:bg-[#0a1628] rounded-2xl shadow-lg border border-ncc-navy/5 dark:border-white/10 flex overflow-hidden z-10 relative"
                 onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
             >
                 {TABS.map(tab => (
@@ -353,10 +353,10 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
                         key={tab.id}
                         type="button"
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex-1 py-3 text-[11px] font-black uppercase tracking-widest transition-all ${
+                        className={`flex-1 py-3 sm:py-3.5 text-[11px] sm:text-xs font-black uppercase tracking-widest transition-all ${
                             activeTab === tab.id
-                                ? 'bg-ncc-navy text-ncc-gold'
-                                : 'text-ncc-navy/40 dark:text-white/30 hover:text-ncc-navy dark:hover:text-white'
+                                ? 'bg-ncc-navy text-ncc-gold dark:bg-ncc-gold dark:text-ncc-navy shadow-inner'
+                                : 'text-ncc-navy/50 dark:text-white/50 hover:text-ncc-navy dark:hover:text-white'
                         }`}
                     >
                         {tab.label}
@@ -366,20 +366,20 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
 
             {/* ── Error ────────────────────────────────────────────────────── */}
             {formError && (
-                <div className="mx-4 mt-3 shrink-0 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-xs font-semibold flex items-center gap-2">
+                <div className="mx-4 sm:mx-8 mt-3 shrink-0 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-xs font-semibold flex items-center gap-2">
                     <XCircle className="w-4 h-4 shrink-0" /> {formError}
                 </div>
             )}
 
             {/* ── Scrollable Content ────────────────────────────────────────── */}
-            <form id="cadet-form" onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto px-4 py-5 space-y-6">
+            <form id="cadet-form" onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-8 py-6 space-y-6 sm:space-y-7">
 
                 {/* ── TAB: IDENTITY ── */}
                 {activeTab === 'identity' && (
-                    <div className="space-y-5 fade-in">
+                    <div className="space-y-6 fade-in">
                         <SectionHeading icon={User} label="Core Details" />
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <Field label="Full Name" icon={User} className="sm:col-span-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+                            <Field label="Full Name" icon={User} className="sm:col-span-2 lg:col-span-3">
                                 <TextInput name="name" value={formData.name} onChange={handleChange}
                                     placeholder="e.g. Ravi Kumar" required={!isEditMode} />
                             </Field>
@@ -391,27 +391,29 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
                                 <TextInput name="institutionId" value={formData.institutionId} onChange={handleChange}
                                     placeholder="e.g. gmrit" required />
                             </Field>
-                            <Field label="JNTU Number" icon={List} className="sm:col-span-2">
+                            <Field label="JNTU Number" icon={List}>
                                 <TextInput name="jntuNo" value={formData.jntuNo} onChange={handleChange}
                                     placeholder="e.g. 23341A05A7" />
                             </Field>
                         </div>
 
-                        <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.15em] text-ncc-navy/50 dark:text-white/40 mb-3">Rank</p>
-                            <PillSelect name="rank" value={formData.rank} onChange={handleChange} options={ranks} />
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.15em] text-ncc-navy/50 dark:text-white/40 mb-3">Certificate</p>
-                            <PillSelect name="certificate" value={formData.certificate} onChange={handleChange} options={certificates} />
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.15em] text-ncc-navy/50 dark:text-white/40 mb-3">Year</p>
-                            <PillSelect name="year" value={formData.year} onChange={handleChange} options={years} />
+                        <div className="space-y-4 pt-2">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.15em] text-ncc-navy/50 dark:text-white/40 mb-3">Rank</p>
+                                <PillSelect name="rank" value={formData.rank} onChange={handleChange} options={ranks} />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.15em] text-ncc-navy/50 dark:text-white/40 mb-3">Certificate</p>
+                                <PillSelect name="certificate" value={formData.certificate} onChange={handleChange} options={certificates} />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.15em] text-ncc-navy/50 dark:text-white/40 mb-3">Year</p>
+                                <PillSelect name="year" value={formData.year} onChange={handleChange} options={years} />
+                            </div>
                         </div>
 
                         <SectionHeading icon={Briefcase} label="Academic" />
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                             <Field label="Branch" icon={Briefcase}>
                                 <TextInput name="branch" value={formData.branch} onChange={handleChange} placeholder="e.g. CSE" />
                             </Field>
@@ -420,15 +422,15 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
                             </Field>
                         </div>
 
-                        <SectionHeading icon={User} label="Family" />
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <SectionHeading icon={User} label="Family & Identity" />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                             <Field label="Father's Name">
                                 <TextInput name="fatherName" value={formData.fatherName} onChange={handleChange} placeholder="Father's full name" />
                             </Field>
                             <Field label="Mother's Name">
                                 <TextInput name="motherName" value={formData.motherName} onChange={handleChange} placeholder="Mother's full name" />
                             </Field>
-                            <Field label="Aadhaar Number" className="sm:col-span-2">
+                            <Field label="Aadhaar Number" className="sm:col-span-2 lg:col-span-1">
                                 <TextInput name="aadhaarNumber" value={formData.aadhaarNumber} onChange={handleChange} placeholder="12-digit Aadhaar" />
                             </Field>
                         </div>
@@ -437,9 +439,9 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
 
                 {/* ── TAB: CONTACT ── */}
                 {activeTab === 'contact' && (
-                    <div className="space-y-5 fade-in">
+                    <div className="space-y-6 fade-in">
                         <SectionHeading icon={Phone} label="Phone Numbers" />
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                             <Field label="Personal Phone" icon={Phone}>
                                 <TextInput name="phonePersonal" value={formData.phonePersonal} onChange={handleChange} type="tel" placeholder="9876543210" />
                             </Field>
@@ -449,7 +451,7 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
                         </div>
 
                         <SectionHeading icon={Mail} label="Email Addresses" />
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                             <Field label="Personal Email" icon={Mail}>
                                 <TextInput name="personalEmail" value={formData.personalEmail} onChange={handleChange} type="email" placeholder="you@gmail.com" />
                             </Field>
@@ -459,7 +461,7 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
                         </div>
 
                         <SectionHeading icon={MapPin} label="Addresses" />
-                        <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                             <Field label="Present Address" icon={MapPin}>
                                 <TextArea name="addressPresent" value={formData.addressPresent} onChange={handleChange} placeholder="Current residential address" />
                             </Field>
@@ -472,15 +474,15 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
 
                 {/* ── TAB: MEDICAL ── */}
                 {activeTab === 'medical' && (
-                    <div className="space-y-5 fade-in">
+                    <div className="space-y-6 fade-in">
                         <SectionHeading icon={Droplet} label="Medical Info" />
                         <Field label="Blood Group" icon={Droplet}>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-wrap gap-2.5">
                                 {bloodGroups.map(bg => (
                                     <button
                                         key={bg} type="button"
                                         onClick={() => handleChange({ target: { name: 'bloodGroup', value: bg } })}
-                                        className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest border-2 transition-all ${
+                                        className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest border-2 transition-all ${
                                             formData.bloodGroup === bg
                                                 ? 'bg-red-600 text-white border-red-600 shadow-lg shadow-red-600/20 scale-105'
                                                 : 'bg-transparent text-ncc-navy/50 dark:text-white/40 border-ncc-navy/10 dark:border-white/10 hover:border-red-300'
@@ -492,42 +494,44 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
                             </div>
                         </Field>
 
-                        <SectionHeading icon={Shield} label="Status" />
-                        <Field label="Accommodation Type">
-                            <div className="flex gap-3">
-                                {hostelerOpts.map(opt => (
-                                    <button
-                                        key={opt} type="button"
-                                        onClick={() => handleChange({ target: { name: 'hostelerType', value: opt } })}
-                                        className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest border-2 transition-all ${
-                                            formData.hostelerType === opt
-                                                ? 'bg-ncc-navy text-ncc-gold border-ncc-navy shadow-lg'
-                                                : 'bg-transparent text-ncc-navy/50 dark:text-white/40 border-ncc-navy/10 dark:border-white/10 hover:border-ncc-navy/30'
-                                        }`}
-                                    >
-                                        {opt}
-                                    </button>
-                                ))}
-                            </div>
-                        </Field>
+                        <SectionHeading icon={Shield} label="Status & Activities" />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                            <Field label="Accommodation Type">
+                                <div className="flex gap-3">
+                                    {hostelerOpts.map(opt => (
+                                        <button
+                                            key={opt} type="button"
+                                            onClick={() => handleChange({ target: { name: 'hostelerType', value: opt } })}
+                                            className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest border-2 transition-all ${
+                                                formData.hostelerType === opt
+                                                    ? 'bg-ncc-navy text-ncc-gold border-ncc-navy dark:bg-ncc-gold dark:text-ncc-navy shadow-lg'
+                                                    : 'bg-transparent text-ncc-navy/50 dark:text-white/40 border-ncc-navy/10 dark:border-white/10 hover:border-ncc-navy/30'
+                                            }`}
+                                        >
+                                            {opt}
+                                        </button>
+                                    ))}
+                                </div>
+                            </Field>
 
-                        <Field label="ECA / CCA Activities">
-                            <TextInput name="ecaCca" value={formData.ecaCca} onChange={handleChange}
-                                placeholder="e.g. Basketball, Debate Club" />
-                        </Field>
+                            <Field label="ECA / CCA Activities">
+                                <TextInput name="ecaCca" value={formData.ecaCca} onChange={handleChange}
+                                    placeholder="e.g. Basketball, Debate Club" />
+                            </Field>
+                        </div>
                     </div>
                 )}
             </form>
 
             {/* ── Footer ───────────────────────────────────────────────────── */}
-            <div className="shrink-0 px-4 py-4 border-t border-ncc-navy/5 dark:border-white/5 bg-white dark:bg-[#050b14] flex items-center justify-between gap-3 rounded-b-3xl">
+            <div className="shrink-0 px-5 sm:px-8 py-4 sm:py-5 border-t border-ncc-navy/5 dark:border-white/10 bg-white dark:bg-[#050b14] flex items-center justify-between gap-3 rounded-b-3xl">
                 {/* Tab navigation arrows */}
                 <div className="flex gap-2">
                     {TABS.findIndex(t => t.id === activeTab) > 0 && (
                         <button
                             type="button"
                             onClick={() => setActiveTab(TABS[TABS.findIndex(t => t.id === activeTab) - 1].id)}
-                            className="px-4 py-2.5 text-xs font-bold text-ncc-navy/60 dark:text-white/40 hover:text-ncc-navy dark:hover:text-white border border-ncc-navy/10 dark:border-white/10 rounded-xl transition-all hover:bg-ncc-navy/5"
+                            className="px-4 py-2.5 text-xs font-bold text-ncc-navy/60 dark:text-white/50 hover:text-ncc-navy dark:hover:text-white border border-ncc-navy/10 dark:border-white/10 rounded-xl transition-all hover:bg-ncc-navy/5"
                         >
                             ← Back
                         </button>
@@ -536,17 +540,17 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
                         <button
                             type="button"
                             onClick={() => setActiveTab(TABS[TABS.findIndex(t => t.id === activeTab) + 1].id)}
-                            className="px-4 py-2.5 text-xs font-bold text-ncc-navy/60 dark:text-white/40 hover:text-ncc-navy dark:hover:text-white border border-ncc-navy/10 dark:border-white/10 rounded-xl transition-all hover:bg-ncc-navy/5"
+                            className="px-4 py-2.5 text-xs font-bold text-ncc-navy/60 dark:text-white/50 hover:text-ncc-navy dark:hover:text-white border border-ncc-navy/10 dark:border-white/10 rounded-xl transition-all hover:bg-ncc-navy/5"
                         >
                             Next →
                         </button>
                     )}
                 </div>
 
-                <div className="flex gap-2 ml-auto">
+                <div className="flex gap-2.5 ml-auto">
                     <button
                         type="button" onClick={onCancel} disabled={loading}
-                        className="px-5 py-2.5 text-xs font-black uppercase tracking-widest text-ncc-navy/60 dark:text-white/40 border border-ncc-navy/10 dark:border-white/10 rounded-xl hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-900/20 disabled:opacity-40 transition-all"
+                        className="px-5 py-2.5 text-xs font-black uppercase tracking-widest text-ncc-navy/60 dark:text-white/50 border border-ncc-navy/10 dark:border-white/10 rounded-xl hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-900/20 disabled:opacity-40 transition-all"
                     >
                         Cancel
                     </button>
@@ -555,7 +559,7 @@ export const CadetForm = ({ currentCadet, onSaveSuccess, onCancel }) => {
                         className={`px-6 py-2.5 text-xs font-black uppercase tracking-widest rounded-xl flex items-center gap-2 transition-all shadow-lg disabled:opacity-60 ${
                             saved
                                 ? 'bg-emerald-500 text-white shadow-emerald-500/20'
-                                : 'bg-ncc-navy text-ncc-gold shadow-ncc-navy/20 hover:shadow-ncc-navy/40 hover:scale-[1.02]'
+                                : 'bg-ncc-navy text-ncc-gold dark:bg-ncc-gold dark:text-ncc-navy shadow-ncc-navy/20 hover:shadow-ncc-navy/40 hover:scale-[1.02]'
                         }`}
                     >
                         {loading ? (

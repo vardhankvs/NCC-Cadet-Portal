@@ -135,3 +135,6 @@ export const Map = (props) => <LucideIcon {...props}><polygon points="1 6 1 22 8
 export const Layers = (props) => <LucideIcon {...props}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></LucideIcon>;
 export const Crosshair = (props) => <LucideIcon {...props}><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></LucideIcon>;
 export const Grid = (props) => <LucideIcon {...props}><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></LucideIcon>;
+export const ArrowUpDown = (props) => <LucideIcon {...props}><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></LucideIcon>;
+export const ArrowUp = (props) => <LucideIcon {...props}><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></LucideIcon>;
+export const ArrowDown = (props) => <LucideIcon {...props}><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></LucideIcon>;

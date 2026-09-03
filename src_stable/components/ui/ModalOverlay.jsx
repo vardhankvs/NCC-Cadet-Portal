@@ -7,7 +7,7 @@ export const ModalOverlay = ({ children, onClose }) => (
         style={{ background: 'rgba(10,22,40,0.75)', backdropFilter: 'blur(4px)' }}
     >
         <div
-            className="relative modal-in w-full max-w-fit mx-auto flex flex-col max-h-[96vh]"
+            className="relative modal-in w-full max-w-5xl mx-auto flex flex-col max-h-[96vh]"
             onClick={(e) => e.stopPropagation()}
         >
             {/* Top accent bar */}
