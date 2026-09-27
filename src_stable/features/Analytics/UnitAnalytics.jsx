@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useDataContext } from '../../context/DataContext.jsx';
-import { Users, Award, Shield, PieChart, BarChart2, VisibilityIcon, RotateCcw, TrendingUp, Briefcase } from '../../components/Icons.jsx';
+import { Users, Award, Shield, PieChart, BarChart2, VisibilityIcon, RotateCcw } from '../../components/Icons.jsx';
 import {
     BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer,
     PieChart as RePieChart, Pie, Cell, CartesianGrid
@@ -152,18 +152,7 @@ export const UnitAnalytics = ({ onDrillDown, onTabChange }) => {
             total: (grievances || []).length
         };
 
-        const financialStats = {
-            totalExpected: activeCadets.reduce((acc, c) => acc + (Number(c.enrollmentFee !== undefined && c.enrollmentFee !== '' ? c.enrollmentFee : 1000)) + (Number(c.uniformFee !== undefined && c.uniformFee !== '' ? c.uniformFee : 1500)) + (Number(c.campFee || 0)), 0),
-            totalCollected: activeCadets.reduce((acc, c) => acc + (Number(c.feePaid) || 0), 0),
-            totalPending: 0,
-            collectionRate: 0
-        };
-        financialStats.totalPending = Math.max(0, financialStats.totalExpected - financialStats.totalCollected);
-        financialStats.collectionRate = financialStats.totalExpected > 0 
-            ? Math.round((financialStats.totalCollected / financialStats.totalExpected) * 100) 
-            : 0;
-
-        return { total: activeCadets.length, sd, sw, b1_total, b1_sd, b1_sw, b2_total, b2_sd, b2_sw, c_total, c_sd, c_sw, rankChartData, certChartData, grievanceStats, financialStats };
+        return { total: activeCadets.length, sd, sw, b1_total, b1_sd, b1_sw, b2_total, b2_sd, b2_sw, c_total, c_sd, c_sw, rankChartData, certChartData, grievanceStats };
     }, [cadets, grievances]);
 
     const CustomTooltip = ({ active, payload, label }) => {
@@ -196,7 +185,7 @@ export const UnitAnalytics = ({ onDrillDown, onTabChange }) => {
             </header>
 
             {/* Strength Breakdown — Premium insight cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
 
                 {/* Unique Visitor Tracking */}
                 <Tilt perspective={1000} scale={1.02} transitionSpeed={1000} className="h-full">
@@ -226,45 +215,6 @@ export const UnitAnalytics = ({ onDrillDown, onTabChange }) => {
                             <div className="flex items-center gap-2 text-purple-700 bg-purple-50 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider">
                                 <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-pulse" />
                                 Live Tracking Active
-                            </div>
-                        </div>
-                    </div>
-                </Tilt>
-
-                {/* Financial Oversight */}
-                <Tilt perspective={1000} scale={1.02} transitionSpeed={1000} className="h-full">
-                    <div 
-                        onClick={() => onTabChange && onTabChange('fee')}
-                        className="bg-white dark:bg-[#050b14] p-8 rounded-3xl border border-[#ddd8cc] shadow-sm relative overflow-hidden hover:shadow-lg transition-all duration-300 group cursor-pointer h-full"
-                    >
-                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-400 via-orange-500 to-amber-400"></div>
-                        <div className="absolute -bottom-8 -right-8 w-32 h-32 bg-amber-50 rounded-full group-hover:scale-150 transition-transform duration-700"></div>
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="w-10 h-10 rounded-xl bg-amber-600 flex items-center justify-center shadow-md">
-                                <Briefcase className="w-5 h-5 text-white" />
-                            </div>
-                            <h3 className="text-xs font-black text-gray-400 dark:text-white/80 uppercase tracking-[0.2em]">Financial Oversight</h3>
-                        </div>
-                        <p className="text-4xl font-black text-amber-600 leading-none mb-1">
-                            ₹<CountUp end={stats.financialStats.totalCollected} duration={2} />
-                        </p>
-                        <p className="text-xs text-gray-400 dark:text-white/80 font-bold uppercase tracking-widest mb-8">Total Collected</p>
-                        <div className="space-y-4 relative z-10">
-                            <div className="flex justify-between items-center text-[10px] font-bold">
-                                <span className="text-gray-400 uppercase">Collection Rate</span>
-                                <span className="text-amber-600">{stats.financialStats.collectionRate}%</span>
-                            </div>
-                            <div className="h-1.5 w-full bg-gray-100 dark:bg-[#0d2137] rounded-full overflow-hidden">
-                                <motion.div 
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${stats.financialStats.collectionRate}%` }}
-                                    transition={{ duration: 1.5, ease: "easeOut" }}
-                                    className="h-full bg-amber-500 rounded-full" 
-                                />
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-[10px] font-black text-gray-400 uppercase">Pending Dues</span>
-                                <span className="text-xs font-black text-red-500">₹{stats.financialStats.totalPending.toLocaleString()}</span>
                             </div>
                         </div>
                     </div>
@@ -458,65 +408,6 @@ export const UnitAnalytics = ({ onDrillDown, onTabChange }) => {
                             ))}
                         </div>
                     </div>
-                </div>
-            </div>
-
-            {/* Revenue Analytics Chart */}
-            <div className="bg-white dark:bg-[#050b14] p-8 rounded-3xl border border-[#ddd8cc] shadow-sm hover:shadow-lg transition-all duration-300 relative overflow-hidden group">
-                <div className="absolute top-0 left-0 w-full h-1.5 bg-ncc-gold"></div>
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-                    <div>
-                        <h3 className="text-xl font-bold text-ncc-navy dark:text-white flex items-center gap-3">
-                            <TrendingUp className="w-6 h-6 text-ncc-gold" /> Collection Performance
-                        </h3>
-                        <p className="text-gray-400 dark:text-white/80 text-xs mt-1">Total Expected vs. Realized Unit Revenue</p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-[#1b3a6b]"></div>
-                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Expected</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-ncc-gold"></div>
-                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Collected</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="h-80 min-h-[320px] relative z-10">
-                    {isMounted && (
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart 
-                                data={[
-                                    { name: 'Unit Revenue', expected: stats.financialStats.totalExpected, collected: stats.financialStats.totalCollected }
-                                ]} 
-                                layout="vertical"
-                                barSize={40}
-                            >
-                                <XAxis type="number" hide />
-                                <YAxis type="category" dataKey="name" hide />
-                                <RechartsTooltip 
-                                    cursor={{ fill: 'transparent' }}
-                                    content={({ active, payload }) => {
-                                        if (active && payload && payload.length) {
-                                            return (
-                                                <div className="bg-white dark:bg-[#050b14] border border-gray-200 dark:border-white/10 rounded-2xl shadow-xl px-4 py-3">
-                                                    <p className="text-[10px] font-black text-gray-400 dark:text-white/80 uppercase tracking-widest mb-2">Revenue Status</p>
-                                                    <div className="space-y-1">
-                                                        <p className="text-sm font-bold text-gray-500">Expected: ₹{payload[0].value.toLocaleString()}</p>
-                                                        <p className="text-sm font-bold text-ncc-gold">Collected: ₹{payload[1].value.toLocaleString()}</p>
-                                                    </div>
-                                                </div>
-                                            );
-                                        }
-                                        return null;
-                                    }}
-                                />
-                                <Bar dataKey="expected" fill="#1b3a6b" radius={[0, 10, 10, 0]} />
-                                <Bar dataKey="collected" fill="#d4af37" radius={[0, 10, 10, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    )}
                 </div>
             </div>
 

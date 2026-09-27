@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useDataContext } from '../../context/DataContext.jsx';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { getCollectionRef } from '../../firebase/firestoreService.js';
-import { addDoc, onSnapshot, query, orderBy, limit, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { addDoc, onSnapshot, query, orderBy, limit, deleteDoc, doc, updateDoc, setDoc, getDocs } from 'firebase/firestore';
 import { Megaphone, Send, Users, Mail, Bell, MessageSquare, CheckCircle, Trash2, Edit3, Clock, Shield } from '../../components/Icons.jsx';
 import { toast } from 'react-toastify';
 import { requestNotificationPermission } from '../../firebase/messagingService.js';
+import { getApiEndpoint } from '../../firebase/pushNotifications.js';
+import { UnitAlerts } from './UnitAlerts.jsx';
 export const BroadcastManager = () => {
     const { cadets, allCadets, alumni } = useDataContext();
     const { userInstitutionId, user, userRole } = useAuthContext();
@@ -18,6 +20,7 @@ export const BroadcastManager = () => {
     const [pastBroadcasts, setPastBroadcasts] = useState([]);
     const [editingId, setEditingId] = useState(null);
     const [searchDate, setSearchDate] = useState('');
+    const [activeView, setActiveView] = useState('console'); // 'console' | 'feed'
     
     // Safety Net Settings
     const [safetyEnabled, setSafetyEnabled] = useState(false);
@@ -26,6 +29,7 @@ export const BroadcastManager = () => {
     const [safetyCert, setSafetyCert] = useState('All');
     const [safetyDiv, setSafetyDiv] = useState('All');
     const [isSavingSafety, setIsSavingSafety] = useState(false);
+    const [registeredUserTokens, setRegisteredUserTokens] = useState([]);
 
     useEffect(() => {
         // Load Safety Settings
@@ -45,9 +49,24 @@ export const BroadcastManager = () => {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setPastBroadcasts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
+
+        // Listen for users with tokens
+        const unsubUsers = onSnapshot(getCollectionRef('users'), (snapshot) => {
+            const uTokens = [];
+            snapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                if (data.fcmTokens) {
+                    if (Array.isArray(data.fcmTokens)) uTokens.push(...data.fcmTokens);
+                    else if (typeof data.fcmTokens === 'string') uTokens.push(data.fcmTokens);
+                }
+            });
+            setRegisteredUserTokens(uTokens);
+        }, (err) => console.warn('Users token listener:', err));
+
         return () => {
             unsubscribe();
             unsubSafety();
+            unsubUsers();
         };
     }, []);
 
@@ -81,60 +100,144 @@ export const BroadcastManager = () => {
         
         setSending(true);
         try {
+            // 1. Check all logged-in cadets in database (users collection with role === 'cadet')
+            const loggedInCadets = [];
+            const userTokens = [];
+            const userUids = [];
+            const userEnrollments = [];
+            const userEmails = [];
+            const userCadetDocIds = [];
+
+            try {
+                const usersSnap = await getDocs(getCollectionRef('users'));
+                usersSnap.forEach(docSnap => {
+                    const uData = docSnap.data();
+                    const isCadet = uData.role === 'cadet';
+                    const uEnroll = (uData.enrollmentId || '').trim().toUpperCase();
+                    const uEmail = (uData.email || '').trim().toLowerCase();
+                    const uTokens = Array.isArray(uData.fcmTokens) ? uData.fcmTokens : (uData.fcmTokens ? [uData.fcmTokens] : []);
+
+                    if (isCadet) {
+                        loggedInCadets.push({
+                            uid: docSnap.id,
+                            email: uEmail,
+                            enrollmentId: uEnroll,
+                            name: uData.name || '',
+                            tokens: uTokens
+                        });
+                        userUids.push(docSnap.id);
+                        if (uEnroll) userEnrollments.push(uEnroll);
+                        if (uEmail) userEmails.push(uEmail);
+                        if (uData.cadetId) userCadetDocIds.push(uData.cadetId);
+                    }
+
+                    // If doc has tokens, collect them if targeted or if general broadcast
+                    if (uTokens.length > 0) {
+                        userTokens.push(...uTokens);
+                    }
+                });
+            } catch (e) {
+                console.warn('FCM user token lookup:', e.message);
+            }
+
+            console.log(`OS Notifications: Checked ${loggedInCadets.length} logged cadets across unit:`, loggedInCadets.map(c => c.name || c.email || c.enrollmentId));
+
+            // 2. Base targeting from filtered cadets
+            const targetEnrollmentIds = Array.from(new Set([
+                ...filteredCadets.map(c => (c.enrollmentId || c.regimentalNumber || '').trim().toUpperCase()).filter(Boolean),
+                ...(selectedGroup === 'All' ? userEnrollments : [])
+            ]));
+            const targetCadetIds = Array.from(new Set([
+                ...filteredCadets.map(c => c.id).filter(Boolean),
+                ...(selectedGroup === 'All' ? userCadetDocIds : [])
+            ]));
+            const targetUidSet = new Set([
+                ...filteredCadets.map(c => c.uid).filter(Boolean),
+                ...(selectedGroup === 'All' ? userUids : [])
+            ]);
+            const targetEmailSet = new Set([
+                ...filteredCadets.map(c => (c.email || '').trim().toLowerCase()).filter(Boolean),
+                ...(selectedGroup === 'All' ? userEmails : [])
+            ]);
+
+            const targetEnrollSet = new Set(targetEnrollmentIds);
+            const targetIdSet = new Set(targetCadetIds);
+
+            // 3. Save to notifications collection for real-time in-app OS alert & defence chime
+            const notificationPayload = {
+                subject: subject || 'Unit Update',
+                title: subject || 'Unit Update',
+                message: message,
+                content: message,
+                channel: 'app',
+                target: selectedGroup,
+                targetCertificate: selectedCertificate,
+                targetDivision: selectedDivision,
+                targetEnrollmentIds,
+                targetCadetIds,
+                targetUids: Array.from(targetUidSet),
+                targetEmails: Array.from(targetEmailSet),
+                sender: 'Unit Admin',
+                senderUid: user?.uid || null,
+                timestamp: new Date().toISOString(),
+                cadetCount: Math.max(filteredCadets.length, loggedInCadets.length),
+                institutionId: userInstitutionId || 'gmrit'
+            };
+
             if (editingId) {
                 await updateDoc(doc(getCollectionRef('notifications'), editingId), {
-                    subject: subject || 'Unit Update',
-                    message: message,
-                    channel: 'app',
-                    target: selectedGroup,
-                    targetCertificate: selectedCertificate,
-                    targetDivision: selectedDivision,
-                    timestamp: new Date().toISOString(), // Update timestamp to trigger new notification
-                    updatedAt: new Date().toISOString(),
-                    institutionId: userInstitutionId
+                    ...notificationPayload,
+                    updatedAt: new Date().toISOString()
                 });
                 toast.success("Broadcast updated and cadets notified!");
                 setEditingId(null);
             } else {
-                await addDoc(getCollectionRef('notifications'), {
-                    subject: subject || 'Unit Update',
-                    message: message,
-                    channel: 'app',
-                    target: selectedGroup,
-                    targetCertificate: selectedCertificate,
-                    targetDivision: selectedDivision,
-                    sender: 'Unit Admin',
-                    timestamp: new Date().toISOString(),
-                    cadetCount: filteredCadets.length,
-                    institutionId: userInstitutionId
-                });
-
-                // Trigger Vercel Push Notification API
-                const tokens = filteredCadets.flatMap(c => c.fcmTokens || []);
-                if (tokens.length > 0) {
-                    try {
-                        const response = await fetch('/api/sendBroadcast', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                subject: subject || 'Unit Update',
-                                message: message,
-                                tokens: tokens
-                            })
-                        });
-                        const data = await response.json();
-                        if (data.success) {
-                            console.log(`Pushed to ${data.successCount} devices.`);
-                        } else {
-                            console.error('Push warning:', data);
-                        }
-                    } catch (e) {
-                        console.error('Vercel API request failed:', e);
-                    }
-                }
-
-                toast.success(`Broadcast sent to ${filteredCadets.length} cadets!`);
+                await addDoc(getCollectionRef('notifications'), notificationPayload);
             }
+
+            // 4. Collect tokens from matching targeted cadets in cadets collection
+            const tokens = [...filteredCadets.flatMap(c => Array.isArray(c.fcmTokens) ? c.fcmTokens : (c.fcmTokens ? [c.fcmTokens] : []))];
+
+            // Add user account tokens
+            loggedInCadets.forEach(u => {
+                const isTargeted = selectedGroup === 'All' ||
+                                   targetEnrollSet.has(u.enrollmentId) ||
+                                   targetIdSet.has(u.uid) ||
+                                   targetUidSet.has(u.uid) ||
+                                   (u.email && targetEmailSet.has(u.email));
+                if (isTargeted && u.tokens.length > 0) {
+                    tokens.push(...u.tokens);
+                }
+            });
+
+            // Also check tokens in userTokens
+            userTokens.forEach(t => tokens.push(t));
+
+            const uniqueTokens = [...new Set(tokens.filter(Boolean))];
+            if (uniqueTokens.length > 0) {
+                try {
+                    const response = await fetch(getApiEndpoint(), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            subject: subject || 'Unit Update',
+                            message: message,
+                            tokens: uniqueTokens,
+                            targetTab: 'notifications'
+                        })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        console.log(`FCM: Checked ${loggedInCadets.length} logged cadets across unit. Pushed to ${data.successCount} registered device(s).`);
+                    } else {
+                        console.error('Push warning:', data);
+                    }
+                } catch (e) {
+                    console.error('Vercel API push request failed:', e);
+                }
+            }
+
+            toast.success(`Broadcast posted! Checked ${loggedInCadets.length} logged cadets (${uniqueTokens.length} device push${uniqueTokens.length === 1 ? '' : 'es'}).`);
             setMessage('');
             setSubject('');
         } catch (err) {
@@ -191,6 +294,16 @@ export const BroadcastManager = () => {
         return match;
     });
 
+    const totalReachableDevices = useMemo(() => {
+        const tokenSet = new Set();
+        allCadets.forEach(c => {
+            if (Array.isArray(c.fcmTokens)) c.fcmTokens.forEach(t => t && tokenSet.add(t));
+            else if (c.fcmTokens) tokenSet.add(c.fcmTokens);
+        });
+        registeredUserTokens.forEach(t => t && tokenSet.add(t));
+        return tokenSet.size;
+    }, [allCadets, registeredUserTokens]);
+
     return (
         <div className="space-y-8 fade-in">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-[#050b14] p-6 rounded-2xl border border-[#ddd8cc] shadow-sm">
@@ -209,16 +322,26 @@ export const BroadcastManager = () => {
                         <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">
                             Ex-Cadets: {alumni.length}
                         </span>
-                        <span className="text-[10px] font-bold text-gray-400 dark:text-white/60 flex items-center gap-1.5">
-                            <Bell className="w-3 h-3" /> {allCadets.filter(c => c.fcmTokens?.length > 0).length} Reachable
+                        <span 
+                            title="Device Push Reachable: Total registered browser and mobile devices across all cadets with push notifications activated."
+                            className="text-[10px] font-bold text-gray-500 dark:text-white/60 flex items-center gap-1.5 bg-gray-100 dark:bg-white/5 px-2.5 py-1 rounded-full cursor-help"
+                        >
+                            <Bell className="w-3 h-3 text-amber-500" /> {totalReachableDevices} Device{totalReachableDevices === 1 ? '' : 's'} Reachable
                         </span>
                         <button 
                             onClick={async () => {
-                                const token = await requestNotificationPermission(user?.uid, userRole === 'admin' || userRole === 'staff' ? 'staff' : 'cadets');
+                                const token = await requestNotificationPermission({
+                                    authUid: user?.uid,
+                                    profileId: user?.uid,
+                                    collectionName: userRole === 'admin' || userRole === 'staff' ? 'staff' : 'cadets',
+                                    enrollmentId: userEnrollmentId,
+                                    userRole,
+                                    interactive: true
+                                });
                                 if (token) {
                                     toast.success("Permissions granted! Sending test push...");
                                     try {
-                                        const res = await fetch('/api/sendBroadcast', {
+                                        const res = await fetch(getApiEndpoint(), {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({
@@ -275,33 +398,64 @@ export const BroadcastManager = () => {
                         </button>
                     </div>
                 </div>
-                {isOverdue && (
-                    <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-center gap-4 animate-pulse">
-                        <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
-                            <Clock className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-black text-amber-900 uppercase tracking-widest">Broadcast Reminder</p>
-                            <p className="text-xs text-amber-700 font-bold">No update sent in 24h. Post today's instructions now.</p>
-                        </div>
-                        <button 
-                            onClick={() => {
-                                setSubject('Daily Routine Reminder');
-                                setMessage('Cadets are reminded to check the Unit Notice Board for latest parade instructions and study materials. Fall-in on time tomorrow.');
-                            }}
-                            className="ml-auto px-4 py-1.5 bg-amber-600 text-white text-[10px] font-black rounded-lg hover:bg-amber-700 transition-colors uppercase tracking-widest"
-                        >
-                            Quick Remind
-                        </button>
-                    </div>
-                )}
+
+                <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl shrink-0 self-start sm:self-center border border-gray-200 dark:border-white/10">
+                    <button
+                        type="button"
+                        onClick={() => setActiveView('console')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                            activeView === 'console'
+                                ? 'bg-ncc-navy text-white shadow-sm'
+                                : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                        }`}
+                    >
+                        Broadcast Console
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveView('feed')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                            activeView === 'feed'
+                                ? 'bg-ncc-navy text-white shadow-sm'
+                                : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                        }`}
+                    >
+                        Cadet Alerts Feed
+                    </button>
+                </div>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Composer */}
-                <div className="lg:col-span-2 space-y-8">
-                    <form onSubmit={handleSend} className="bg-white dark:bg-[#050b14] p-8 rounded-3xl border border-[#ddd8cc] shadow-sm space-y-6 relative overflow-hidden">
-                        {editingId && (
+            {isOverdue && activeView === 'console' && (
+                <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-center gap-4 animate-pulse">
+                    <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                        <Clock className="w-5 h-5" />
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-black text-amber-900 uppercase tracking-widest">Broadcast Reminder</p>
+                        <p className="text-xs text-amber-700 font-bold">No update sent in 24h. Post today's instructions now.</p>
+                    </div>
+                    <button 
+                        onClick={() => {
+                            setSubject('Daily Routine Reminder');
+                            setMessage('Cadets are reminded to check the Unit Notice Board for latest parade instructions and study materials. Fall-in on time tomorrow.');
+                        }}
+                        className="ml-auto px-4 py-1.5 bg-amber-600 text-white text-[10px] font-black rounded-lg hover:bg-amber-700 transition-colors uppercase tracking-widest"
+                    >
+                        Quick Remind
+                    </button>
+                </div>
+            )}
+
+            {activeView === 'feed' ? (
+                <div className="bg-white dark:bg-[#050b14] p-6 rounded-2xl border border-[#ddd8cc] shadow-sm">
+                    <UnitAlerts />
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Composer */}
+                    <div className="lg:col-span-2 space-y-8">
+                        <form onSubmit={handleSend} className="bg-white dark:bg-[#050b14] p-8 rounded-3xl border border-[#ddd8cc] shadow-sm space-y-6 relative overflow-hidden">
+                            {editingId && (
                             <div className="absolute top-0 left-0 w-full h-1 bg-ncc-gold animate-pulse" />
                         )}
                         <div className="flex justify-end items-center">
@@ -520,6 +674,7 @@ export const BroadcastManager = () => {
                     </div>
                 </div>
             </div>
+            )}
         </div>
     );
 };

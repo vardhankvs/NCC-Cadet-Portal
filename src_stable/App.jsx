@@ -143,10 +143,10 @@ export function App() {
         } else {
             content = (
                 <>
-                    <div className="fixed top-6 left-6 z-[60]">
+                    <div className="fixed top-4 left-4 sm:top-6 sm:left-6 z-[60]">
                         <button 
                             onClick={() => setShowAuth(false)}
-                            className="bg-white/10 backdrop-blur-md border border-white/20 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-white/20 transition-all"
+                            className="bg-white/10 backdrop-blur-md border border-white/20 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-widest hover:bg-white/20 transition-all shadow-lg"
                         >
                             ← Back to Home
                         </button>

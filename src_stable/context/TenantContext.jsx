@@ -42,7 +42,9 @@ export const TenantProvider = ({ children }) => {
                     const data = snapshot.docs[0].data();
                     setTenant({
                         id: snapshot.docs[0].id,
-                        ...data
+                        ...data,
+                        heroBg: (data.heroBg && typeof data.heroBg === 'string' && data.heroBg.trim().startsWith('http')) ? data.heroBg.trim() : heroBgImg,
+                        logo: (data.logo && typeof data.logo === 'string' && data.logo.trim().startsWith('http')) ? data.logo.trim() : nccLogoImg,
                     });
                 } else {
                     // Fallback to default 14(A) BN NCC if not found

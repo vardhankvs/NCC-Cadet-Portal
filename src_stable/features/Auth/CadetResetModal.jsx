@@ -44,21 +44,21 @@ export const CadetResetModal = ({ onCancel }) => {
 
     return (
         <ModalOverlay>
-            <div className="bg-white dark:bg-[#050b14] rounded-3xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="bg-white dark:bg-[#050b14] rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-md mx-3 sm:mx-4 overflow-hidden animate-in zoom-in-95 duration-300 max-h-[92vh] overflow-y-auto">
                 <div className="h-1.5 w-full flex">
                     <div className="flex-1 bg-ncc-red" />
                     <div className="flex-1 bg-ncc-gold" />
                     <div className="flex-1 bg-ncc-navy" />
                 </div>
 
-                <div className="p-8">
-                    <div className="flex justify-between items-center mb-6">
+                <div className="p-5 sm:p-8">
+                    <div className="flex justify-between items-center mb-5 sm:mb-6">
                         <div>
-                            <h2 className="text-2xl font-display font-bold text-ncc-navy dark:text-white">Reset Password</h2>
+                            <h2 className="text-xl sm:text-2xl font-display font-bold text-ncc-navy dark:text-white">Reset Password</h2>
                             <p className="text-xs text-gray-500 dark:text-white/70 font-medium">Cadet Self-Service Portal</p>
                         </div>
                         <button onClick={onCancel} className="p-2 hover:bg-gray-100 dark:bg-[#0d2137] rounded-full transition-colors">
-                            <XCircle className="w-6 h-6 text-gray-300" />
+                            <XCircle className="w-5 h-5 sm:w-6 sm:h-6 text-gray-300" />
                         </button>
                     </div>
 

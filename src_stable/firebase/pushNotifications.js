@@ -3,17 +3,17 @@
 // sendPushToAll(title, body)   — broadcasts to ALL registered devices
 // sendPushToUser(enrollmentId, title, body) — sends to ONE specific cadet/user only
 
-import { getDocs, query, where, collection } from 'firebase/firestore';
-import { db, appId } from './config.js';
+import { getDocs, query, where, collection, addDoc } from 'firebase/firestore';
+import { db, appId, auth } from './config.js';
 
 const getCollectionRef = (collectionName) => {
     if (!db || !appId) return null;
     return collection(db, 'artifacts', appId, 'public', 'data', collectionName);
 };
 
-const VERCEL_ORIGIN = 'https://ncc-portal-redesign.vercel.app';
+export const VERCEL_ORIGIN = 'https://ncc-portal-redesign.vercel.app';
 
-const getApiEndpoint = () => {
+export const getApiEndpoint = () => {
     if (typeof window !== 'undefined' && window.location && window.location.hostname === 'ncc-portal-redesign.vercel.app') {
         return '/api/sendBroadcast';
     }
@@ -64,11 +64,32 @@ const _dispatch = async (tokens, title, body, targetTab = null) => {
 
 /**
  * Sends a push notification to ALL registered devices.
- * Use for general broadcasts (new camp, new exam, social update, etc.)
+ * Checks all logged-in/registered cadets, collects active tokens,
+ * sends Web Push, and logs to notifications collection for real-time OS alert on active screens.
  */
-export const sendPushToAll = async (title, body, targetTab = null) => {
+export const sendPushToAll = async (title, body, targetTab = null, options = {}) => {
     try {
         const tokens = [];
+        const loggedInCadets = [];
+
+        // Check users collection (primary store of all registered/logged-in accounts)
+        try {
+            const snap = await getDocs(getCollectionRef('users'));
+            snap.forEach((d) => {
+                const u = d.data();
+                if (u.role === 'cadet') {
+                    loggedInCadets.push({
+                        uid: d.id,
+                        email: u.email,
+                        enrollmentId: (u.enrollmentId || '').trim().toUpperCase(),
+                        name: u.name || ''
+                    });
+                }
+                const t = u.fcmTokens;
+                if (Array.isArray(t)) tokens.push(...t);
+                else if (typeof t === 'string' && t) tokens.push(t);
+            });
+        } catch (e) { console.warn('FCM: users fetch skipped', e.message); }
 
         // Check cadets collection
         try {
@@ -90,17 +111,41 @@ export const sendPushToAll = async (title, body, targetTab = null) => {
             });
         } catch (e) { console.warn('FCM: staff fetch skipped', e.message); }
 
-        // Check users collection (primary store used by messagingService.js)
-        try {
-            const snap = await getDocs(getCollectionRef('users'));
-            snap.forEach((d) => {
-                const t = d.data().fcmTokens;
-                if (Array.isArray(t)) tokens.push(...t);
-                else if (typeof t === 'string' && t) tokens.push(t);
-            });
-        } catch (e) { console.warn('FCM: users fetch skipped', e.message); }
+        const uniqueTokens = [...new Set(tokens.filter(Boolean))];
+        console.log(`OS Notification: Checked ${loggedInCadets.length} logged cadets across unit:`, loggedInCadets.map(c => c.name || c.email || c.enrollmentId));
+        console.log(`FCM: Pushing to ${uniqueTokens.length} active device token(s) for "${title}"`);
 
-        await _dispatch(tokens, title, body, targetTab);
+        // Send FCM Web Push
+        await _dispatch(uniqueTokens, title, body, targetTab);
+
+        // Also write to notifications collection so logged-in cadets receive immediate in-app chime & OS alert
+        if (options.writeToDb !== false) {
+            try {
+                const notifCol = getCollectionRef('notifications');
+                if (notifCol) {
+                    await addDoc(notifCol, {
+                        subject: title,
+                        title: title,
+                        message: body,
+                        content: body,
+                        body: body,
+                        channel: 'app',
+                        target: options.target || 'All',
+                        targetTab: targetTab || 'notifications',
+                        category: options.category || 'General',
+                        sender: options.sender || 'Unit Command',
+                        senderUid: auth?.currentUser?.uid || null,
+                        timestamp: new Date().toISOString(),
+                        institutionId: options.institutionId || 'gmrit',
+                        targetEnrollmentIds: loggedInCadets.map(c => c.enrollmentId).filter(Boolean),
+                        targetUids: loggedInCadets.map(c => c.uid).filter(Boolean)
+                    });
+                    console.log(`OS Notification: Logged to notifications collection for real-time chime: "${title}"`);
+                }
+            } catch (dbErr) {
+                console.warn('Could not write notification to db:', dbErr.message);
+            }
+        }
     } catch (e) {
         console.warn('sendPushToAll failed (non-critical):', e.message);
     }
@@ -108,14 +153,14 @@ export const sendPushToAll = async (title, body, targetTab = null) => {
 
 /**
  * Sends a push notification to ONE specific cadet identified by their enrollmentId.
- * Use for personal notifications: fee approval, leave status, rank update, etc.
+ * Checks cadet/user tokens, dispatches FCM, and writes targeted record for live in-app OS alert.
  *
  * @param {string} enrollmentId  - The cadet's enrollment ID (e.g. "14BNSD001")
  * @param {string} title         - Notification title
  * @param {string} body          - Notification body
  * @param {string} targetTab     - Optional tab to open when notification is clicked
  */
-export const sendPushToUser = async (enrollmentId, title, body, targetTab = null) => {
+export const sendPushToUser = async (enrollmentId, title, body, targetTab = null, options = {}) => {
     if (!enrollmentId) return;
     const targetKey = String(enrollmentId).trim().toUpperCase();
     try {
@@ -126,7 +171,7 @@ export const sendPushToUser = async (enrollmentId, title, body, targetTab = null
             const snap = await getDocs(getCollectionRef('cadets'));
             snap.forEach((d) => {
                 const data = d.data();
-                const eId = String(data.enrollmentId || '').trim().toUpperCase();
+                const eId = String(data.enrollmentId || data.regimentalNumber || '').trim().toUpperCase();
                 const docId = String(d.id || '').trim().toUpperCase();
                 const uId = String(data.uid || data.userId || '').trim().toUpperCase();
 
@@ -173,7 +218,34 @@ export const sendPushToUser = async (enrollmentId, title, body, targetTab = null
         } catch (e) { console.warn('FCM: users fetch skipped for single user', e.message); }
 
         const uniqueTokens = Array.from(new Set(tokens.filter(Boolean)));
+        console.log(`FCM: Targeted push to cadet "${enrollmentId}" (${uniqueTokens.length} device tokens) for "${title}"`);
         await _dispatch(uniqueTokens, title, body, targetTab);
+
+        // Also write targeted notification to db for immediate in-app chime & OS alert
+        if (options.writeToDb !== false) {
+            try {
+                const notifCol = getCollectionRef('notifications');
+                if (notifCol) {
+                    await addDoc(notifCol, {
+                        subject: title,
+                        title: title,
+                        message: body,
+                        content: body,
+                        body: body,
+                        channel: 'app',
+                        enrollmentId: enrollmentId,
+                        targetTab: targetTab || 'notifications',
+                        category: options.category || 'Personal',
+                        sender: options.sender || 'Unit Command',
+                        senderUid: auth?.currentUser?.uid || null,
+                        timestamp: new Date().toISOString(),
+                        institutionId: options.institutionId || 'gmrit'
+                    });
+                }
+            } catch (dbErr) {
+                console.warn('Could not write targeted notification to db:', dbErr.message);
+            }
+        }
     } catch (e) {
         console.warn('sendPushToUser failed (non-critical):', e.message);
     }
@@ -238,6 +310,31 @@ export const sendPushToCadets = async (cadetIds, title, body, targetTab = null) 
 
         const uniqueTokens = Array.from(new Set(tokens.filter(Boolean)));
         await _dispatch(uniqueTokens, title, body, targetTab);
+
+        // Also write targeted notification to db for immediate in-app chime & OS alert
+        try {
+            const notifCol = getCollectionRef('notifications');
+            if (notifCol) {
+                await addDoc(notifCol, {
+                    subject: title,
+                    title: title,
+                    message: body,
+                    content: body,
+                    body: body,
+                    channel: 'app',
+                    targetCadetIds: cleanIds,
+                    targetEnrollmentIds: cleanIds,
+                    targetTab: targetTab || 'attendance',
+                    category: 'Attendance',
+                    sender: 'Unit Command',
+                    senderUid: auth?.currentUser?.uid || null,
+                    timestamp: new Date().toISOString(),
+                    institutionId: 'gmrit'
+                });
+            }
+        } catch (dbErr) {
+            console.warn('Could not write cadet targeted notification to db:', dbErr.message);
+        }
     } catch (e) {
         console.warn('sendPushToCadets failed (non-critical):', e.message);
     }

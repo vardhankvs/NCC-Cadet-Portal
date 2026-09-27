@@ -6,48 +6,47 @@ import { requestNotificationPermission } from '../../firebase/messagingService';
 import { getCollectionRef } from '../../firebase/firestoreService.js';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { toast } from 'react-toastify';
+import { isCadetTargetedByBroadcast } from '../../utils/broadcastAudience.js';
 
 export const UnitAlerts = () => {
     const { notifications, loading, cadets } = useDataContext();
-    const { userEnrollmentId, user, userRole } = useAuthContext();
+    const { userEnrollmentId, user, userRole, actualRole } = useAuthContext();
+
+    const isAdmin = (userRole === 'admin' || userRole === 'officer' || userRole === 'superadmin' || userRole === 'battalion_admin') && actualRole !== 'cadet';
 
     const currentCadet = cadets.find(c => 
         (c.enrollmentId && userEnrollmentId && c.enrollmentId.toUpperCase() === userEnrollmentId.toUpperCase()) ||
         c.id === user?.uid
-    );
+    ) || (userRole === 'cadet' ? { enrollmentId: userEnrollmentId, uid: user?.uid } : null);
 
     const handleDismissNotif = async (noteId) => {
+        if (!isAdmin) {
+            toast.error('Only administrators can remove unit broadcasts.');
+            return;
+        }
         try {
             const notifRef = getCollectionRef('notifications');
             if (notifRef && noteId) {
                 await deleteDoc(doc(notifRef, noteId));
-                toast.success('Notification dismissed.');
+                toast.success('Broadcast removed.');
             }
         } catch (err) {
-            console.error('Error dismissing notification:', err);
-            toast.error('Failed to dismiss notification.');
+            console.error('Error removing broadcast:', err);
+            toast.error('Failed to remove broadcast.');
         }
     };
 
     if (loading) return <div className="p-8 text-center text-text-dim italic">Scanning unit logs...</div>;
 
     // Filter notifications:
-    // - If a notification has a `userId` or `enrollmentId` field, it is PERSONAL —
-    //   only show it to that specific cadet.
-    // - Broadcast notifications (subject/target field, no userId) show to everyone.
+    // Cadets ONLY see broadcasts where they are in the selected target group/certificate/division/cadetId.
     const unitBroadcasts = (notifications || [])
         .filter(n => {
-            // Hide admin notifications from cadets
-            if (n.target === 'Admin' && userRole !== 'admin') return false;
-
-            const isPersonal = !!(n.userId || n.enrollmentId);
-            if (!isPersonal) return true; // broadcast — show to all
-            
-            // Personal: check against userEnrollmentId, user.uid, or currentCadet.id
-            const matchesEnrollment = n.enrollmentId && userEnrollmentId && n.enrollmentId.toUpperCase() === userEnrollmentId.toUpperCase();
-            const matchesUserId = n.userId && (n.userId === userEnrollmentId || n.userId === user?.uid || (currentCadet && n.userId === currentCadet.id));
-            
-            return matchesEnrollment || matchesUserId;
+            if (userRole === 'cadet' || actualRole === 'cadet') {
+                return isCadetTargetedByBroadcast(currentCadet, n);
+            }
+            if (n.target === 'Admin' && !isAdmin) return false;
+            return true;
         })
         .map(n => ({
             ...n,
@@ -91,7 +90,14 @@ export const UnitAlerts = () => {
                     </div>
                     <button 
                         onClick={async () => {
-                            const token = await requestNotificationPermission(user?.uid, 'cadets');
+                            const token = await requestNotificationPermission({
+                                authUid: user?.uid,
+                                profileId: currentCadet?.id || null,
+                                collectionName: 'cadets',
+                                enrollmentId: userEnrollmentId || currentCadet?.enrollmentId,
+                                userRole: 'cadet',
+                                interactive: true
+                            });
                             if (token) {
                                 setPermissionStatus('granted');
                                 toast.success("Notifications enabled! You will now receive unit broadcasts.");
@@ -99,7 +105,7 @@ export const UnitAlerts = () => {
                                 toast.error("Please allow notifications in your browser popup.");
                             }
                         }}
-                        className="bg-ncc-gold text-ncc-navy font-bold text-xs px-4 py-2.5 rounded-xl hover:bg-yellow-500 transition-colors whitespace-nowrap shrink-0 w-full sm:w-auto"
+                        className="bg-ncc-gold text-ncc-navy font-bold text-xs px-4 py-2.5 rounded-xl hover:bg-yellow-500 transition-colors whitespace-nowrap shrink-0 w-full sm:w-auto cursor-pointer"
                     >
                         Enable Notifications
                     </button>
@@ -152,11 +158,11 @@ export const UnitAlerts = () => {
                                         </div>
                                     </div>
                                 </div>
-                                {note.id && (
+                                {isAdmin && note.id && (
                                     <button
                                         onClick={() => handleDismissNotif(note.id)}
                                         className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition"
-                                        title="Dismiss Alert"
+                                        title="Delete Broadcast"
                                     >
                                         <Trash2 className="w-3.5 h-3.5" />
                                     </button>

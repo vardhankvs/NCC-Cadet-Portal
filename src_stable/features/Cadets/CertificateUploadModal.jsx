@@ -4,6 +4,7 @@ import { getCollectionRef } from '../../firebase/firestoreService.js';
 import { ModalOverlay } from '../../components/ui/ModalOverlay.jsx';
 import { X, Award } from '../../components/Icons.jsx';
 import { toast } from 'react-toastify';
+import { sendPushToUser } from '../../firebase/pushNotifications.js';
 
 export const CertificateUploadModal = ({ cadet, existingCert, onClose }) => {
     const [certLevel, setCertLevel] = useState(existingCert ? existingCert.certLevel.replace(' Certificate', '') : 'B');
@@ -82,6 +83,14 @@ export const CertificateUploadModal = ({ cadet, existingCert, onClose }) => {
             await updateDoc(cadetRef, {
                 certifications: currentCerts
             });
+
+            sendPushToUser(
+                cadet.enrollmentId || cadet.regimentalNumber || cadet.id,
+                '🏆 Examination Result Published',
+                `Your NCC Certificate "${certLevel}" examination marks and grade (${finalGrade}) have been published. Check your profile & results tab.`,
+                'results',
+                { category: 'Results', institutionId: cadet.institutionId || 'gmrit' }
+            );
 
             toast.success(existingCert ? "Marks updated successfully!" : "Certification marks uploaded successfully!");
             onClose();

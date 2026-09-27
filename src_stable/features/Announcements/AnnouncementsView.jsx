@@ -12,7 +12,7 @@ import { formatDate } from '../../utils/dateUtils.js';
 
 
 export const AnnouncementsView = () => {
-    const { userRole } = useAuthContext();
+    const { userRole, actualRole } = useAuthContext();
     const { announcements } = useDataContext();
     const [isAdding, setIsAdding] = useState(false);
     const [itemToEdit, setItemToEdit] = useState(null);
@@ -20,7 +20,7 @@ export const AnnouncementsView = () => {
     const [error, setError] = useState(null);
     const oneDayAgo = useMemo(() => subHours(new Date(), 24), []);
 
-    const isAdmin = userRole === 'admin' || userRole === 'officer';
+    const isAdmin = (userRole === 'admin' || userRole === 'officer') && userRole !== 'cadet' && actualRole !== 'cadet';
 
     const sortedAnnouncements = useMemo(
         () => [...announcements].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)),
@@ -36,7 +36,7 @@ export const AnnouncementsView = () => {
 
     const handleDeleteConfirm = async () => {
         setError(null);
-        if (!itemToDelete) return;
+        if (!itemToDelete || !isAdmin) return;
         try {
             await deleteItem('announcements', itemToDelete.id);
             handleModalClose();

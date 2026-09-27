@@ -4,7 +4,7 @@ import { getCollectionRef, createPendingAttendance } from '../../firebase/firest
 import { query, where, getDocs, doc, addDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { useDataContext } from '../../context/DataContext.jsx';
-import { sendAttendancePush } from '../../firebase/pushNotifications.js';
+import { sendAttendancePush, sendPushToAll, sendPushToUser } from '../../firebase/pushNotifications.js';
 import { getTodayDateString } from '../../utils/dateUtils.js';
 import {
     ShieldCheck, UserCheck, Clock, X, Camera,
@@ -534,6 +534,12 @@ export const AttendanceScanner = () => {
                 setIsScanning(true);
                 setScannedMapCadets([]);
                 toast.success(`📍 GPS Locked · ±${loc.accuracy} m accuracy`, { autoClose: 3000 });
+                sendPushToAll(
+                    '📍 Parade Attendance Session Active',
+                    'Parade ground attendance scanning is currently active. Report to the Parade Ground to get scanned.',
+                    'attendance',
+                    { category: 'Attendance', institutionId: userInstitutionId || 'gmrit' }
+                );
             },
             err => {
                 setGpsStatus('error');
@@ -683,6 +689,13 @@ export const AttendanceScanner = () => {
                     cadet.id, cadet.name, cadet.enrollmentId || cadet.regimentalNumber, loc, scanStatus
                 );
                 sendAttendancePush([cadet.id], pendingDoc.id, loc);
+                sendPushToUser(
+                    cadet.enrollmentId || cadet.regimentalNumber || cadet.id,
+                    '✅ Attendance Confirmed',
+                    `You have been marked ${scanStatus.toUpperCase()} for today's parade (${today}).`,
+                    'attendance',
+                    { category: 'Attendance' }
+                );
             } catch (pErr) {
                 console.warn('Push record skipped:', pErr);
             }

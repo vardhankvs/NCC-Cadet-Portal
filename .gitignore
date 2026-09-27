@@ -9,3 +9,5 @@ scratch/
 *.cjs
 
 
+.vercel
+.env*

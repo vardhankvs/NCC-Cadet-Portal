@@ -11,13 +11,13 @@ const BASE_SYSTEM_PROMPT = `You are Vanguard AI, an expert, highly disciplined, 
 Your primary duty is to answer questions related strictly to NCC, military, defense forces, leadership, camps (like RDC, TSC, ATC), ranks, uniform, exams ('B' and 'C' certificates), and related topics.
 
 CRITICAL INSTRUCTION: You are also the official guide for the "NCC Vanguard Portal" web app! If a user asks how to use the app, where to find something, or what the app can do, guide them to the correct sidebar tab:
-- "My Hub": Contains NCC Knowledge, My Profile, Attendance, My Fee, Kit Sizes, Apply Leave.
+- "My Hub": Contains NCC Knowledge, My Profile, Attendance, Kit Sizes, Apply Leave.
 - "Intelligence": Contains Unit Hierarchy, Honour Roll (Leaderboard), Unit Excellence, Staff, Alumni.
 - "Training": Contains Calendar, Mock Exams, My Fitness (PFT Tracker), My Camps, Digital Library.
 - "Engagement": Contains Notice Board, Broadcasts, Messages, Grievance Cell, Events, Unit Gallery, Social Service, Blood Bank.
 - "Services": Contains Career Hub, Career Bridge, Feedback, AI Assistant.
 
-EXCEPTION & MANDATE: If the user asks to summarize their performance, attendance, camps, fees, or exam eligibility, DO NOT give generic tab navigation advice. Refer directly to the "CURRENT LOGGED-IN CADET PROFILE CONTEXT" and present their actual attendance %, parade count, rank, camp count, and cutoff status!
+EXCEPTION & MANDATE: If the user asks to summarize their performance, attendance, camps, or exam eligibility, DO NOT give generic tab navigation advice. Refer directly to the "CURRENT LOGGED-IN CADET PROFILE CONTEXT" and present their actual attendance %, parade count, rank, camp count, and cutoff status!
 
 Keep your answers concise, respectful, structured, and informative. Always address the user politely.
 If a user asks about anything completely unrelated (like coding, cooking, celebrity gossip, or general chitchat), you MUST politely decline and remind them that your operational scope is limited to NCC and Defense matters. 
@@ -151,19 +151,7 @@ export const AIAssistantPage = () => {
         const rank = cadet.rank || 'Cadet (CDT)';
         const cert = cadet.currentCertificate || cadet.certificate || 'B Certificate';
 
-        const enrollmentFee = Number(cadet.enrollmentFee || 1000);
-        const uniformFee = Number(cadet.uniformFee || 1500);
-        const campFee = Number(cadet.campFee || 0);
-        const grandTotal = enrollmentFee + uniformFee + campFee;
-
-        const cadetTx = (data.transactions || []).filter(t => 
-            t.status === 'approved' && 
-            (t.cadetId === cadet.id || (t.enrollmentId && String(t.enrollmentId).trim().toUpperCase() === normId))
-        );
-        const txPaidSum = cadetTx.reduce((acc, t) => acc + Number(t.amount || 0), 0);
-        const paidAmount = Math.max(Number(cadet.feePaid || 0), txPaidSum);
-        const pendingFee = Math.max(0, grandTotal - paidAmount);
-
+        // Next rank mapping
         const nextRankMap = {
             'Cadet': 'Lance Corporal (L/Cpl)',
             'Cadet (CDT)': 'Lance Corporal (L/Cpl)',
@@ -177,15 +165,9 @@ export const AIAssistantPage = () => {
 
         if (q.includes('attendance') || q.includes('summarize') || q.includes('performance') || q.includes('उपस्थिति') || q.includes('रिपोर्ट')) {
             if (isHindi) {
-                return `**जय हिंद, ${cadet.name || auth.userName || 'कैडेट'}!** 📊\n\nआपकी लाइव प्रोफ़ाइल रिपोर्ट:\n• **परेड उपस्थिति (Attendance):** ${att}% (${att >= 75 ? 'कटऑफ पूरी ✅' : '75% कटऑफ से कम ⚠️'})\n• **वर्तमान रैंक:** ${rank}\n• **अगली लक्ष्य रैंक:** ${nextRank}\n• **प्रमाणपत्र ट्रैक:** ${cert}\n• **दर्ज किए गए कैंप:** ${(cadet.campHistory?.length || 0)} कैंप\n• **यूनिट शुल्क बकाया:** ${pendingFee > 0 ? `₹${pendingFee.toLocaleString()} बकाया` : 'सभी शुल्क जमा (No Dues) ✅'}\n\n*परीक्षा पात्रता बनाए रखने के लिए परेड में नियमित रूप से उपस्थित रहें!*`;
+                return `**जय हिंद, ${cadet.name || auth.userName || 'कैडेट'}!** 📊\n\nआपकी लाइव प्रोफ़ाइल रिपोर्ट:\n• **परेड उपस्थिति (Attendance):** ${att}% (${att >= 75 ? 'कटऑफ पूरी ✅' : '75% कटऑफ से कम ⚠️'})\n• **वर्तमान रैंक:** ${rank}\n• **अगली लक्ष्य रैंक:** ${nextRank}\n• **प्रमाणपत्र ट्रैक:** ${cert}\n• **दर्ज किए गए कैंप:** ${(cadet.campHistory?.length || 0)} कैंप\n\n*परीक्षा पात्रता बनाए रखने के लिए परेड में नियमित रूप से उपस्थित रहें!*`;
             }
-            return `**Jai Hind, ${cadet.name || auth.userName || 'Cadet'}!** 📊\n\nHere is your live profile summary:\n• **Parade Attendance:** ${att}% (${att >= 75 ? 'Cutoff Met ✅' : 'Below 75% Cutoff ⚠️'})\n• **Current Rank:** ${rank}\n• **Next Rank Target:** ${nextRank}\n• **Certificate Track:** ${cert}\n• **Camps Recorded:** ${(cadet.campHistory?.length || 0)} Camp(s)\n• **Unit Fee Dues:** ${pendingFee > 0 ? `₹${pendingFee.toLocaleString()} Pending` : 'All Paid Clear ✅'}\n\n*Keep attending parades consistently to maintain your exam eligibility!*`;
-        }
-        if (q.includes('fee') || q.includes('due') || q.includes('payment') || q.includes('फीस') || q.includes('बकाया')) {
-            if (isHindi) {
-                return `**जय हिंद, ${cadet.name || auth.userName || 'कैडेट'}!** 💳\n\nआपकी **यूनिट फीस और भुगतान स्थिति**:\n• **कुल फीस:** ₹${grandTotal.toLocaleString()}\n• **भुगतान की गई राशि:** ₹${paidAmount.toLocaleString()}\n• **बकाया शुल्क:** ${pendingFee > 0 ? `**₹${pendingFee.toLocaleString()} बकाया** ⚠️` : 'सभी शुल्क भुगतान क्लियर ✅'}\n\n*आप **माई फीस (My Fee)** टैब के तहत बकाया राशि का भुगतान कर सकते हैं!*`;
-            }
-            return `**Jai Hind, ${cadet.name || auth.userName || 'Cadet'}!** 💳\n\nHere is your live **Unit Fee & Payment Status**:\n• **Total Fee:** ₹${grandTotal.toLocaleString()}\n• **Amount Paid:** ₹${paidAmount.toLocaleString()}\n• **Pending Dues:** ${pendingFee > 0 ? `**₹${pendingFee.toLocaleString()} Pending** ⚠️` : 'All Paid Clear (No Dues) ✅'}\n\n*You can pay dues or view payment receipts under the **My Fee** tab!*`;
+            return `**Jai Hind, ${cadet.name || auth.userName || 'Cadet'}!** 📊\n\nHere is your live profile summary:\n• **Parade Attendance:** ${att}% (${att >= 75 ? 'Cutoff Met ✅' : 'Below 75% Cutoff ⚠️'})\n• **Current Rank:** ${rank}\n• **Next Rank Target:** ${nextRank}\n• **Certificate Track:** ${cert}\n• **Camps Recorded:** ${(cadet.campHistory?.length || 0)} Camp(s)\n\n*Keep attending parades consistently to maintain your exam eligibility!*`;
         }
         if (q.includes('rank') || q.includes('promotion') || q.includes('रैंक') || q.includes('प्रमोशन')) {
             if (isHindi) {
@@ -207,10 +189,10 @@ export const AIAssistantPage = () => {
         }
 
         if (isHindi) {
-            return `**जय हिंद, कैडेट ${cadet.name || auth.userName || ''}!** 🫡\n\nमैं Vanguard AI हूँ — आपका एनसीसी प्रोफाइल गाइड। अपनी **उपस्थिति**, **शुल्क बकाया**, **रैंक पदोन्नति**, या **परीक्षा पात्रता** के बारे में पूछें!`;
+            return `**जय हिंद, कैडेट ${cadet.name || auth.userName || ''}!** 🫡\n\nमैं Vanguard AI हूँ — आपका एनसीसी प्रोफाइल गाइड। अपनी **उपस्थिति**, **रैंक पदोन्नति**, या **परीक्षा पात्रता** के बारे में पूछें!`;
         }
 
-        return `**Jai Hind, Cadet ${cadet.name || auth.userName || ''}!** 🫡\n\nI am Vanguard AI — your profile-trained NCC guide. Ask me about your **attendance**, **fee dues**, **rank promotions**, **camps**, **'B'/'C' cert exam eligibility**, **weapons**, or **SSB interview tips**!`;
+        return `**Jai Hind, Cadet ${cadet.name || auth.userName || ''}!** 🫡\n\nI am Vanguard AI — your profile-trained NCC guide. Ask me about your **attendance**, **rank promotions**, **camps**, **'B'/'C' cert exam eligibility**, **weapons**, or **SSB interview tips**!`;
     };
 
     const handleCopy = (content, index) => {

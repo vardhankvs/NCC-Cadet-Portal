@@ -9,7 +9,7 @@ import { useDataContext } from '../../context/DataContext.jsx';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { useTenant } from '../../context/TenantContext.jsx';
 import { toast } from 'react-toastify';
-import { sendPushToCollegeANO } from '../../firebase/pushNotifications.js';
+import { sendPushToCollegeANO, sendPushToAll } from '../../firebase/pushNotifications.js';
 import {
     Plus, Edit2, Trash2, X, Save, ChevronLeft, ChevronRight,
     Calendar, Clock, Users, GraduationCap, Check, Eye, Filter,
@@ -652,6 +652,14 @@ export function TimetableView() {
                             'timetable'
                         );
                     }
+
+                    // Dispatch instant lock-screen push and real-time OS alert to all registered cadets
+                    await sendPushToAll(
+                        '📅 Training Timetable Published',
+                        `Official NCC Training Timetable "${data.title}" has been published. Check your Timetable tab for the monthly drill and class schedule.`,
+                        'timetable',
+                        { category: 'Timetable' }
+                    );
                 } catch (pushErr) {
                     console.warn('Real-time push notification failed (non-critical):', pushErr);
                 }

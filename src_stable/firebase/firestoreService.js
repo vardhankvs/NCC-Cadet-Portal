@@ -146,7 +146,7 @@ export const rescueAllData = async (targetId = '14a-bn-srikakulam') => {
     const collections = [
         'cadets', 'camps', 'social_activities', 'blood_requests', 'notifications', 
         'announcements', 'staff', 'events', 'unit_gallery', 'inventory', 'inventoryLogs', 
-        'materials', 'quizzes', 'jobs', 'grievances', 'references', 'transactions'
+        'materials', 'quizzes', 'jobs', 'grievances', 'references'
     ];
     let total = 0;
     for (const col of collections) {
@@ -1113,132 +1113,7 @@ export const updateCadetContactInfo = async (cadetId, contactData) => {
     await updateDoc(cadetDocRef, payload);
 };
 
-// ------------------------------------
-// --- NEW: PAYMENT SYSTEM FUNCTIONS ---
-// ------------------------------------
 
-/**
- * Updates payment settings (QR URL and Razorpay Key ID)
- */
-export const updatePaymentScanner = async (newUrl) => {
-    const ref = getCollectionRef('settings');
-    if (!ref) throw new Error('Database not ready.');
-
-    const institutionId = await getCurrentUserInstitution();
-    const paymentDocRef = doc(ref, 'payment');
-
-    await setDoc(
-        paymentDocRef,
-        {
-            paymentQRUrl: newUrl,
-            institutionId, // Multi-Tenancy tag
-            updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-    );
-};
-
-export const updatePaymentSettings = async ({ paymentQRUrl, razorpayKeyId }) => {
-    const ref = getCollectionRef('settings');
-    if (!ref) throw new Error('Database not ready.');
-
-    const institutionId = await getCurrentUserInstitution();
-    const paymentDocRef = doc(ref, 'payment');
-
-    const data = {
-        institutionId,
-        updatedAt: serverTimestamp(),
-    };
-    if (paymentQRUrl !== undefined) data.paymentQRUrl = paymentQRUrl;
-    if (razorpayKeyId !== undefined) data.razorpayKeyId = razorpayKeyId;
-
-    await setDoc(paymentDocRef, data, { merge: true });
-};
-
-/**
- * Record an instant successful payment from Razorpay Checkout (Client-Side, zero backend cost).
- * Automatically marks transaction as approved and credits cadet's feePaid balance.
- */
-export const recordInstantRazorpayPayment = async ({
-    cadetId,
-    amount,
-    cadetName,
-    enrollmentId,
-    paymentId,
-    institutionId = null
-}) => {
-    const ref = getCollectionRef('transactions');
-    if (!ref) throw new Error('Database not ready.');
-
-    const finalInstId = institutionId || await getCurrentUserInstitution();
-    const numericAmount = Number(typeof amount === 'string' ? amount.replace(/[^0-9.]/g, '') : amount);
-
-    if (isNaN(numericAmount) || numericAmount <= 0) {
-        throw new Error('Invalid payment amount for Razorpay transaction.');
-    }
-
-    const batch = writeBatch(db);
-
-    // 1. Save approved transaction record
-    const transRef = doc(ref);
-    batch.set(transRef, {
-        cadetId,
-        cadetName,
-        enrollmentId,
-        amount: numericAmount,
-        status: 'approved',
-        type: 'Razorpay',
-        paymentId: paymentId || `RZP-${Date.now()}`,
-        institutionId: finalInstId,
-        createdAt: serverTimestamp(),
-        approvedAt: serverTimestamp(),
-        autoApproved: true
-    });
-
-    // 2. Increment cadet feePaid balance
-    const cadetRef = doc(getCollectionRef('cadets'), cadetId);
-    batch.set(cadetRef, {
-        feePaid: increment(numericAmount),
-        updatedAt: serverTimestamp()
-    }, { merge: true });
-
-    await batch.commit();
-    return transRef.id;
-};
-
-/**
- * Cadets use this to submit a payment for verification.
- * Creates a record in the 'transactions' collection for Admin approval.
- */
-export const requestPaymentVerification = async (
-    cadetId,
-    amount,
-    cadetName,
-    enrollmentId,
-    receiptBase64 = null,
-    institutionId = null
-) => {
-    const ref = getCollectionRef('transactions');
-    if (!ref) throw new Error('Database not ready.');
-
-    // Use provided ID or fallback to current session
-    const finalInstitutionId = institutionId || await getCurrentUserInstitution();
-    if (!finalInstitutionId) throw new Error('Institutional identity missing. Please re-login.');
-
-    await addDoc(ref, {
-        cadetId,
-        cadetName,
-        enrollmentId,
-        amount: Number(amount),
-        status: 'pending',
-        type: 'PhonePe',
-        receiptImage: receiptBase64,
-        institutionId: finalInstitutionId, 
-        createdAt: serverTimestamp(),
-    });
-
-    // Notify Admins (Optional, can be added later)
-};
 
 export const addNotification = async (userId, title, message, type = 'info', institutionId, enrollmentId = null) => {
     const ref = getCollectionRef('notifications');
@@ -1372,61 +1247,7 @@ export const checkAndSendLowAttendanceAlert = async (cadetId, percentage, certLe
     }
 };
 
-/**
- * Admin Approves a payment.
- * 1. Updates transaction status
- * 2. Increments the cadet's feePaid field
- */
-export const approveTransaction = async (transactionId, amount, cadetId, adminUid = null) => {
-    if (!transactionId || !cadetId) {
-        throw new Error('Required IDs (transaction or cadet) are missing.');
-    }
 
-    // Clean amount: strip commas or currency symbols if they somehow got in
-    const cleanAmount = typeof amount === 'string' 
-        ? amount.replace(/[^0-9.]/g, '') 
-        : amount;
-    
-    const numericAmount = Number(cleanAmount);
-    
-    if (isNaN(numericAmount) || numericAmount <= 0) {
-        throw new Error('Invalid payment amount detected.');
-    }
-
-    const batch = writeBatch(db);
-    
-    // 1. Update Transaction
-    const transRef = doc(getCollectionRef('transactions'), transactionId);
-    batch.update(transRef, { 
-        status: 'approved',
-        approvedAt: serverTimestamp(),
-        approvedBy: adminUid,
-        ledgerVerified: true
-    });
-
-    // 2. Update Cadet Fee - Use set with merge to be more resilient than update
-    const cadetRef = doc(getCollectionRef('cadets'), cadetId);
-    batch.set(cadetRef, {
-        feePaid: increment(numericAmount),
-        updatedAt: serverTimestamp()
-    }, { merge: true });
-
-    await batch.commit();
-};
-
-export const rejectTransaction = async (transactionId, reason = '') => {
-    const ref = doc(getCollectionRef('transactions'), transactionId);
-    await updateDoc(ref, { 
-        status: 'rejected',
-        rejectionReason: reason,
-        updatedAt: serverTimestamp()
-    });
-};
-
-export const deleteTransaction = async (transactionId) => {
-    const ref = doc(getCollectionRef('transactions'), transactionId);
-    await deleteDoc(ref);
-};
 
 // ------------------------------------
 // --- NEW: QUARTERMASTER (Q-STORE) ---

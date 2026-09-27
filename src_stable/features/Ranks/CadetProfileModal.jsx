@@ -98,7 +98,6 @@ export const CadetProfileModal = ({ cadet: rawCadet, attendancePct, attendancePr
                 ['Date of Birth', cadet.dob || 'N/A'],
                 ...(!isBattalionAdmin ? [['Blood Group', cadet.bloodGroup || 'N/A']] : []),
                 ...(!isBattalionAdmin && !hideJntuAndBranch ? [['Branch / Dept', cadet.branch || 'N/A']] : []),
-                ...(!isBattalionAdmin ? [['Fee Status', cadet.feePaid ? 'Paid' : 'Pending']] : []),
                 ...(!isBattalionAdmin ? [['Address', cadet.addressPresent || 'N/A']] : []),
                 ...(!isBattalionAdmin ? [['Email', cadet.personalEmail || cadet.email || 'N/A']] : []),
                 ['Phone', cadet.phonePersonal || cadet.phone || 'N/A'],
@@ -348,7 +347,6 @@ export const CadetProfileModal = ({ cadet: rawCadet, attendancePct, attendancePr
                                     <div>
                                         {!hideJntuAndBranch && <DetailRow icon={Briefcase}  label="Branch / Dept"  value={cadet.branch || 'N/A'} />}
                                         <DetailRow icon={Award}      label="Certificate"    value={cert ? `Cert ${cert}` : 'N/A'} />
-                                        <DetailRow icon={Shield}     label="Fee Status"     value={cadet.feePaid ? 'Paid' : 'Pending'} />
                                         <DetailRow icon={MapPin}     label="Address"        value={cadet.addressPresent || cadet.address || 'N/A'} />
                                     </div>
                                 </div>

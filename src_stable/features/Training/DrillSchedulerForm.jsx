@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { saveEvent } from '../../firebase/firestoreService.js';
 import { submitDelegatedTask } from '../../firebase/delegationWorkflowService.js';
 import { useAuthContext } from '../../context/AuthContext.jsx';
-import { sendEventReminderPush } from '../../firebase/pushNotifications.js';
+import { sendEventReminderPush, sendPushToAll } from '../../firebase/pushNotifications.js';
 import { toast } from 'react-toastify';
 import { Shield, Clock, MapPin, Users, X, Calendar, Bell } from '../../components/Icons.jsx';
 
@@ -91,7 +91,15 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
                 reminderMinutes: Number(formData.reminderMinutes),
             });
             toast.success('Drill scheduled successfully!');
-            // Send immediate reminder push if enabled
+            // Send OS push notification & real-time chime to all cadets
+            sendPushToAll(
+                `🪖 Parade Schedule: ${formData.name}`,
+                `Parade scheduled for ${formData.date} at ${formData.time} (${formData.location}). Dress: ${formData.dresscode}. Priority: ${formData.priority}.`,
+                'training_calendar',
+                { category: 'Parade' }
+            );
+
+            // Send reminder push if enabled
             if (formData.reminderEnabled) {
                 sendEventReminderPush(
                     formData.name,
@@ -99,7 +107,6 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
                     formData.location,
                     formData.date
                 );
-                toast.info(`📣 Reminder push sent to all cadets!`, { autoClose: 3000 });
             }
             onClose();
         } catch (err) {

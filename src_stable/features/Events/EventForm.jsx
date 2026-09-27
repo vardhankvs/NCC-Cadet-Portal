@@ -69,7 +69,7 @@ export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGalle
         try {
             await saveEvent(formData, currentEvent?.id);
             toast.success(isEditMode ? 'Event updated successfully.' : 'New event added to unit calendar.');
-            sendPushToAll('New Event', `${formData.name} has been added to the unit calendar`, 'events');
+            sendPushToAll('🎪 New Event Posted', `${formData.name} has been scheduled for ${formData.date}. Tap to review details and report requirements.`, 'events', { category: 'Events' });
             onSaveSuccess();
         } catch (e) {
             setFormError(e.message);

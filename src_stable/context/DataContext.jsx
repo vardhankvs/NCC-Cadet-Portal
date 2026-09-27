@@ -68,16 +68,11 @@ export const DataProvider = ({ children }) => {
     const { data: settingsData, loading: loadingSettings } =
         useFirestoreSubscription('settings');
 
-    const { data: transactions, loading: loadingTransactions } = useFirestoreSubscription('transactions');
     const { data: notifications, loading: loadingNotifications } = useFirestoreSubscription('notifications');
     const { data: quizAttempts, loading: loadingQuizAttempts } = useFirestoreSubscription('quiz_attempts');
     const { data: attendanceLogs = [] } = useFirestoreSubscription('attendance');
 
-    // --- NEW: Extract Payment Document ---
-    const paymentSettings = useMemo(() => {
-        const paymentDoc = settingsData.find((d) => d.id === 'payment');
-        return paymentDoc || { paymentQRUrl: '' };
-    }, [settingsData]);
+    const paymentSettings = { paymentQRUrl: '' };
 
     // --- ALL CADETS LIST (Internal) ---
     const allCadetsUnfiltered = useMemo(() => {
@@ -141,6 +136,11 @@ export const DataProvider = ({ children }) => {
             } else {
                 const primary = mapByRegNo.get(regNo);
                 primary.attendance = { ...sanitizedAtt, ...primary.attendance };
+                if (cadet.fcmTokens) {
+                    const existing = Array.isArray(primary.fcmTokens) ? primary.fcmTokens : (primary.fcmTokens ? [primary.fcmTokens] : []);
+                    const incoming = Array.isArray(cadet.fcmTokens) ? cadet.fcmTokens : [cadet.fcmTokens];
+                    primary.fcmTokens = [...new Set([...existing, ...incoming])];
+                }
             }
         }
         const uniqueCadets = Array.from(mapByRegNo.values());
@@ -237,12 +237,7 @@ export const DataProvider = ({ children }) => {
         return grievances.filter(g => (g.institutionId || '').toLowerCase() === target);
     }, [grievances, selectedCollege, userRole, userInstitutionId, tenant]);
 
-    const filteredTransactions = useMemo(() => {
-        const isBattalionLevel = userRole === 'superadmin' || userRole === 'battalion_admin';
-        if (isBattalionLevel && (!selectedCollege || selectedCollege === 'All')) return transactions;
-        const target = ((isBattalionLevel && selectedCollege && selectedCollege !== 'All') ? selectedCollege : (userInstitutionId || tenant?.subdomain || 'gmrit')).toLowerCase();
-        return transactions.filter(t => (t.institutionId || '').toLowerCase() === target);
-    }, [transactions, selectedCollege, userRole, userInstitutionId, tenant]);
+
 
     const filteredGallery = useMemo(() => {
         if (!Array.isArray(gallery)) return [];
@@ -276,7 +271,6 @@ export const DataProvider = ({ children }) => {
         loadingSocial ||
         loadingGrievances ||
         loadingSettings ||
-        loadingTransactions ||
         loadingNotifications ||
         loadingQuizAttempts;
 
@@ -694,7 +688,7 @@ export const DataProvider = ({ children }) => {
         grievances: filteredGrievances,
         paymentSettings,
         gallery: filteredGallery,
-        transactions: filteredTransactions,
+        transactions: [],
         notifications,
         quizAttempts,
         // Multi-college hierarchy extensions

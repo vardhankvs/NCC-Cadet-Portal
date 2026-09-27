@@ -15,8 +15,10 @@ import { FeedbackView } from './features/Engagement/FeedbackView.jsx';
 import { TrainingHub } from './features/Training/TrainingHub.jsx';
 import { UnitGallery } from './features/Gallery/UnitGallery.jsx';
 import { UnitAlerts } from './features/Engagement/UnitAlerts.jsx';
+import { BroadcastManager } from './features/Engagement/BroadcastManager.jsx';
 import { requestNotificationPermission, onForegroundMessage } from './firebase/messagingService';
 import { playNccNotificationSound } from './utils/notificationSound.js';
+import { isCadetTargetedByBroadcast } from './utils/broadcastAudience.js';
 import nccLogo from './assets/ncc_logo.png';
 
 import {
@@ -56,7 +58,6 @@ import {
     Target,
     Flag,
     Droplet,
-    CreditCard,
     LinkIcon,
     Clock,
     Star,
@@ -76,7 +77,6 @@ import { AttendanceSummary } from './features/Attendance/AttendanceSummary.jsx';
 import { EventsView } from './features/Events/EventsView.jsx';
 import { StaffDetailsView } from './features/Staff/StaffDetailsView.jsx';
 import { ReferencesView } from './features/References/ReferencesView.jsx';
-import { FeeManagementView } from './features/Fee/FeeManagementView.jsx';
 import { UnitAnalytics } from './features/Analytics/UnitAnalytics.jsx';
 import { CertificateGenerator } from './features/Analytics/CertificateGenerator.jsx';
 import { CadetProfileView } from './features/Profile/CadetProfileView.jsx';
@@ -439,8 +439,8 @@ function SidebarGroup({ category, tabs, activeTab, handleTabClick, isDarkMode, d
 // ─── Tab Content Logic Moved Inside Dashboard for better scope access ───
 
 
-const wideTabs = ['ncc_knowledge', 'analytics', 'hierarchy', 'library', 'tutorials', 'exams', 'list', 'att_logs', 'honour', 'inventory', 'summary', 'events', 'discipline', 'rank_mgmt', 'staff', 'alumni', 'career', 'career_bridge', 'feedback', 'grievances', 'direct_chat', 'results', 'colleges', 'overall_details', 'camps', 'camp_attendance', 'kit_mgmt', 'pft', 'security', 'training_calendar', 'leave_requests', 'hall_of_fame', 'blood_registry', 'timetable', 'cert_gen', 'selection_process', 'announcements', 'notifications', 'delegations', 'social', 'gallery', 'unit_gallery', 'fee'];
-const fullWidthTabs = ['list', 'delegations', 'hierarchy', 'colleges', 'overall_details', 'analytics', 'social', 'blood_registry', 'gallery', 'unit_gallery', 'rank_mgmt', 'camps', 'camp_attendance', 'fee'];
+const wideTabs = ['ncc_knowledge', 'analytics', 'hierarchy', 'library', 'tutorials', 'exams', 'list', 'att_logs', 'honour', 'inventory', 'summary', 'events', 'discipline', 'rank_mgmt', 'staff', 'alumni', 'career', 'career_bridge', 'feedback', 'grievances', 'direct_chat', 'results', 'colleges', 'overall_details', 'camps', 'camp_attendance', 'kit_mgmt', 'pft', 'security', 'training_calendar', 'leave_requests', 'hall_of_fame', 'blood_registry', 'timetable', 'cert_gen', 'selection_process', 'announcements', 'notifications', 'delegations', 'social', 'gallery', 'unit_gallery'];
+const fullWidthTabs = ['list', 'delegations', 'hierarchy', 'colleges', 'overall_details', 'analytics', 'social', 'blood_registry', 'gallery', 'unit_gallery', 'rank_mgmt', 'camps', 'camp_attendance'];
 
 export function Dashboard() {
     const { tenant } = useTenant();
@@ -510,8 +510,21 @@ export function Dashboard() {
     // Current Cadet details
     const currentCadet = useMemo(() => {
         if (isAdminRole) return null;
-        return (cadets || []).find((c) => c.enrollmentId === userEnrollmentId);
-    }, [cadets, isAdminRole, userEnrollmentId]);
+        const cleanUserEnroll = (userEnrollmentId || '').trim().toUpperCase();
+        const userUid = authContext.user?.uid;
+        const userEmail = (authContext.user?.email || '').trim().toLowerCase();
+
+        return (cadets || []).find((c) => {
+            const cEnroll = (c.enrollmentId || '').trim().toUpperCase();
+            const cReg = (c.regimentalNumber || '').trim().toUpperCase();
+            const cUid = (c.uid || '').trim();
+            const cEmail = (c.email || '').trim().toLowerCase();
+
+            return (cleanUserEnroll && (cEnroll === cleanUserEnroll || cReg === cleanUserEnroll)) ||
+                   (userUid && cUid === userUid) ||
+                   (userEmail && cEmail && cEmail === userEmail);
+        });
+    }, [cadets, isAdminRole, userEnrollmentId, authContext.user?.uid, authContext.user?.email]);
 
     // Effective Delegations (from user doc or cadet doc)
     const effectiveDelegatedModules = useMemo(() => {
@@ -683,11 +696,44 @@ export function Dashboard() {
                 if (!seenNotifIdsRef.current.has(docSnap.id)) {
                     seenNotifIdsRef.current.add(docSnap.id);
                     const data = docSnap.data();
+
+                    // 1. Exclude the sender themselves from being alerted about their own broadcast
+                    if (data.senderUid && user?.uid && data.senderUid === user.uid) {
+                        return;
+                    }
+
+                    // 2. Audience Targeting Check:
+                    // Only members who match the selected target group/certificate/division/cadetId
+                    // should receive the OS notification, sound, and toast!
+                    if (userRole === 'cadet') {
+                        const targetCandidate = currentCadet ? {
+                            ...currentCadet,
+                            institutionId: currentCadet.institutionId || userInstitutionId || 'gmrit'
+                        } : { 
+                            enrollmentId: userEnrollmentId, 
+                            uid: user?.uid, 
+                            email: user?.email,
+                            status: 'active',
+                            institutionId: userInstitutionId || 'gmrit'
+                        };
+                        const isTargeted = isCadetTargetedByBroadcast(targetCandidate, data);
+                        if (!isTargeted) {
+                            return;
+                        }
+                    } else if (isAdminRole) {
+                        // For admins: if personal alert directed to someone else, skip
+                        if (data.userId || data.enrollmentId) {
+                            if (data.userId !== user?.uid && data.enrollmentId !== userEnrollmentId) {
+                                return;
+                            }
+                        }
+                    }
+
                     const title = data.title || data.subject || '📢 New NCC Update';
                     const body = data.message || data.body || 'Tap to view details';
                     const targetTab = data.targetTab || 'notifications';
 
-                    // 🔊 Play official energetic defence sound on ALL recipient devices
+                    // 🔊 Play official energetic defence sound on targeted recipient devices
                     playNccNotificationSound();
 
                     // 🔔 Native OS Notification popup for Desktop & Mobile OS
@@ -714,7 +760,7 @@ export function Dashboard() {
         }, (err) => console.warn('Real-time notifications listener notice:', err.message));
 
         return () => unsubscribe();
-    }, [handleTabClick]);
+    }, [handleTabClick, userRole, isAdminRole, currentCadet, userEnrollmentId, user?.uid]);
 
     // ─── Real-time Announcements Listener ──────────────────────────────────────
     const seenAnnIdsRef = useRef(new Set());
@@ -787,31 +833,44 @@ export function Dashboard() {
     }, [loading, userRole, userEnrollmentId, cadets, birthdayChecked]);
 
     // ── Push Notifications: Permission Request & Token Registration ──────────
-    const pushRegisteredRef = useRef(null);
+    const [pushPermissionStatus, setPushPermissionStatus] = useState(() => 
+        typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
+    );
+
     useEffect(() => {
         if (loading || !authContext.user?.uid) return;
-        if (pushRegisteredRef.current === authContext.user.uid) return;
 
-        // Determine if we can find their specific profile document in cadets or staff
+        const currentPerm = typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'denied';
+        setPushPermissionStatus(currentPerm);
+
+        // Find cadet or staff profile document
         let userProfile = null;
-        if (userRole === 'cadet' && cadets.length > 0 && userEnrollmentId) {
-            userProfile = cadets.find(c => c.enrollmentId === userEnrollmentId);
-        } else if ((userRole === 'admin' || userRole === 'officer') && staff.length > 0 && userEnrollmentId) {
-            userProfile = staff.find(s => s.staffId === userEnrollmentId);
+        if (userRole === 'cadet' && Array.isArray(cadets) && cadets.length > 0 && userEnrollmentId) {
+            userProfile = cadets.find(c => 
+                (c.enrollmentId && c.enrollmentId.toUpperCase() === userEnrollmentId.toUpperCase()) ||
+                (c.regimentalNumber && c.regimentalNumber.toUpperCase() === userEnrollmentId.toUpperCase()) ||
+                c.uid === authContext.user.uid
+            );
+        } else if ((userRole === 'admin' || userRole === 'officer') && Array.isArray(staff) && staff.length > 0 && userEnrollmentId) {
+            userProfile = staff.find(s => s.staffId === userEnrollmentId || s.uid === authContext.user.uid);
         }
 
-        // If we found them in cadets/staff, use that doc ID. Otherwise, fallback to their auth UID.
         const collectionName = userRole === 'cadet' ? 'cadets' : (userRole === 'admin' || userRole === 'officer' ? 'staff' : 'users');
-        const docId = userProfile?.id || authContext.user.uid;
 
-        pushRegisteredRef.current = authContext.user.uid;
-
-        // Delay slightly to avoid race with service worker registration
-        const timer = setTimeout(() => {
-            requestNotificationPermission(docId, collectionName);
-        }, 3000);
-        
-        return () => clearTimeout(timer);
+        // If permission is already granted in the browser, silently register/sync token
+        if (currentPerm === 'granted') {
+            const timer = setTimeout(() => {
+                requestNotificationPermission({
+                    authUid: authContext.user.uid,
+                    profileId: userProfile?.id || null,
+                    collectionName,
+                    enrollmentId: userEnrollmentId,
+                    userRole,
+                    interactive: false
+                });
+            }, 1200);
+            return () => clearTimeout(timer);
+        }
     }, [loading, authContext.user?.uid, userRole, userEnrollmentId, cadets, staff]);
 
     // ── Foreground Push: show toast & OS notification when app is open ───────
@@ -884,7 +943,6 @@ export function Dashboard() {
                 // Logistics & Operations
                 { id: 'inventory',          name: 'Inventory',      category: 'Logistics', icon: Package },
                 { id: 'kit_mgmt',           name: 'Kit',            category: 'Logistics', icon: Shield },
-                { id: 'fee',                name: 'Fees',           category: 'Logistics', icon: CreditCard },
                 { id: 'cert_gen',           name: 'Certificates',   category: 'Logistics', icon: Award },
 
                 // Attendance & Parades
@@ -903,6 +961,7 @@ export function Dashboard() {
 
                 // Engagement & Community
                 { id: 'announcements',      name: 'Notice Board',   category: 'Engagement', icon: Bell },
+                { id: 'notifications',      name: 'Broadcasts',     category: 'Engagement', icon: Megaphone },
                 { id: 'events',             name: 'Events',         category: 'Engagement', icon: Star },
                 { id: 'gallery',            name: 'Unit Gallery',   category: 'Engagement', icon: ImageIcon },
                 { id: 'social',             name: 'Social',         category: 'Engagement', icon: Heart },
@@ -935,7 +994,6 @@ export function Dashboard() {
             { id: 'ncc_knowledge',     name: 'NCC Knowledge', category: 'My Hub', icon: Flag },
             { id: 'profile',           name: 'My Profile',    category: 'My Hub', icon: User },
             { id: 'attendance',        name: 'Attendance',    category: 'My Hub', icon: BarChart },
-            { id: 'fee',               name: 'My Fee',        category: 'My Hub', icon: CreditCard },
             { id: 'kit_mgmt',          name: 'Kit Sizes',     category: 'My Hub', icon: Shield },
             { id: 'leave_requests',    name: 'Apply Leave',   category: 'My Hub', icon: Clock },
 
@@ -980,7 +1038,7 @@ export function Dashboard() {
         if (isAdminRole && (userRole === 'superadmin' || userRole === 'battalion_admin')) {
             // Hide local/unnecessary tabs from Battalion Admin
             const hiddenTabIds = [
-                'parade', 'att_logs', 'leave_requests', 'kit_mgmt', 'fee', 'inventory', 'pft',
+                'parade', 'att_logs', 'leave_requests', 'kit_mgmt', 'inventory', 'pft',
                 'hall_of_fame', 'hierarchy', 'list', 'delegations', 'discipline', 'alumni', 
                 'training_calendar', 'camps', 'events', 'gallery', 'social', 'blood_registry', 'grievances',
                 'profile', 'ai_assistant'
@@ -1079,7 +1137,6 @@ export function Dashboard() {
                 {renderTab === 'discipline'        && <DisciplineView />}
                 {renderTab === 'delegations'       && <DutyRoster initialSubTab={new URLSearchParams(window.location.search).get('subtab')} />}
                 {renderTab === 'inventory'         && <InventoryView />}
-                {renderTab === 'fee'           && <FeeManagementView />}
                 {renderTab === 'events'        && <EventsView events={events} />}
                 {renderTab === 'staff'         && <StaffDetailsView staff={battalionStaff} />}
                 {renderTab === 'references'    && <ReferencesView />}
@@ -1102,7 +1159,7 @@ export function Dashboard() {
                 {renderTab === 'library'       && <ResourceLibraryView mode="library" />}
                 {renderTab === 'exams'         && <TrainingHub />}
                 {renderTab === 'honour'        && <Leaderboard />}
-                {renderTab === 'notifications' && <UnitAlerts />}
+                {renderTab === 'notifications' && (isAdminRole ? <BroadcastManager /> : <UnitAlerts />)}
                 {renderTab === 'gallery'       && <UnitGallery />}
                 {renderTab === 'tutorials'     && <TutorialsHub />}
                 {renderTab === 'feedback'      && <FeedbackView />}
@@ -1422,6 +1479,44 @@ export function Dashboard() {
                     ) : (
                         <div className={`ncc-page mx-auto ${fullWidthTabs.includes(activeTab) || fullWidthTabs.includes(activeTab.replace('admin_', '')) ? 'w-full max-w-none px-4 sm:px-6' : (wideTabs.includes(activeTab) || (activeTab.startsWith('admin_') && wideTabs.includes(activeTab.replace('admin_', '')))) ? 'max-w-7xl' : 'max-w-2xl'}`}>
                             <AuthContext.Provider value={overriddenAuth}>
+                                {pushPermissionStatus === 'default' && (
+                                    <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-[#112240] via-[#1e3a8a] to-[#1e1b4b] border border-amber-400/40 text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                        <div className="flex items-center gap-3.5">
+                                            <div className="w-10 h-10 rounded-xl bg-amber-400/20 border border-amber-400/50 flex items-center justify-center shrink-0">
+                                                <Bell className="w-5 h-5 text-ncc-gold animate-bounce" />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className="text-sm font-bold text-white tracking-wide">Enable Device Push Notifications</h4>
+                                                    <span className="text-[10px] bg-amber-400 text-ncc-navy font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Required</span>
+                                                </div>
+                                                <p className="text-xs text-white/80 mt-0.5">Receive instant OS lock-screen alerts for parade schedules, urgent ANO broadcasts, and unit orders.</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={async () => {
+                                                const token = await requestNotificationPermission({
+                                                    authUid: authContext.user?.uid,
+                                                    profileId: currentCadet?.id || null,
+                                                    collectionName: 'cadets',
+                                                    enrollmentId: userEnrollmentId,
+                                                    userRole: 'cadet',
+                                                    interactive: true
+                                                });
+                                                if (token) {
+                                                    toast.success("✅ Device Notifications Activated! You will now receive unit broadcasts.");
+                                                    setPushPermissionStatus('granted');
+                                                } else if (typeof window !== 'undefined' && window.Notification?.permission === 'denied') {
+                                                    setPushPermissionStatus('denied');
+                                                    toast.error("Notifications are blocked in your browser settings. Please allow notifications for this site.");
+                                                }
+                                            }}
+                                            className="w-full sm:w-auto px-4 py-2.5 bg-ncc-gold hover:bg-yellow-400 text-ncc-navy font-bold text-xs rounded-xl shadow-md transition-all shrink-0 cursor-pointer flex items-center justify-center gap-2"
+                                        >
+                                            <Bell className="w-4 h-4" /> Turn On Notifications
+                                        </button>
+                                    </div>
+                                )}
                                 <AttendanceVerification />
                                 {activeTab.startsWith('admin_') && (
                                     <DelegatedCommandBanner

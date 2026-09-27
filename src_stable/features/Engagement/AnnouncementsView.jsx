@@ -62,7 +62,7 @@ const SearchableTable = ({ children }) => {
 };
 
 export const AnnouncementsView = ({ onTabChange }) => {
-    const { userRole, userEnrollmentId, userInstitutionId } = useAuthContext();
+    const { userRole, userEnrollmentId, userInstitutionId, actualRole } = useAuthContext();
     const { announcements, loading: dataLoading, cadets, units = [] } = useDataContext();
     const { tenant } = useTenant();
 
@@ -74,16 +74,20 @@ export const AnnouncementsView = ({ onTabChange }) => {
     const [divFilter, setDivFilter] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
 
+    const isCadet = userRole === 'cadet' || actualRole === 'cadet';
+
     // Role flags
     const isBattalionAdmin = useMemo(() => {
+        if (isCadet) return false;
         const role = userRole?.toLowerCase();
         return role === 'superadmin' || role === 'battalion_admin';
-    }, [userRole]);
+    }, [userRole, isCadet]);
 
     const isANO = useMemo(() => {
+        if (isCadet) return false;
         const role = userRole?.toLowerCase();
         return role === 'admin' || role === 'officer' || role === 'unit officer';
-    }, [userRole]);
+    }, [userRole, isCadet]);
 
     const currentCadet = useMemo(() => {
         return userRole === 'cadet' ? cadets.find(c => c.enrollmentId === userEnrollmentId) : null;
@@ -210,6 +214,10 @@ export const AnnouncementsView = ({ onTabChange }) => {
     };
 
     const handleDelete = async (id) => {
+        if (isCadet || (!isANO && !isBattalionAdmin)) {
+            toast.error('Cadets cannot delete notices.');
+            return;
+        }
         if (!window.confirm('Are you sure you want to delete this notice? This action cannot be undone.')) return;
         try {
             await deleteAnnouncement(id);

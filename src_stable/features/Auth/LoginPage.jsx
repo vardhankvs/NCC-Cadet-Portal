@@ -146,25 +146,25 @@ export const LoginPage = ({
         const seconds = String(otpTimer % 60).padStart(2, '0');
         const expired = otpTimer <= 0;
         return (
-            <div className="min-h-screen flex items-center justify-center p-4 relative" style={{ background: 'var(--bg-main, #050C1A)' }}>
+            <div className="min-h-screen min-h-[100dvh] flex items-center justify-center p-3 sm:p-4 py-8 relative overflow-x-hidden" style={{ background: 'var(--bg-main, #050C1A)' }}>
                 <div className="absolute inset-0 ncc-stripe opacity-40 pointer-events-none" />
-                <div className="absolute top-6 right-6 z-[100]"><ThemeToggle className="shadow-2xl" /></div>
-                <div className="relative w-full max-w-md mx-4">
+                <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[100]"><ThemeToggle className="shadow-2xl" /></div>
+                <div className="relative w-full max-w-md mx-auto">
                     <div className="rounded-2xl shadow-ncc-lg overflow-hidden border" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-main)' }}>
                         <div className="h-1.5 w-full flex">
                             <div className="flex-1 bg-ncc-red" /><div className="flex-1 bg-ncc-gold" /><div className="flex-1 bg-ncc-navy" />
                         </div>
-                        <div className="px-8 pt-8 pb-8 space-y-6">
+                        <div className="px-4 sm:px-8 pt-6 sm:pt-8 pb-6 sm:pb-8 space-y-5 sm:space-y-6">
                             {/* Header */}
                             <div className="flex flex-col items-center gap-3">
-                                <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #b8830e, #0A1628)' }}>
-                                    <Key className="w-7 h-7 text-white" />
+                                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #b8830e, #0A1628)' }}>
+                                    <Key className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
                                 </div>
                                 <div className="text-center">
-                                    <h2 className="text-xl font-bold" style={{ color: 'var(--text-main)' }}>Two-Factor Authentication</h2>
+                                    <h2 className="text-lg sm:text-xl font-bold" style={{ color: 'var(--text-main)' }}>Two-Factor Authentication</h2>
                                     <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Enter the 6-digit code sent to</p>
-                                    <p className="text-sm font-semibold text-ncc-gold mt-0.5 flex items-center justify-center gap-1.5">
-                                        <Mail className="w-3.5 h-3.5" />{otpEmail || 'your registered email'}
+                                    <p className="text-xs sm:text-sm font-semibold text-ncc-gold mt-0.5 flex items-center justify-center gap-1.5 break-all">
+                                        <Mail className="w-3.5 h-3.5 flex-shrink-0" />{otpEmail || 'your registered email'}
                                     </p>
                                 </div>
                             </div>
@@ -172,8 +172,8 @@ export const LoginPage = ({
                             {error && <ErrorDisplay message={error} />}
 
                             {/* OTP Boxes */}
-                            <div onPaste={handleOtpPaste}>
-                                <div className="flex gap-2 justify-center">
+                            <div onPaste={handleOtpPaste} className="w-full overflow-x-auto pb-1">
+                                <div className="flex gap-1.5 sm:gap-2 justify-center">
                                     {otpDigits.map((d, i) => (
                                         <input
                                             key={i}
@@ -185,7 +185,7 @@ export const LoginPage = ({
                                             onChange={e => handleOtpDigit(i, e.target.value)}
                                             onKeyDown={e => handleOtpKeyDown(i, e)}
                                             disabled={expired || otpLoading}
-                                            className="w-11 h-14 text-center text-xl font-bold rounded-xl border-2 outline-none transition-all"
+                                            className="w-9 sm:w-11 h-12 sm:h-14 text-center text-lg sm:text-xl font-bold rounded-xl border-2 outline-none transition-all"
                                             style={{
                                                 background: 'var(--bg-input, #112240)',
                                                 borderColor: d ? '#b8830e' : 'var(--border-main)',
@@ -257,7 +257,7 @@ export const LoginPage = ({
 
     return (
         <div
-            className="min-h-screen flex items-center justify-center font-body relative overflow-hidden"
+            className="min-h-screen min-h-[100dvh] flex items-center justify-center font-body relative overflow-x-hidden p-3 sm:p-4 py-8"
             style={{
                 background:
                     'linear-gradient(135deg, #0A1628 0%, #1B3A6B 50%, #0A1628 100%)',
@@ -282,7 +282,7 @@ export const LoginPage = ({
                 }}
             />
 
-            <div className="absolute top-6 right-6 z-[100]">
+            <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[100]">
                 <ThemeToggle className="shadow-2xl" />
             </div>
 
@@ -292,7 +292,7 @@ export const LoginPage = ({
                 />
             )}
 
-            <div className="relative w-full max-w-md mx-4">
+            <div className="relative w-full max-w-md mx-auto">
                 {/* Card */}
                 <div className="rounded-2xl shadow-ncc-lg overflow-hidden border" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-main)' }}>
                     {/* Top tri-color bar */}
@@ -302,14 +302,14 @@ export const LoginPage = ({
                         <div className="flex-1 bg-ncc-navy" />
                     </div>
 
-                    <div className="px-8 pt-8 pb-8 space-y-5">
+                    <div className="px-4 sm:px-8 pt-6 sm:pt-8 pb-6 sm:pb-8 space-y-5">
                         {/* Header */}
-                        <div className="flex flex-col items-center gap-3">
+                        <div className="flex flex-col items-center gap-2 sm:gap-3">
                             <div className="relative">
                                 <img
                                     src={nccLogo}
                                     alt="NCC Logo"
-                                    className="h-24 w-auto max-w-[120px] object-contain drop-shadow-lg"
+                                    className="h-20 sm:h-24 w-auto max-w-[120px] object-contain drop-shadow-lg"
                                     onError={(e) => {
                                         e.target.onerror = null;
                                         e.target.src =
@@ -318,7 +318,7 @@ export const LoginPage = ({
                                 />
                             </div>
                             <div className="text-center">
-                                <h1 className="text-2xl font-bold font-display leading-tight" style={{ color: 'var(--text-main)' }}>
+                                <h1 className="text-xl sm:text-2xl font-bold font-display leading-tight" style={{ color: 'var(--text-main)' }}>
                                     14(A) BN NCC
                                 </h1>
                                 <p className="text-[10px] tracking-widest uppercase text-ncc-gold/70 mt-0.5">
@@ -336,35 +336,35 @@ export const LoginPage = ({
                                 <button
                                     type="button"
                                     onClick={() => handleTabChange('cadet')}
-                                    className={`flex-1 flex justify-center items-center gap-1.5 px-2 py-2 rounded-lg text-xs font-bold transition-all duration-200 ${
+                                    className={`flex-1 flex justify-center items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-2 rounded-lg text-xs font-bold transition-all duration-200 ${
                                         activeAuthTab === 'cadet'
                                             ? 'bg-ncc-navy dark:bg-ncc-gold text-white dark:text-ncc-navy shadow-ncc'
                                             : 'text-ncc-navy/60 dark:text-white/40 hover:text-ncc-navy dark:hover:text-white'
                                     }`}
                                 >
-                                    <User className="w-3.5 h-3.5" /> Cadet
+                                    <User className="w-3.5 h-3.5 flex-shrink-0" /> <span>Cadet</span>
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => handleTabChange('ano')}
-                                    className={`flex-1 flex justify-center items-center gap-1.5 px-2 py-2 rounded-lg text-xs font-bold transition-all duration-200 ${
+                                    className={`flex-1 flex justify-center items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-2 rounded-lg text-xs font-bold transition-all duration-200 ${
                                         activeAuthTab === 'ano'
                                             ? 'bg-ncc-navy dark:bg-ncc-gold text-white dark:text-ncc-navy shadow-ncc'
                                             : 'text-ncc-navy/60 dark:text-white/40 hover:text-ncc-navy dark:hover:text-white'
                                     }`}
                                 >
-                                    <Shield className="w-3.5 h-3.5" /> ANO
+                                    <Shield className="w-3.5 h-3.5 flex-shrink-0" /> <span>ANO</span>
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => handleTabChange('admin')}
-                                    className={`flex-1 flex justify-center items-center gap-1.5 px-2 py-2 rounded-lg text-xs font-bold transition-all duration-200 ${
+                                    className={`flex-1 flex justify-center items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-2 rounded-lg text-[11px] sm:text-xs font-bold transition-all duration-200 ${
                                         activeAuthTab === 'admin'
                                             ? 'bg-ncc-navy dark:bg-ncc-gold text-white dark:text-ncc-navy shadow-ncc'
                                             : 'text-ncc-navy/60 dark:text-white/40 hover:text-ncc-navy dark:hover:text-white'
                                     }`}
                                 >
-                                    <Shield className="w-3.5 h-3.5" /> Battalion Admin
+                                    <Shield className="w-3.5 h-3.5 flex-shrink-0" /> <span className="truncate">Admin</span>
                                 </button>
                             </div>
                         )}

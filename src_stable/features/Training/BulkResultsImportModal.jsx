@@ -6,6 +6,7 @@ import { XCircle, Loader, Award, Download, FileText } from '../../components/Ico
 import { bulkAddResults } from '../../firebase/firestoreService.js';
 import Papa from 'papaparse';
 import { toast } from 'react-toastify';
+import { sendPushToAll } from '../../firebase/pushNotifications.js';
 
 export const BulkResultsImportModal = ({ institutionId, onClose, onRefresh }) => {
     const [file, setFile] = useState(null);
@@ -86,6 +87,12 @@ export const BulkResultsImportModal = ({ institutionId, onClose, onRefresh }) =>
                     
                     if (updatedCount > 0) {
                         toast.success(`Successfully uploaded results for ${updatedCount} cadets!`);
+                        sendPushToAll(
+                            '🏆 Examination Results Published',
+                            `Official NCC Examination results and certificates have been published for ${updatedCount} cadets! Check your Results tab.`,
+                            'results',
+                            { category: 'Results', institutionId }
+                        );
                     }
                     if (skippedCount > 0) {
                         toast.warning(`Skipped ${skippedCount} rows (unmatched cadets or invalid format).`);

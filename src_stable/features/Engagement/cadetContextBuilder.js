@@ -13,7 +13,6 @@ export const buildCadetContextPrompt = ({
     cadets = [],
     attendanceData = {},
     camps = [],
-    transactions = [],
     grievances = [],
     quizAttempts = []
 }) => {
@@ -91,35 +90,7 @@ INSTRUCTION: You are speaking to an NCC Officer / Administrator. Provide concise
     const lastQuiz = userQuizzes.length > 0 ? userQuizzes[userQuizzes.length - 1] : null;
     const lastQuizScore = lastQuiz ? `${lastQuiz.score}/${lastQuiz.totalQuestions || lastQuiz.maxScore} (${Math.round((lastQuiz.score/(lastQuiz.totalQuestions||1))*100)}%)` : 'No mock tests taken yet';
 
-    // Fee & Payments calculation (Enrollment + Uniform + Camp - Paid)
-    const enrollmentFee = Number(currentCadet.enrollmentFee || 1000);
-    const uniformFee = Number(currentCadet.uniformFee || 1500);
-    const campFee = Number(currentCadet.campFee || 0);
-    const grandTotal = enrollmentFee + uniformFee + campFee;
 
-    // Cross-verify paid sum from approved transactions if cadet.feePaid is missing or lower
-    const cadetTx = (transactions || []).filter(t => 
-        t.status === 'approved' && 
-        (t.cadetId === currentCadet.id || (t.enrollmentId && String(t.enrollmentId).trim().toUpperCase() === normId))
-    );
-    const txPaidSum = cadetTx.reduce((acc, t) => acc + Number(t.amount || 0), 0);
-    const paidAmount = Math.max(Number(currentCadet.feePaid || 0), txPaidSum);
-    const pendingFee = Math.max(0, grandTotal - paidAmount);
-
-    const feeStatus = pendingFee > 0 
-        ? `₹${pendingFee.toLocaleString()} Pending Dues (Total Fee: ₹${grandTotal.toLocaleString()}, Amount Paid: ₹${paidAmount.toLocaleString()})` 
-        : 'All Paid Clear (No Dues)';
-
-    // Unit All-Cadet Fee Roster Summary (Enables querying ANY cadet's fee status)
-    const unitRosterFeeSummary = cadets.slice(0, 30).map(c => {
-        const eF = Number(c.enrollmentFee || 1000);
-        const uF = Number(c.uniformFee || 1500);
-        const cF = Number(c.campFee || 0);
-        const tot = eF + uF + cF;
-        const pd = Number(c.feePaid || 0);
-        const du = Math.max(0, tot - pd);
-        return `• ${c.name || 'Cadet'} (${c.enrollmentId || 'N/A'}): Total ₹${tot.toLocaleString()}, Paid ₹${pd.toLocaleString()}, Due ₹${du.toLocaleString()}`;
-    }).join('\n');
 
     // Next Rank Target calculation
     const nextRankMap = {
@@ -165,20 +136,14 @@ INSTRUCTION: You are speaking to an NCC Officer / Administrator. Provide concise
 - Camps Recorded: ${campCount} camp(s) [${campNames}]
 - Physical Fitness (PFT) Status: ${pftScore}
 - Recent Mock Exam Score: ${lastQuizScore}
-- Unit Fee Status: ${feeStatus}
 - Uniform Kit Sizes: ${kitSizes}
 
-=== UNIT ALL-CADETS FINANCIAL LEDGER DIRECTORY ===
-${unitRosterFeeSummary || 'No unit cadets ledger loaded.'}
 ================================================
 CRITICAL PERSONALIZATION MANDATE:
-When the cadet asks to summarize their performance, attendance, camps, fees, rank, or exam eligibility:
-YOU MUST EXTRACT AND DISPLAY THEIR ACTUAL NUMBERS & METRICS DIRECTLY FROM THE "CURRENT LOGGED-IN CADET PROFILE CONTEXT" OR "UNIT ALL-CADETS FINANCIAL LEDGER DIRECTORY" ABOVE!
+When the cadet asks to summarize their performance, attendance, camps, rank, or exam eligibility:
+YOU MUST EXTRACT AND DISPLAY THEIR ACTUAL NUMBERS & METRICS DIRECTLY FROM THE "CURRENT LOGGED-IN CADET PROFILE CONTEXT" ABOVE!
 
-DO NOT give generic portal navigation advice (such as "visit My Hub") when asked for performance or attendance summary. Present exact metrics clearly using Markdown bolding and bullet points! Address them as "${name}" or "${rank}".
-
-CRITICAL FEE DIRECTIVE:
-If "- Unit Fee Status" lists any pending dues (such as ₹1 Pending Dues), YOU MUST state that the cadet has pending dues of that exact amount. DO NOT state "All Paid Clear" or "No pending dues" when pending dues exist!`;
+DO NOT give generic portal navigation advice (such as "visit My Hub") when asked for performance or attendance summary. Present exact metrics clearly using Markdown bolding and bullet points! Address them as "${name}" or "${rank}".`;
 };
 
 /**
@@ -208,8 +173,7 @@ export const getSuggestionLibrary = ({
             : `Am I eligible for 'C' Certificate exam with my ${attPct}% attendance?`,
         `Check my registered camps and camp history`,
         `How do I prepare for my next Rank promotion?`,
-        `Review my PFT fitness score and improvement tips`,
-        `Check my unit fee status & pending dues`
+        `Review my PFT fitness score and improvement tips`
     ];
 
     return [
