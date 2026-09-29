@@ -445,6 +445,7 @@ const fullWidthTabs = ['list', 'delegations', 'hierarchy', 'colleges', 'overall_
 export function Dashboard() {
     const { tenant } = useTenant();
     const { isDarkMode, setIsDarkMode } = useTheme();
+    const authContext = useAuthContext();
     const {
         user,
         userName,
@@ -458,7 +459,7 @@ export function Dashboard() {
         handleLogout,
         handleLogoutAllDevices,
         markAnnouncementsAsRead,
-    } = useAuthContext();
+    } = authContext;
 
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     
@@ -511,8 +512,8 @@ export function Dashboard() {
     const currentCadet = useMemo(() => {
         if (isAdminRole) return null;
         const cleanUserEnroll = (userEnrollmentId || '').trim().toUpperCase();
-        const userUid = authContext.user?.uid;
-        const userEmail = (authContext.user?.email || '').trim().toLowerCase();
+        const userUid = user?.uid;
+        const userEmail = (user?.email || '').trim().toLowerCase();
 
         return (cadets || []).find((c) => {
             const cEnroll = (c.enrollmentId || '').trim().toUpperCase();
@@ -524,7 +525,7 @@ export function Dashboard() {
                    (userUid && cUid === userUid) ||
                    (userEmail && cEmail && cEmail === userEmail);
         });
-    }, [cadets, isAdminRole, userEnrollmentId, authContext.user?.uid, authContext.user?.email]);
+    }, [cadets, isAdminRole, userEnrollmentId, user?.uid, user?.email]);
 
     // Effective Delegations (from user doc or cadet doc)
     const effectiveDelegatedModules = useMemo(() => {
@@ -533,8 +534,6 @@ export function Dashboard() {
         return Array.from(new Set([...fromUser, ...fromCadet]));
     }, [userDelegatedModules, currentCadet]);
 
-    // AuthContext to pass down dynamically
-    const authContext = useAuthContext();
     const isDelegatedAdmin = !isAdminRole && activeTab.startsWith('admin_');
     const delegatedModuleId = activeTab.startsWith('admin_') ? activeTab.replace('admin_', '') : null;
 
