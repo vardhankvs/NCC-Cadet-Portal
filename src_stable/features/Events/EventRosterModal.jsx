@@ -7,16 +7,17 @@ import {
     XCircle,
     UserCheck,
     UserX,
-    Printer,
     Loader,
     Search,
     Users,
     CheckCircle,
+    Download,
+    Filter,
 } from '../../components/Icons.jsx';
 import { setEventAttendeeStatus, setEventAttendeeBulk } from '../../firebase/firestoreService.js';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
-// Removed html-to-docx and file-saver imports
+import * as XLSX from 'xlsx';
 import { sendPushToUser } from '../../firebase/pushNotifications.js';
 
 // Helper component for a single cadet row
@@ -231,122 +232,108 @@ export const EventRosterModal = ({ eventId, onClose }) => {
         }
     };
 
-    // This function generates the HTML for the print page
-    const generatePrintHtml = () => {
-        const eventName = event.name || 'Event';
-        const eventVenue = event.location || 'GMRIT, Rajam';
-        const eventDate = event.date ? format(event.date, 'dd-MM-yyyy') : 'N/A';
-        const confirmedCount =
-            confirmedCadets.length > 0 ? confirmedCadets.length : 1;
-
-        const cadetRows =
-            confirmedCadets.length > 0
-                ? confirmedCadets
-                      .map((cadet, index) => {
-                          const jntuNo = cadet.jntuNo || '';
-                          const branch = cadet.branch || '';
-                          if (index === 0) {
-                              return `
-                    <tr>
-                        <td style="border: 1px solid #000; padding: 8px;">${
-                            index + 1
-                        }</td>
-                        <td style="border: 1px solid #000; padding: 8px;">${jntuNo}</td>
-                        <td style="border: 1px solid #000; padding: 8px;">${
-                            cadet.name
-                        }</td>
-                        <td style="border: 1px solid #000; padding: 8px;">${branch}</td>
-                        <td style="border: 1px solid #000; padding: 8px; vertical-align: middle; text-align: center;" rowspan="${confirmedCount}">
-                            ${eventVenue}
-                        </td>
-                        <td style="border: 1px solid #000; padding: 8px; vertical-align: middle; text-align: center;" rowspan="${confirmedCount}">
-                            ${eventDate}
-                        </td>
-                    </tr>
-                `;
-                          }
-                          return `
-                <tr>
-                    <td style="border: 1px solid #000; padding: 8px;">${
-                        index + 1
-                    }</td>
-                    <td style="border: 1px solid #000; padding: 8px;">${jntuNo}</td>
-                    <td style="border: 1px solid #000; padding: 8px;">${
-                        cadet.name
-                    }</td>
-                    <td style="border: 1px solid #000; padding: 8px;">${branch}</td>
-                </tr>
-            `;
-                      })
-                      .join('')
-                : '<tr><td colspan="6" style="text-align: center;">No cadets have confirmed registration.</td></tr>';
-
-        return `
-            <html>
-            <head>
-                <title>Event Roster - ${eventName}</title>
-                <style>
-                    @page { size: auto; margin: 0; }
-                    body { font-family: Arial, sans-serif; }
-                    .print-container { padding: 20px; }
-                    h1 { text-align: center; color: #333; font-size: 20px; }
-                    h2 { text-align: center; color: #555; font-size: 16px; }
-                    p { font-size: 14px; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-                    th, td { border: 1px solid #000; padding: 8px; text-align: left; vertical-align: top; }
-                    th { background-color: #f2f2f2; }
-                    .signature-block { display: flex; justify-content: space-between; margin-top: 70px; font-weight: bold; font-size: 14px; }
-                    @media print { .no-print { display: none; } }
-                </style>
-            </head>
-            <body>
-                <div class="print-container">
-                    <h1>GMR INSTITUTE OF TECHNOLOGY</h1>
-                    <h2 style="text-align: center;">Note Submitted to The Principal</h2>
-                    <p><b>Sub:</b> Requested for Attendance Consideration for students Representing NCC (${eventName})</p>
-                    <p>The following students will represent the NCC for the event:</p>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>S.No.</th>
-                                <th>JNTU No.</th>
-                                <th>Name of the Cadet</th>
-                                <th>Branch</th>
-                                <th>Venue</th>
-                                <th>Date</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${cadetRows}
-                        </tbody>
-                    </table>
-                    <br/><br/>
-                    <div class="signature-block">
-                        <span>Care Taker</span>
-                        <span>Associative Dean (Students Affairs)</span>
-                        <span>Principal</span>
-                    </div>
-                    <button class="no-print" onclick="window.print()" style="margin-top: 20px; padding: 10px 15px; font-size: 16px; cursor: pointer;">
-                        Download (as PDF)
-                    </button>
-                </div>
-            </body>
-            </html>
-        `;
+    const getFormattedEventDate = (dateVal) => {
+        if (!dateVal) return 'N/A';
+        try {
+            if (dateVal.toDate && typeof dateVal.toDate === 'function') {
+                return format(dateVal.toDate(), 'dd-MM-yyyy');
+            }
+            if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
+                return format(dateVal, 'dd-MM-yyyy');
+            }
+            const d = new Date(dateVal);
+            if (!isNaN(d.getTime())) {
+                return format(d, 'dd-MM-yyyy');
+            }
+        } catch (e) {
+            console.error('Error formatting event date:', e);
+        }
+        return String(dateVal);
     };
 
-    // Handle Print (PDF) Function
-    const handlePrint = () => {
-        const printHtml = generatePrintHtml();
-        const printWindow = window.open('', '_blank');
-        if (printWindow) {
-            printWindow.document.write(printHtml);
-            printWindow.document.close();
-        } else {
-            toast.error(
-                'Could not open print window. Please check your pop-up blocker.'
-            );
+    const exportCadets = useMemo(() => {
+        if (!confirmedCadets) return [];
+        if (selectedCertificate === 'All') return confirmedCadets;
+        return confirmedCadets.filter((cadet) => {
+            const cert = (cadet.currentCertificate || cadet.certificate || cadet.B || '').trim().toUpperCase();
+            return cert === selectedCertificate.toUpperCase();
+        });
+    }, [confirmedCadets, selectedCertificate]);
+
+    // Download Excel list for cadets selected only for this event (filtered by certificate)
+    const handleDownloadExcel = (type) => {
+        if (!exportCadets || exportCadets.length === 0) {
+            toast.warn(`No selected cadets${selectedCertificate !== 'All' ? ` with ${selectedCertificate} Certificate` : ''} to export.`);
+            return;
         }
+
+        const eventVenue = event.location || event.venue || 'GMRIT, Rajam';
+        const eventDate = getFormattedEventDate(event.date);
+
+        // Sort in branch-wise order (primary: Branch, secondary: JNTU No. / Regimental No.)
+        const sortedCadets = [...exportCadets].sort((a, b) => {
+            const branchA = (a.branch || '').trim().toUpperCase();
+            const branchB = (b.branch || '').trim().toUpperCase();
+            const branchCompare = branchA.localeCompare(branchB);
+            if (branchCompare !== 0) return branchCompare;
+
+            if (type === 'jntu') {
+                const idA = (a.jntuNo || a.jntuNumber || a.name || '').trim().toUpperCase();
+                const idB = (b.jntuNo || b.jntuNumber || b.name || '').trim().toUpperCase();
+                return idA.localeCompare(idB);
+            } else {
+                const idA = (a.regimentalNumber || a.enrollmentId || a.name || '').trim().toUpperCase();
+                const idB = (b.regimentalNumber || b.enrollmentId || b.name || '').trim().toUpperCase();
+                return idA.localeCompare(idB);
+            }
+        });
+
+        const rows = sortedCadets.map((cadet, index) => {
+            if (type === 'jntu') {
+                return {
+                    'S.No.': index + 1,
+                    'JNTU No.': cadet.jntuNo || cadet.jntuNumber || '',
+                    'Name of the Cadet': cadet.name || '',
+                    'Branch': cadet.branch || '',
+                    'Venue': eventVenue,
+                    'Date': eventDate,
+                };
+            } else {
+                return {
+                    'S.No.': index + 1,
+                    'Regimental No.': cadet.regimentalNumber || cadet.enrollmentId || '',
+                    'Name of the Cadet': cadet.name || '',
+                    'Branch': cadet.branch || '',
+                    'Venue': eventVenue,
+                    'Date': eventDate,
+                };
+            }
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(rows);
+
+        // Adjust column widths for clean readability
+        worksheet['!cols'] = [
+            { wch: 8 },  // S.No.
+            { wch: type === 'jntu' ? 18 : 22 }, // JNTU No. / Regimental No.
+            { wch: 28 }, // Name of the Cadet
+            { wch: 14 }, // Branch
+            { wch: 24 }, // Venue
+            { wch: 14 }, // Date
+        ];
+
+        const workbook = XLSX.utils.book_new();
+        const certTag = selectedCertificate !== 'All' ? `_${selectedCertificate}` : '';
+        const sheetName = type === 'jntu' ? `Cadets_JNTU${certTag}` : `Cadets_Regimental${certTag}`;
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName.substring(0, 31));
+
+        const sanitizedEventName = (event.name || 'Event')
+            .replace(/[/\\?%*:|"<>]/g, '_')
+            .trim();
+        const fileName = `${sanitizedEventName}${certTag}_${type === 'jntu' ? 'JNTU' : 'Regimental_No'}.xlsx`;
+
+        XLSX.writeFile(workbook, fileName);
+        toast.success(`Excel downloaded: ${exportCadets.length} cadet(s) (${selectedCertificate === 'All' ? 'All Certs' : `${selectedCertificate} Cert`}).`);
     };
 
     // --- Removed handleWordDownload function ---
@@ -595,20 +582,74 @@ export const EventRosterModal = ({ eventId, onClose }) => {
                     </table>
                 </div>
 
-                {/* --- MODIFIED FOOTER (Word button removed) --- */}
-                <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200 dark:border-white/10">
-                    <button
-                        onClick={handlePrint}
-                        disabled={confirmedCadets.length === 0}
-                        className="flex items-center px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400 font-bold transition-colors shadow-sm"
-                        title="Generate printable list (PDF)"
-                    >
-                        <Printer className="w-4 h-4 mr-2" />
-                        Print List ({confirmedCadets.length} Confirmed)
-                    </button>
+                {/* --- MODIFIED FOOTER (Download Excel Buttons & Done) --- */}
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-white/10">
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* Certificate Filter for Excel */}
+                        <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-white/5 px-2.5 py-2 rounded-xl border border-gray-200 dark:border-white/10">
+                            <Filter className="w-3.5 h-3.5 text-ncc-gold flex-shrink-0" />
+                            <span className="text-[11px] font-bold text-gray-500 dark:text-white/60">Cert:</span>
+                            <select
+                                value={selectedCertificate}
+                                onChange={(e) => setSelectedCertificate(e.target.value)}
+                                className="bg-transparent text-xs font-bold text-ncc-navy dark:text-white focus:outline-none cursor-pointer"
+                            >
+                                <option value="All" className="dark:bg-[#050b14]">All Certs</option>
+                                <option value="B1" className="dark:bg-[#050b14]">B1 Cert</option>
+                                <option value="B2" className="dark:bg-[#050b14]">B2 Cert</option>
+                                <option value="C" className="dark:bg-[#050b14]">C Cert</option>
+                            </select>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => handleDownloadExcel('jntu')}
+                            disabled={statusTab !== 'confirmed' || exportCadets.length === 0}
+                            title={
+                                statusTab !== 'confirmed'
+                                    ? "Switch to 'Selected Cadets' tab to enable download"
+                                    : exportCadets.length === 0
+                                    ? `No selected cadets with ${selectedCertificate === 'All' ? '' : selectedCertificate + ' '}certificate to export`
+                                    : `Download Excel with JNTU Numbers (${exportCadets.length} ${selectedCertificate === 'All' ? 'selected' : selectedCertificate} cadets)`
+                            }
+                            className={`flex items-center px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all shadow-sm ${
+                                statusTab === 'confirmed' && exportCadets.length > 0
+                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer active:scale-95 shadow-emerald-500/20'
+                                    : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-white/30 border border-gray-200 dark:border-white/10 cursor-not-allowed'
+                            }`}
+                        >
+                            <Download className="w-4 h-4 mr-2" />
+                            Excel(JNTU) {selectedCertificate !== 'All' ? `(${selectedCertificate})` : ''}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleDownloadExcel('regimental')}
+                            disabled={statusTab !== 'confirmed' || exportCadets.length === 0}
+                            title={
+                                statusTab !== 'confirmed'
+                                    ? "Switch to 'Selected Cadets' tab to enable download"
+                                    : exportCadets.length === 0
+                                    ? `No selected cadets with ${selectedCertificate === 'All' ? '' : selectedCertificate + ' '}certificate to export`
+                                    : `Download Excel with Regimental Numbers (${exportCadets.length} ${selectedCertificate === 'All' ? 'selected' : selectedCertificate} cadets)`
+                            }
+                            className={`flex items-center px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all shadow-sm ${
+                                statusTab === 'confirmed' && exportCadets.length > 0
+                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer active:scale-95 shadow-emerald-500/20'
+                                    : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-white/30 border border-gray-200 dark:border-white/10 cursor-not-allowed'
+                            }`}
+                        >
+                            <Download className="w-4 h-4 mr-2" />
+                            Excel(Regimental number) {selectedCertificate !== 'All' ? `(${selectedCertificate})` : ''}
+                        </button>
+                        {statusTab !== 'confirmed' && (
+                            <span className="text-[11px] font-medium text-gray-400 dark:text-white/40 italic ml-1">
+                                (Enable in Selected Cadets)
+                            </span>
+                        )}
+                    </div>
                     <button
                         onClick={onClose}
-                        className="px-6 py-2 text-sm font-bold bg-ncc-navy text-white hover:bg-ncc-navy/90 dark:bg-white dark:text-ncc-navy dark:hover:bg-gray-100 rounded-lg shadow-sm transition-colors"
+                        className="px-6 py-2 text-sm font-bold bg-ncc-navy text-white hover:bg-ncc-navy/90 dark:bg-white dark:text-ncc-navy dark:hover:bg-gray-100 rounded-xl shadow-sm transition-colors"
                     >
                         Done
                     </button>

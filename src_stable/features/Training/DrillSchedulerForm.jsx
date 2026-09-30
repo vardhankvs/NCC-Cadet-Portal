@@ -4,7 +4,7 @@ import { submitDelegatedTask } from '../../firebase/delegationWorkflowService.js
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { sendEventReminderPush, sendPushToAll } from '../../firebase/pushNotifications.js';
 import { toast } from 'react-toastify';
-import { Shield, Clock, MapPin, Users, X, Calendar, Bell } from '../../components/Icons.jsx';
+import { Shield, Clock, MapPin, Users, X, Calendar, Bell, AlignLeft } from '../../components/Icons.jsx';
 
 const DRILL_TYPES = [
     { label: 'Parade', icon: '🪖', color: 'bg-ncc-navy text-white' },
@@ -38,6 +38,7 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
         dresscode: 'No. 2 Dress (Training)',
         specialInstructions: '',
         description: '',
+        trainingObjective: '',
         reminderEnabled: true,
         reminderMinutes: 60,
     });
@@ -52,6 +53,12 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
         }
         setLoading(true);
         try {
+            const customDesc = formData.description ? formData.description.trim() : '';
+            const objDesc = formData.trainingObjective ? `Objective: ${formData.trainingObjective.trim()}` : '';
+            const descMain = [customDesc, objDesc].filter(Boolean).join('\n');
+            const metaSuffix = `Time: ${formData.time}-${formData.endTime} | Dress: ${formData.dresscode} | Strength: ${formData.reportingStrength || 'All'} | Priority: ${formData.priority}${formData.specialInstructions ? ` | Instructions: ${formData.specialInstructions}` : ''}`;
+            const fullDescription = descMain ? `${descMain}\n[${formData.type}] ${metaSuffix}` : `[${formData.type}] ${metaSuffix}`;
+
             if (isCadetUser) {
                 await submitDelegatedTask({
                     institutionId: userInstitutionId,
@@ -68,8 +75,12 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
                         location: formData.location,
                         time: formData.time,
                         endTime: formData.endTime,
-                        description: `[${formData.type}] ${formData.description || ''} | Time: ${formData.time}-${formData.endTime} | Dress: ${formData.dresscode} | Strength: ${formData.reportingStrength || 'All'} | Priority: ${formData.priority} | Instructions: ${formData.specialInstructions || 'Nil'}`,
+                        description: fullDescription,
                         type: formData.type,
+                        priority: formData.priority,
+                        dresscode: formData.dresscode,
+                        reportingStrength: formData.reportingStrength,
+                        specialInstructions: formData.specialInstructions,
                         reminderEnabled: formData.reminderEnabled,
                         reminderMinutes: Number(formData.reminderMinutes),
                     }
@@ -85,8 +96,12 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
                 location: formData.location,
                 time: formData.time,
                 endTime: formData.endTime,
-                description: `[${formData.type}] ${formData.description || ''} | Time: ${formData.time}-${formData.endTime} | Dress: ${formData.dresscode} | Strength: ${formData.reportingStrength || 'All'} | Priority: ${formData.priority} | Instructions: ${formData.specialInstructions || 'Nil'}`,
+                description: fullDescription,
                 type: formData.type,
+                priority: formData.priority,
+                dresscode: formData.dresscode,
+                reportingStrength: formData.reportingStrength,
+                specialInstructions: formData.specialInstructions,
                 reminderEnabled: formData.reminderEnabled,
                 reminderMinutes: Number(formData.reminderMinutes),
             });
@@ -211,6 +226,20 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
                                     value={formData.location} onChange={e => handleChange('location', e.target.value)} />
                             </div>
 
+                            {/* Description of Event / Respective Activity */}
+                            <div>
+                                <label className="block text-xs font-black uppercase text-ncc-navy dark:text-white/50 mb-2 tracking-widest flex items-center gap-1">
+                                    <AlignLeft className="w-3 h-3 text-ncc-gold" /> Description of the Event / Respective Activity
+                                </label>
+                                <textarea
+                                    rows="3"
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#0a1628] focus:bg-white dark:bg-[#050b14] focus:border-ncc-gold/50 outline-none font-bold text-ncc-navy dark:text-white resize-none text-xs leading-relaxed transition-all"
+                                    placeholder="Provide description of the event or respective activity, briefing notes, agenda..."
+                                    value={formData.description}
+                                    onChange={e => handleChange('description', e.target.value)}
+                                />
+                            </div>
+
                             <button type="button" onClick={() => setStep(2)}
                                 className="w-full ncc-btn ncc-btn-primary py-3.5">
                                 Next: Reporting Orders →
@@ -256,13 +285,15 @@ export const DrillSchedulerForm = ({ onClose, prefilledDate }) => {
                                 </div>
                             </div>
 
-                            {/* Description */}
+                            {/* Training Objective */}
                             <div>
-                                <label className="block text-xs font-black uppercase text-ncc-navy dark:text-white/50 mb-2 tracking-widest">Training Objective</label>
+                                <label className="block text-xs font-black uppercase text-ncc-navy dark:text-white/50 mb-2 tracking-widest flex items-center gap-1">
+                                    <Shield className="w-3 h-3" /> Training Objective / Key Focus (Optional)
+                                </label>
                                 <textarea rows="2"
-                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#0a1628] focus:bg-white dark:bg-[#050b14] outline-none font-bold text-ncc-navy dark:text-white resize-none"
-                                    placeholder="What is the objective of this drill?"
-                                    value={formData.description} onChange={e => handleChange('description', e.target.value)} />
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#0a1628] focus:bg-white dark:bg-[#050b14] outline-none font-bold text-ncc-navy dark:text-white resize-none text-xs"
+                                    placeholder="Specific training objective or syllabus covered..."
+                                    value={formData.trainingObjective} onChange={e => handleChange('trainingObjective', e.target.value)} />
                             </div>
 
                             {/* Reminder Notification */}

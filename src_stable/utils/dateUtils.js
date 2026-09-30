@@ -239,4 +239,92 @@ export const isEventPast = (event, refTime = new Date()) => {
     return refTime.getTime() > endDateTime.getTime();
 };
 
+/**
+ * Parses structured logistics and metadata from an event document and its description
+ * @param {object} event 
+ * @returns {object} { activityType, time, dress, strength, priority, instructions, description }
+ */
+export const parseEventDetails = (event) => {
+    if (!event) {
+        return {
+            activityType: 'Parade',
+            time: '06:00',
+            dress: 'No. 2 Dress (Training)',
+            strength: 'All',
+            priority: 'Normal',
+            instructions: 'Nil',
+            description: ''
+        };
+    }
+
+    const rawDesc = typeof event.description === 'string' ? event.description : '';
+
+    // Activity Type
+    let activityType = event.type || event.activityType || '';
+    const typeMatch = rawDesc.match(/\[(.*?)\]/);
+    if (!activityType && typeMatch) {
+        activityType = typeMatch[1].trim();
+    }
+    if (!activityType) activityType = 'Parade';
+
+    // Time
+    let time = event.time || '';
+    const timeMatch = rawDesc.match(/Time:\s*([^|\n]+)/i);
+    if (!time && timeMatch) {
+        time = timeMatch[1].trim();
+    }
+    if (!time) time = '06:00';
+
+    // Dress
+    let dress = event.dresscode || event.dress || '';
+    const dressMatch = rawDesc.match(/Dress:\s*([^|\n]+)/i);
+    if (!dress && dressMatch) {
+        dress = dressMatch[1].trim();
+    }
+    if (!dress) dress = 'No. 2 Dress (Training)';
+
+    // Strength
+    let strength = event.reportingStrength || event.strength || '';
+    const strengthMatch = rawDesc.match(/Strength:\s*([^|\n]+)/i);
+    if (!strength && strengthMatch) {
+        strength = strengthMatch[1].trim();
+    }
+    if (!strength) strength = 'All';
+
+    // Priority
+    let priority = event.priority || '';
+    const priorityMatch = rawDesc.match(/Priority:\s*([^|\n]+)/i);
+    if (!priority && priorityMatch) {
+        priority = priorityMatch[1].trim();
+    }
+    if (!priority) priority = 'Normal';
+
+    // Instructions
+    let instructions = event.specialInstructions || event.instructions || '';
+    const instructionsMatch = rawDesc.match(/Instructions:\s*([^|\n]+)/i);
+    if (!instructions && instructionsMatch) {
+        instructions = instructionsMatch[1].trim();
+    }
+    if (!instructions) instructions = 'Nil';
+
+    // Description of the particular event (cleaned of the metadata line)
+    let cleanDesc = rawDesc
+        .replace(/\[.*?\]\s*\|?\s*Time:.*?$/im, '')
+        .replace(/Time:\s*[^|\n]+\s*\|\s*Dress:\s*[^|\n]+\s*\|\s*Strength:\s*[^|\n]+\s*\|\s*Priority:\s*[^|\n]+\s*\|\s*Instructions:\s*[^|\n]+/gi, '')
+        .replace(/\[.*?\]/g, '')
+        .trim();
+
+    cleanDesc = cleanDesc.replace(/^[|\s-]+|[|\s-]+$/g, '').trim();
+
+    return {
+        activityType,
+        time,
+        dress,
+        strength,
+        priority,
+        instructions,
+        description: cleanDesc
+    };
+};
+
 

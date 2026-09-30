@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { useDataContext } from '../../context/DataContext.jsx';
-import { Calendar as CalendarIcon, Clock, MapPin, ChevronLeft, ChevronRight, Plus, Users, Shield, Bell, Download } from '../../components/Icons.jsx';
+import { Calendar as CalendarIcon, Clock, MapPin, ChevronLeft, ChevronRight, Plus, Users, Shield, Bell, Download, AlignLeft } from '../../components/Icons.jsx';
 import { formatDate, isEventPast, getEventEndDateTime } from '../../utils/dateUtils.js';
 import { DrillSchedulerForm } from './DrillSchedulerForm.jsx';
 import { downloadICalFile } from '../../utils/icalExport.js';
@@ -185,6 +185,11 @@ export const TrainingCalendarView = () => {
                                                     <MapPin className="w-3 h-3 shrink-0 mt-0.5" />
                                                     <span className="break-words line-clamp-1">{e.location || 'Unit Ground'}</span>
                                                 </div>
+                                                {e.description && (
+                                                    <p className="text-[10px] text-gray-500 dark:text-white/70 line-clamp-2 mt-1 leading-normal">
+                                                        {e.description}
+                                                    </p>
+                                                )}
                                                 {/* Action buttons */}
                                                 <div className="flex items-center gap-2 mt-2">
                                                     <button
@@ -262,6 +267,16 @@ export const TrainingCalendarView = () => {
                                 <p className="text-[10px] font-black uppercase text-gray-400 dark:text-white/40 mb-1">Location</p>
                                 <p className="text-sm font-bold text-ncc-navy dark:text-white">{selectedEvent.location || 'Unit Ground'}</p>
                             </div>
+                            {selectedEvent.description && (
+                                <div className="bg-gray-50 dark:bg-[#0a1628] rounded-xl p-3 border border-gray-100 dark:border-white/5">
+                                    <p className="text-[10px] font-black uppercase text-gray-400 dark:text-white/40 mb-1 flex items-center gap-1.5">
+                                        <AlignLeft className="w-3 h-3 text-ncc-gold" /> Description of Activity / Event
+                                    </p>
+                                    <p className="text-xs font-semibold text-gray-700 dark:text-white/85 whitespace-pre-wrap leading-relaxed">
+                                        {selectedEvent.description}
+                                    </p>
+                                </div>
+                            )}
                             {selectedEvent.reminderEnabled && (
                                 <div className="flex items-center gap-2 bg-ncc-gold/10 rounded-xl p-3">
                                     <Bell className="w-4 h-4 text-ncc-gold shrink-0" />

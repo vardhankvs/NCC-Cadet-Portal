@@ -1,25 +1,35 @@
 // src/features/Events/EventForm.jsx
 import React, { useState } from 'react';
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay.jsx';
-import { X, Loader, Calendar, MapPin, AlignLeft, Flag, Shield } from '../../components/Icons.jsx';
+import { X, Loader, Calendar, MapPin, AlignLeft, Flag, Shield, Clock, Users } from '../../components/Icons.jsx';
 import { saveEvent } from '../../firebase/firestoreService.js';
 import { submitDelegatedTask } from '../../firebase/delegationWorkflowService.js';
 import { useAuthContext } from '../../context/AuthContext.jsx';
 import { toast } from 'react-toastify';
 import { sendPushToAll } from '../../firebase/pushNotifications.js';
+import { parseEventDetails } from '../../utils/dateUtils.js';
 
 import { ImageIcon, List } from '../../components/Icons.jsx';
 
 export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGallery, onManageRoster }) => {
     const { userRole, actualRole, isDelegatedCadet, userInstitutionId, userEnrollmentId, userName, user } = useAuthContext();
     const isCadetUser = isDelegatedCadet || userRole === 'cadet' || actualRole === 'cadet';
+    
+    const initialDetails = currentEvent ? parseEventDetails(currentEvent) : null;
+
     const [formData, setFormData] = useState({
         name: currentEvent?.name || '',
+        type: currentEvent?.type || initialDetails?.activityType || 'Parade',
         date: currentEvent?.date
             ? new Date(currentEvent.date).toISOString().split('T')[0]
             : '',
-        description: currentEvent?.description || '',
+        time: currentEvent?.time || initialDetails?.time || '06:00',
         location: currentEvent?.location || '',
+        dresscode: currentEvent?.dresscode || initialDetails?.dress || 'No. 2 Dress (Training)',
+        reportingStrength: currentEvent?.reportingStrength || initialDetails?.strength || 'All',
+        priority: currentEvent?.priority || initialDetails?.priority || 'Normal',
+        specialInstructions: currentEvent?.specialInstructions || (initialDetails?.instructions !== 'Nil' ? initialDetails?.instructions : '') || '',
+        description: initialDetails?.description || (currentEvent && !initialDetails ? currentEvent?.description : '') || '',
     });
     const [formError, setFormError] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -37,6 +47,24 @@ export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGalle
             return;
         }
 
+        const metaLine = `[${formData.type}] | Time: ${formData.time || '06:00'} | Dress: ${formData.dresscode} | Strength: ${formData.reportingStrength || 'All'} | Priority: ${formData.priority} | Instructions: ${formData.specialInstructions?.trim() || 'Nil'}`;
+        const finalDescription = formData.description?.trim() 
+            ? `${formData.description.trim()}\n${metaLine}`
+            : metaLine;
+
+        const eventPayload = {
+            name: formData.name,
+            type: formData.type,
+            date: formData.date,
+            time: formData.time,
+            location: formData.location || 'GMRIT NCC Office',
+            dresscode: formData.dresscode,
+            reportingStrength: formData.reportingStrength,
+            priority: formData.priority,
+            specialInstructions: formData.specialInstructions?.trim() || 'Nil',
+            description: finalDescription,
+        };
+
         if (isCadetUser) {
             setLoading(true);
             try {
@@ -51,7 +79,7 @@ export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGalle
                     targetDocId: currentEvent?.id || null,
                     title: `Event: ${formData.name}`,
                     payload: {
-                        ...formData,
+                        ...eventPayload,
                         id: currentEvent?.id || null
                     }
                 });
@@ -67,9 +95,10 @@ export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGalle
 
         setLoading(true);
         try {
-            await saveEvent(formData, currentEvent?.id);
+            await saveEvent(eventPayload, currentEvent?.id);
             toast.success(isEditMode ? 'Event updated successfully.' : 'New event added to unit calendar.');
-            sendPushToAll('🎪 New Event Posted', `${formData.name} has been scheduled for ${formData.date}. Tap to review details and report requirements.`, 'events', { category: 'Events' });
+            const timeInfo = formData.time ? ` at ${formData.time}` : '';
+            sendPushToAll('🎪 New Event Posted', `${formData.name} (${formData.type}) scheduled for ${formData.date}${timeInfo}. Dress: ${formData.dresscode}. Tap to review details.`, 'events', { category: 'Events' });
             onSaveSuccess();
         } catch (e) {
             setFormError(e.message);
@@ -80,7 +109,7 @@ export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGalle
     return (
         <form
             onSubmit={handleSubmit}
-            className="mx-auto w-full max-w-xl rounded-[2.5rem] bg-white dark:bg-[#050b14] p-8 shadow-2xl border border-[#ddd8cc] dark:border-white/10 relative overflow-hidden"
+            className="mx-auto w-full max-w-2xl rounded-[2.5rem] bg-white dark:bg-[#050b14] p-8 shadow-2xl border border-[#ddd8cc] dark:border-white/10 relative overflow-hidden max-h-[92vh] overflow-y-auto ncc-scrollbar"
         >
             {/* Tactical Header Decoration */}
             <div className="absolute top-0 left-0 w-full h-1.5 bg-ncc-gold" />
@@ -127,10 +156,50 @@ export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGalle
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Activity Type & Priority */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div>
                         <label className="block text-[10px] font-black text-gray-400 dark:text-white/60 uppercase tracking-widest mb-2 flex items-center gap-2">
-                            <Calendar className="w-3 h-3" /> Event Date <span className="text-ncc-red">*</span>
+                            <Flag className="w-3 h-3 text-ncc-gold" /> Activity / Event Type
+                        </label>
+                        <select
+                            name="type"
+                            value={formData.type}
+                            onChange={handleChange}
+                            className="ncc-input text-xs font-bold"
+                        >
+                            <option value="Parade">Parade</option>
+                            <option value="Social Activity">Social Activity</option>
+                            <option value="Camp">Camp</option>
+                            <option value="NCC Day">NCC Day</option>
+                            <option value="Exam">Exam</option>
+                            <option value="Shooting Practice">Shooting Practice</option>
+                            <option value="Drill">Drill / Ceremony</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-400 dark:text-white/60 uppercase tracking-widest mb-2 flex items-center gap-2">
+                            <Shield className="w-3 h-3 text-ncc-gold" /> Priority Level
+                        </label>
+                        <select
+                            name="priority"
+                            value={formData.priority}
+                            onChange={handleChange}
+                            className="ncc-input text-xs font-bold"
+                        >
+                            <option value="Normal">Normal</option>
+                            <option value="High">High Priority</option>
+                            <option value="Mandatory">Mandatory</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* Event Date & Time */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-400 dark:text-white/60 uppercase tracking-widest mb-2 flex items-center gap-2">
+                            <Calendar className="w-3 h-3 text-ncc-gold" /> Event Date <span className="text-ncc-red">*</span>
                         </label>
                         <input
                             type="date"
@@ -143,29 +212,95 @@ export const EventForm = ({ currentEvent, onSaveSuccess, onCancel, onManageGalle
                     </div>
                     <div>
                         <label className="block text-[10px] font-black text-gray-400 dark:text-white/60 uppercase tracking-widest mb-2 flex items-center gap-2">
-                            <MapPin className="w-3 h-3" /> Location
+                            <Clock className="w-3 h-3 text-ncc-gold" /> Event Time
                         </label>
                         <input
-                            type="text"
-                            name="location"
-                            value={formData.location}
+                            type="time"
+                            name="time"
+                            value={formData.time}
                             onChange={handleChange}
-                            placeholder="e.g. Unit Ground"
                             className="ncc-input text-xs font-bold"
                         />
                     </div>
                 </div>
 
+                {/* Location & Dress Code */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-400 dark:text-white/60 uppercase tracking-widest mb-2 flex items-center gap-2">
+                            <MapPin className="w-3 h-3 text-ncc-gold" /> Location
+                        </label>
+                        <div className="relative">
+                            <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input
+                                type="text"
+                                name="location"
+                                value={formData.location}
+                                onChange={handleChange}
+                                placeholder="e.g. GMRIT Campus Ground"
+                                className="ncc-input pl-11 text-xs font-bold"
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-400 dark:text-white/60 uppercase tracking-widest mb-2 flex items-center gap-2">
+                            Dress Code
+                        </label>
+                        <select
+                            name="dresscode"
+                            value={formData.dresscode}
+                            onChange={handleChange}
+                            className="ncc-input text-xs font-bold"
+                        >
+                            <option>No. 2 Dress (Training)</option>
+                            <option>No. 1 Dress (Ceremonial)</option>
+                            <option>No. 3 Dress (PT)</option>
+                            <option>Civilian / Semi-formal</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* Reporting Strength & Special Instructions */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-400 dark:text-white/60 uppercase tracking-widest mb-2 flex items-center gap-2">
+                            <Users className="w-3 h-3 text-ncc-gold" /> Reporting Strength
+                        </label>
+                        <input
+                            type="text"
+                            name="reportingStrength"
+                            value={formData.reportingStrength}
+                            onChange={handleChange}
+                            placeholder="e.g. All, or 45"
+                            className="ncc-input text-xs font-bold"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-400 dark:text-white/60 uppercase tracking-widest mb-2 flex items-center gap-2">
+                            Instructions
+                        </label>
+                        <input
+                            type="text"
+                            name="specialInstructions"
+                            value={formData.specialInstructions}
+                            onChange={handleChange}
+                            placeholder="e.g. Nil, Water bottle mandatory..."
+                            className="ncc-input text-xs font-bold"
+                        />
+                    </div>
+                </div>
+
+                {/* Description of the particular event */}
                 <div>
                     <label className="block text-[10px] font-black text-ncc-navy dark:text-white uppercase tracking-widest mb-2 flex items-center gap-2">
-                        <AlignLeft className="w-3 h-3" /> Event Description
+                        <AlignLeft className="w-3 h-3 text-ncc-gold" /> Description of Particular Event
                     </label>
                     <textarea
                         name="description"
                         value={formData.description}
                         onChange={handleChange}
-                        placeholder="Provide details about the event, attire, and objectives..."
-                        className="ncc-input text-sm min-h-[140px] leading-relaxed"
+                        placeholder="Provide details about the event, objectives, briefing notes..."
+                        className="ncc-input text-sm min-h-[110px] leading-relaxed"
                     />
                 </div>
             </div>

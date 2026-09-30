@@ -30,6 +30,7 @@ import jsPDF from 'jspdf';
 import nccLogo from '../../assets/ncc_logo.jpg';
 import { formatDate } from '../../utils/dateUtils.js';
 import { generateNominalRollPDF } from '../../utils/pdfGenerator.js';
+import * as XLSX from 'xlsx';
 
 
 export const SocialServiceView = () => {
@@ -54,6 +55,7 @@ export const SocialServiceView = () => {
     const [selectedTypes, setSelectedTypes] = useState([]);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [activityCertFilter, setActivityCertFilter] = useState({});
 
     const activityTypes = [
         'Swachh Bharat',
@@ -398,6 +400,91 @@ export const SocialServiceView = () => {
         }
 
         doc.save(`${cadet.enrollmentId}_Social_Service_Certificate.pdf`);
+    };
+
+    const handleExportActivityExcel = (activity, type, certFilter = 'All') => {
+        let selectedCadets = (activity.volunteers || [])
+            .map(vid => cadets.find(c => c.enrollmentId === vid || c.regimentalNumber === vid || c.id === vid))
+            .filter(Boolean);
+
+        if (certFilter && certFilter !== 'All') {
+            selectedCadets = selectedCadets.filter(c => {
+                const cert = (c.currentCertificate || c.certificate || c.B || '').trim().toUpperCase();
+                return cert === certFilter.toUpperCase();
+            });
+        }
+
+        if (selectedCadets.length === 0) {
+            toast.warn(`No selected cadets${certFilter !== 'All' ? ` with ${certFilter} Certificate` : ''} for this activity.`);
+            return;
+        }
+
+        const venue = activity.location || activity.venue || 'GMRIT, Rajam';
+        const dateStr = formatDate(activity.date) || 'N/A';
+
+        // Sort in branch-wise order (primary: Branch, secondary: JNTU No. / Regimental No.)
+        const sortedCadets = [...selectedCadets].sort((a, b) => {
+            const branchA = (a.branch || '').trim().toUpperCase();
+            const branchB = (b.branch || '').trim().toUpperCase();
+            const branchCompare = branchA.localeCompare(branchB);
+            if (branchCompare !== 0) return branchCompare;
+
+            if (type === 'jntu') {
+                const idA = (a.jntuNo || a.jntuNumber || a.name || '').trim().toUpperCase();
+                const idB = (b.jntuNo || b.jntuNumber || b.name || '').trim().toUpperCase();
+                return idA.localeCompare(idB);
+            } else {
+                const idA = (a.regimentalNumber || a.enrollmentId || a.name || '').trim().toUpperCase();
+                const idB = (b.regimentalNumber || b.enrollmentId || b.name || '').trim().toUpperCase();
+                return idA.localeCompare(idB);
+            }
+        });
+
+        const rows = sortedCadets.map((cadet, index) => {
+            if (type === 'jntu') {
+                return {
+                    'S.No.': index + 1,
+                    'JNTU No.': cadet.jntuNo || cadet.jntuNumber || '',
+                    'Name of the Cadet': cadet.name || '',
+                    'Branch': cadet.branch || '',
+                    'Venue': venue,
+                    'Date': dateStr,
+                };
+            } else {
+                return {
+                    'S.No.': index + 1,
+                    'Regimental No.': cadet.regimentalNumber || cadet.enrollmentId || '',
+                    'Name of the Cadet': cadet.name || '',
+                    'Branch': cadet.branch || '',
+                    'Venue': venue,
+                    'Date': dateStr,
+                };
+            }
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(rows);
+
+        worksheet['!cols'] = [
+            { wch: 8 },  // S.No.
+            { wch: type === 'jntu' ? 18 : 22 }, // JNTU No. / Regimental No.
+            { wch: 28 }, // Name of the Cadet
+            { wch: 14 }, // Branch
+            { wch: 24 }, // Venue
+            { wch: 14 }, // Date
+        ];
+
+        const workbook = XLSX.utils.book_new();
+        const certTag = certFilter !== 'All' ? `_${certFilter}` : '';
+        const sheetName = type === 'jntu' ? `Cadets_JNTU${certTag}` : `Cadets_Regimental${certTag}`;
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName.substring(0, 31));
+
+        const safeTitle = (activity.title || 'Social_Activity')
+            .replace(/[/\\?%*:|"<>]/g, '_')
+            .trim();
+        const fileName = `${safeTitle}${certTag}_${type === 'jntu' ? 'JNTU' : 'Regimental_No'}.xlsx`;
+
+        XLSX.writeFile(workbook, fileName);
+        toast.success(`Excel downloaded: ${selectedCadets.length} cadet(s) (${certFilter === 'All' ? 'All Certs' : `${certFilter} Cert`}).`);
     };
 
     if (loading) return <div className="p-20 text-center"><LoadingIndicator /></div>;
@@ -796,44 +883,71 @@ export const SocialServiceView = () => {
                                                 <Users className="w-4 h-4" /> Manage Volunteers
                                             </button>
 
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <button 
-                                                    onClick={() => {
-                                                        const volunteerCadets = (activity.volunteers || []).map(vid => 
-                                                            cadets.find(c => c.enrollmentId === vid)
-                                                        ).filter(Boolean);
-                                                        generateNominalRollPDF(
-                                                            volunteerCadets, 
-                                                            `Volunteer Roll - ${activity.title}`, 
-                                                            `${activity.title}_Roll_Regtl.pdf`,
-                                                            'regimental',
-                                                            activity.location,
-                                                            activity.date
-                                                        );
-                                                    }}
-                                                    className="px-3 py-2 rounded-lg text-[11px] font-bold bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border border-[#ddd8cc] dark:border-white/10 hover:border-ncc-gold flex items-center justify-center gap-1.5 transition-all truncate"
-                                                >
-                                                    <Download className="w-3.5 h-3.5 text-ncc-gold flex-shrink-0" /> Regtl Roll
-                                                </button>
-                                                <button 
-                                                    onClick={() => {
-                                                        const volunteerCadets = (activity.volunteers || []).map(vid => 
-                                                            cadets.find(c => c.enrollmentId === vid)
-                                                        ).filter(Boolean);
-                                                        generateNominalRollPDF(
-                                                            volunteerCadets, 
-                                                            `Volunteer Roll - ${activity.title}`, 
-                                                            `${activity.title}_Roll_JNTU.pdf`,
-                                                            'jntu',
-                                                            activity.location,
-                                                            activity.date
-                                                        );
-                                                    }}
-                                                    className="px-3 py-2 rounded-lg text-[11px] font-bold bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border border-[#ddd8cc] dark:border-white/10 hover:border-ncc-gold flex items-center justify-center gap-1.5 transition-all truncate"
-                                                >
-                                                    <Download className="w-3.5 h-3.5 text-ncc-gold flex-shrink-0" /> JNTU Roll
-                                                </button>
-                                            </div>
+                                            {/* Certificate Filter for Activity Excel */}
+                                            {(() => {
+                                                const currentCertFilter = activityCertFilter[activity.id] || 'All';
+                                                const volunteerCadets = (activity.volunteers || [])
+                                                    .map(vid => cadets.find(c => c.enrollmentId === vid || c.regimentalNumber === vid || c.id === vid))
+                                                    .filter(Boolean);
+                                                const filteredVolunteers = currentCertFilter === 'All'
+                                                    ? volunteerCadets
+                                                    : volunteerCadets.filter(c => {
+                                                        const cert = (c.currentCertificate || c.certificate || c.B || '').trim().toUpperCase();
+                                                        return cert === currentCertFilter.toUpperCase();
+                                                    });
+                                                const countB1 = volunteerCadets.filter(c => (c.currentCertificate || c.certificate || c.B || '').trim().toUpperCase() === 'B1').length;
+                                                const countB2 = volunteerCadets.filter(c => (c.currentCertificate || c.certificate || c.B || '').trim().toUpperCase() === 'B2').length;
+                                                const countC = volunteerCadets.filter(c => (c.currentCertificate || c.certificate || c.B || '').trim().toUpperCase() === 'C').length;
+
+                                                return (
+                                                    <div className="flex flex-col gap-2">
+                                                        <div className="flex items-center justify-between gap-2 p-1.5 bg-ncc-navy/5 dark:bg-white/5 rounded-xl border border-ncc-navy/10 dark:border-white/10">
+                                                            <span className="text-[11px] font-bold text-gray-600 dark:text-white/70 flex items-center gap-1.5">
+                                                                <Filter className="w-3.5 h-3.5 text-ncc-gold flex-shrink-0" /> Cert Filter:
+                                                            </span>
+                                                            <select
+                                                                value={currentCertFilter}
+                                                                onChange={(e) => setActivityCertFilter(prev => ({ ...prev, [activity.id]: e.target.value }))}
+                                                                className="text-[11px] font-bold py-1 px-2.5 rounded-lg bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border border-[#ddd8cc] dark:border-white/10 focus:border-ncc-gold focus:outline-none cursor-pointer"
+                                                            >
+                                                                <option value="All">All Certs ({volunteerCadets.length})</option>
+                                                                <option value="B1">B1 Cert ({countB1})</option>
+                                                                <option value="B2">B2 Cert ({countB2})</option>
+                                                                <option value="C">C Cert ({countC})</option>
+                                                            </select>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => handleExportActivityExcel(activity, 'jntu', currentCertFilter)}
+                                                                disabled={filteredVolunteers.length === 0}
+                                                                title={filteredVolunteers.length === 0 ? `No ${currentCertFilter !== 'All' ? currentCertFilter + ' ' : ''}volunteers found` : `Download Excel (JNTU) for ${filteredVolunteers.length} cadet(s)`}
+                                                                className={`px-3 py-2 rounded-lg text-[11px] font-bold border flex items-center justify-center gap-1.5 transition-all truncate ${
+                                                                    filteredVolunteers.length > 0
+                                                                        ? 'bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border-[#ddd8cc] dark:border-white/10 hover:border-emerald-500 hover:text-emerald-600 dark:hover:text-emerald-400 cursor-pointer shadow-sm active:scale-95'
+                                                                        : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-white/30 border-gray-200 dark:border-white/10 cursor-not-allowed opacity-60'
+                                                                }`}
+                                                            >
+                                                                <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" /> Excel(JNTU) {currentCertFilter !== 'All' ? `(${currentCertFilter})` : ''}
+                                                            </button>
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => handleExportActivityExcel(activity, 'regimental', currentCertFilter)}
+                                                                disabled={filteredVolunteers.length === 0}
+                                                                title={filteredVolunteers.length === 0 ? `No ${currentCertFilter !== 'All' ? currentCertFilter + ' ' : ''}volunteers found` : `Download Excel (Regimental No.) for ${filteredVolunteers.length} cadet(s)`}
+                                                                className={`px-3 py-2 rounded-lg text-[11px] font-bold border flex items-center justify-center gap-1.5 transition-all truncate ${
+                                                                    filteredVolunteers.length > 0
+                                                                        ? 'bg-white dark:bg-[#050b14] text-ncc-navy dark:text-white border-[#ddd8cc] dark:border-white/10 hover:border-emerald-500 hover:text-emerald-600 dark:hover:text-emerald-400 cursor-pointer shadow-sm active:scale-95'
+                                                                        : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-white/30 border-gray-200 dark:border-white/10 cursor-not-allowed opacity-60'
+                                                                }`}
+                                                            >
+                                                                <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" /> Excel(Regimental number) {currentCertFilter !== 'All' ? `(${currentCertFilter})` : ''}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
 
                                             <div className="flex gap-2 pt-1">
                                                 <button 
@@ -980,10 +1094,36 @@ export const SocialServiceView = () => {
                            </div>
                         </div>
 
-                        <div className="bg-[#f5f0e8] dark:bg-[#0a1628] p-6 border-t border-[#ddd8cc] flex justify-between items-center">
-                            <p className="text-xs font-bold text-gray-500 dark:text-white/70">
-                                {(selectedActivity.volunteers || []).length} Volunteers Selected
-                            </p>
+                        <div className="bg-[#f5f0e8] dark:bg-[#0a1628] p-6 border-t border-[#ddd8cc] flex flex-wrap justify-between items-center gap-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-xs font-bold text-gray-500 dark:text-white/70 mr-2">
+                                    {(selectedActivity.volunteers || []).length} Volunteers Selected
+                                </p>
+                                <button 
+                                    type="button"
+                                    onClick={() => handleExportActivityExcel(selectedActivity, 'jntu', vmFilterCert)}
+                                    disabled={(selectedActivity.volunteers || []).length === 0}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all ${
+                                        (selectedActivity.volunteers || []).length > 0
+                                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer active:scale-95 shadow-sm'
+                                            : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-white/30 border-gray-200 dark:border-white/10 cursor-not-allowed opacity-60'
+                                    }`}
+                                >
+                                    <Download className="w-3.5 h-3.5" /> Excel(JNTU) {vmFilterCert !== 'All' ? `(${vmFilterCert})` : ''}
+                                </button>
+                                <button 
+                                    type="button"
+                                    onClick={() => handleExportActivityExcel(selectedActivity, 'regimental', vmFilterCert)}
+                                    disabled={(selectedActivity.volunteers || []).length === 0}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all ${
+                                        (selectedActivity.volunteers || []).length > 0
+                                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer active:scale-95 shadow-sm'
+                                            : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-white/30 border-gray-200 dark:border-white/10 cursor-not-allowed opacity-60'
+                                    }`}
+                                >
+                                    <Download className="w-3.5 h-3.5" /> Excel(Regimental number) {vmFilterCert !== 'All' ? `(${vmFilterCert})` : ''}
+                                </button>
+                            </div>
                             <button onClick={() => setSelectedActivity(null)} className="ncc-btn ncc-btn-primary px-8">Done</button>
                         </div>
                     </div>
